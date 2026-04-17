@@ -1,0 +1,38 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    # Removed volumes because 'watch' handles sync
+    # volumes:
+    #   - ./backend:/app
+    environment:
+      - ENVIRONMENT=development
+    develop:
+      watch:
+        - action: sync
+          path: ./backend
+          target: /app
+          ignore:
+            - __pycache__/
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    # Removed local bind mount because 'watch' handles sync
+    # volumes:
+    #   - ./frontend:/app
+    volumes:
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    develop:
+      watch:
+        - action: sync
+          path: ./frontend
+          target: /app
+          ignore:
+            - node_modules/
