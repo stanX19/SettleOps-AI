@@ -60,13 +60,13 @@ const getInitialNodes = () => [
 ];
 
 const getInitialEdges = (): Edge[] => [
-  { id: 'e1-2', source: '1', target: '2', style: { strokeWidth: 2, stroke: '#E5E7EB' } as React.CSSProperties, animated: false },
-  { id: 'e1-3', source: '1', target: '3', style: { strokeWidth: 2, stroke: '#E5E7EB' } as React.CSSProperties, animated: false },
-  { id: 'e1-4', source: '1', target: '4', style: { strokeWidth: 2, stroke: '#E5E7EB' } as React.CSSProperties, animated: false },
-  { id: 'e2-5', source: '2', target: '5', style: { strokeWidth: 2, stroke: '#E5E7EB' } as React.CSSProperties, animated: false },
-  { id: 'e3-5', source: '3', target: '5', style: { strokeWidth: 2, stroke: '#E5E7EB' } as React.CSSProperties, animated: false },
-  { id: 'e4-5', source: '4', target: '5', style: { strokeWidth: 2, stroke: '#E5E7EB' } as React.CSSProperties, animated: false },
-  { id: 'e5-6', source: '5', target: '6', style: { strokeWidth: 2, stroke: '#E5E7EB' } as React.CSSProperties, animated: false },
+  { id: 'e1-2', source: '1', target: '2', style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' } as React.CSSProperties, animated: false },
+  { id: 'e1-3', source: '1', target: '3', style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' } as React.CSSProperties, animated: false },
+  { id: 'e1-4', source: '1', target: '4', style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' } as React.CSSProperties, animated: false },
+  { id: 'e2-5', source: '2', target: '5', style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' } as React.CSSProperties, animated: false },
+  { id: 'e3-5', source: '3', target: '5', style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' } as React.CSSProperties, animated: false },
+  { id: 'e4-5', source: '4', target: '5', style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' } as React.CSSProperties, animated: false },
+  { id: 'e5-6', source: '5', target: '6', style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' } as React.CSSProperties, animated: false },
 ];
 
 export function WorkflowPane() {
@@ -92,7 +92,7 @@ export function WorkflowPane() {
           label: 'Needs Review',
           labelBgPadding: [8, 4] as [number, number],
           labelBgBorderRadius: 4,
-          labelBgStyle: { fill: '#FFF8E1', color: '#111827', stroke: '#EF4444' },
+          labelBgStyle: { fill: 'var(--color-neutral-surface)', color: 'var(--color-neutral-text-primary)', stroke: '#EF4444' },
           style: { strokeWidth: 2, stroke: '#EF4444', strokeDasharray: '5, 5' } as React.CSSProperties,
           markerEnd: { type: MarkerType.ArrowClosed, color: '#EF4444' }
         } as Edge);
@@ -113,7 +113,9 @@ export function WorkflowPane() {
     setTimeout(() => { updateNode('1', 'running', 'Parsing PDFs...'); }, 500);
     setTimeout(() => { 
       updateNode('1', 'success', 'Parsed 1.2s');
-      updateEdge('e1-2', true, '#FFC107'); updateEdge('e1-3', true, '#FFC107'); updateEdge('e1-4', true, '#FFC107');
+      updateEdge('e1-2', true, 'var(--color-brand-primary)'); 
+      updateEdge('e1-3', true, 'var(--color-brand-primary)'); 
+      updateEdge('e1-4', true, 'var(--color-brand-primary)');
       updateNode('2', 'running', 'Checking rules...');
       updateNode('3', 'running', 'Evaluating fault...');
       updateNode('4', 'running', 'Scoring risk...');
@@ -122,63 +124,65 @@ export function WorkflowPane() {
     // Parallel Branch 1: Policy
     setTimeout(() => { 
       updateNode('2', 'success', 'Clause 4.2(a) Match'); 
-      updateEdge('e1-2', false, '#10B981');
-      updateEdge('e2-5', true, '#FFC107');
+      updateEdge('e1-2', false, 'var(--color-semantic-success)');
+      updateEdge('e2-5', true, 'var(--color-brand-primary)');
     }, 3500);
 
     // Parallel Branch 2: Fraud
     setTimeout(() => { 
       updateNode('4', 'success', 'Suspicion 0.18');
-      updateEdge('e1-4', false, '#10B981');
-      updateEdge('e4-5', true, '#FFC107'); 
+      updateEdge('e1-4', false, 'var(--color-semantic-success)');
+      updateEdge('e4-5', true, 'var(--color-brand-primary)'); 
     }, 4500);
 
     // Parallel Branch 3: Liability
     setTimeout(() => { 
       updateNode('3', 'success', 'TP 100% Fault'); 
-      updateEdge('e1-3', false, '#10B981');
-      updateEdge('e3-5', true, '#FFC107');
+      updateEdge('e1-3', false, 'var(--color-semantic-success)');
+      updateEdge('e3-5', true, 'var(--color-brand-primary)');
     }, 5500);
 
     // Payout Reconciles
     setTimeout(() => {
-      updateEdge('e2-5', false, '#10B981'); updateEdge('e3-5', false, '#10B981'); updateEdge('e4-5', false, '#10B981');
+      updateEdge('e2-5', false, 'var(--color-semantic-success)'); 
+      updateEdge('e3-5', false, 'var(--color-semantic-success)'); 
+      updateEdge('e4-5', false, 'var(--color-semantic-success)');
       updateNode('5', 'running', 'Computing logic...');
     }, 6000);
 
     setTimeout(() => {
       updateNode('5', 'success', 'Payout RM 4,200');
-      updateEdge('e5-6', true, '#FFC107');
+      updateEdge('e5-6', true, 'var(--color-brand-primary)');
       updateNode('6', 'running', 'Challenging draft...');
     }, 7500);
 
     // Auditor Rejects (Wow Moment)
     setTimeout(() => {
       updateNode('6', 'error', 'Error Caught');
-      updateEdge('e5-6', false, '#EF4444');
-      updateEdge('e6-3', false, '#EF4444', true); // Show backward arrow
+      updateEdge('e5-6', false, 'var(--color-semantic-danger)');
+      updateEdge('e6-3', false, 'var(--color-semantic-danger)', true); // Show backward arrow
       updateNode('3', 'warning', 'Re-evaluating...');
     }, 9000);
 
     // Liability Fixes it
     setTimeout(() => {
-      updateEdge('e6-3', false, '#EF4444', false); // Hide backward arrow
+      updateEdge('e6-3', false, 'var(--color-semantic-danger)', false); // Hide backward arrow
       updateNode('3', 'success', 'TP 50% / Claim 50%');
-      updateEdge('e3-5', true, '#FFC107');
+      updateEdge('e3-5', true, 'var(--color-brand-primary)');
       updateNode('5', 'running', 'Re-computing...');
       updateNode('6', 'idle', 'Awaiting Payout');
     }, 11500);
 
     // Final Approval
     setTimeout(() => {
-      updateEdge('e3-5', false, '#10B981');
+      updateEdge('e3-5', false, 'var(--color-semantic-success)');
       updateNode('5', 'success', 'Payout RM 2,100');
-      updateEdge('e5-6', true, '#FFC107');
+      updateEdge('e5-6', true, 'var(--color-brand-primary)');
       updateNode('6', 'running', 'Reviewing...');
     }, 13000);
 
     setTimeout(() => {
-      updateEdge('e5-6', false, '#10B981');
+      updateEdge('e5-6', false, 'var(--color-semantic-success)');
       updateNode('6', 'success', 'All Checks Passed');
       setDemoState('completed');
     }, 14500);

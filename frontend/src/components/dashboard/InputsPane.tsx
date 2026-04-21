@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/primitives/Card";
-import { FileText, Image as ImageIcon, MessageCircle, ChevronDown, ChevronRight, CheckCircle2 } from "lucide-react";
+import { FileText, Image as ImageIcon, ChevronDown, ChevronRight, CheckCircle2, Wrench, Mail, Play, Mic, FileQuestion } from "lucide-react";
 import { Badge } from "@/components/primitives/Badge";
 
 function CollapsibleSection({ title, icon, count, children, defaultOpen = true }: any) {
@@ -61,12 +61,13 @@ export function InputsPane() {
       </CollapsibleSection>
 
       <CollapsibleSection title="Policy Schedule" icon={<FileText className="w-4 h-4" />} count={1}>
-        <div className="flex flex-col space-y-2">
-          <div className="text-xs font-semibold text-neutral-text-secondary uppercase">API Fetch Success</div>
-          <div className="p-3 border-l-2 border-brand-primary bg-brand-primary-light/50 text-xs rounded-r-md">
-            <span className="font-semibold text-neutral-text-primary block">EGI-MTR-2025-448812</span>
-            <span className="text-neutral-text-secondary block mt-1">Etiqa Comprehensive Motor</span>
-            <span className="text-neutral-text-secondary block">NCD 25% | Excess RM 400</span>
+        <div className="flex items-center p-3 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors group">
+          <div className="w-8 h-10 bg-red-900/20 text-red-500 flex items-center justify-center rounded truncate font-mono text-[10px] border border-red-500/30 mr-3 shrink-0 group-hover:bg-red-900/30">PDF</div>
+          <div className="flex-1 overflow-hidden">
+            <div className="text-sm font-medium truncate text-neutral-text-primary">Policy_Schedule_448812.pdf</div>
+            <div className="text-[11px] text-neutral-text-secondary flex items-center mt-0.5">
+              <CheckCircle2 className="w-3 h-3 text-semantic-success mr-1" /> Verified against API
+            </div>
           </div>
         </div>
       </CollapsibleSection>
@@ -94,19 +95,52 @@ export function InputsPane() {
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection title="Driver Chat Log" icon={<MessageCircle className="w-4 h-4" />} defaultOpen={false}>
-        <div className="space-y-3 bg-neutral-background p-3 rounded border border-neutral-border h-32 overflow-y-auto">
-          <div className="flex flex-col items-start w-5/6">
-            <span className="text-[10px] text-neutral-text-tertiary mb-1 ml-1">Tan Wei Ming (Claimant)</span>
-            <div className="bg-neutral-surface p-2 rounded-lg rounded-tl-sm border border-neutral-border text-xs text-neutral-text-primary shadow-sm">
-              He hit me from behind while I was waiting at the traffic light box.
-            </div>
+      <CollapsibleSection title="Quotations" icon={<Wrench className="w-4 h-4" />} count={1}>
+        <div className="flex items-center p-2 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors group">
+          <div className="w-7 h-9 bg-red-900/20 text-red-500 flex items-center justify-center rounded truncate font-mono text-[9px] border border-red-500/30 mr-2 shrink-0 group-hover:bg-red-900/30">PDF</div>
+          <div className="flex-1 overflow-hidden">
+            <div className="text-xs font-medium truncate text-neutral-text-primary">Estimate_WXY1234.pdf</div>
+            <div className="text-[10px] text-neutral-text-secondary flex items-center mt-0.5"><CheckCircle2 className="w-2.5 h-2.5 text-semantic-success mr-1" /> Pricing Extracted</div>
           </div>
-          <div className="flex flex-col items-end w-5/6 self-end ml-auto">
-            <span className="text-[10px] text-neutral-text-tertiary mb-1 mr-1">Hotline Agent</span>
-            <div className="bg-brand-primary-light p-2 rounded-lg rounded-tr-sm border border-brand-primary/30 text-xs text-neutral-text-primary shadow-sm text-right">
-              Noted encik. Have you filed the police report within 24hr?
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="Other Evidences" icon={<FileQuestion className="w-4 h-4" />} count={3}>
+        <div className="space-y-1">
+          {/* Email Evidence */}
+          <div className="flex items-center p-2 rounded-md hover:bg-neutral-surface transition-colors cursor-pointer group">
+            <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center mr-3 shrink-0 group-hover:bg-blue-500/20 transition-colors">
+              <Mail className="w-4 h-4 text-blue-400" />
             </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-neutral-text-primary truncate">Witness Statement (A. Chong)</div>
+              <div className="text-[10px] text-neutral-text-tertiary">Email Correspondence</div>
+            </div>
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-500/50 ml-2"></div>
+          </div>
+
+          {/* Video Evidence */}
+          <div className="flex items-center p-2 rounded-md hover:bg-neutral-surface transition-colors cursor-pointer group">
+            <div className="w-8 h-8 rounded bg-emerald-500/10 flex items-center justify-center mr-3 shrink-0 group-hover:bg-emerald-500/20 transition-colors">
+              <Play className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-neutral-text-primary truncate">Dashcam_Rear_001.mp4</div>
+              <div className="text-[10px] text-neutral-text-tertiary">Video Asset</div>
+            </div>
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/50 ml-2"></div>
+          </div>
+
+          {/* Voice Memo */}
+          <div className="flex items-center p-2 rounded-md hover:bg-neutral-surface transition-colors cursor-pointer group">
+            <div className="w-8 h-8 rounded bg-amber-500/10 flex items-center justify-center mr-3 shrink-0 group-hover:bg-amber-500/20 transition-colors">
+              <Mic className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-neutral-text-primary truncate">Audio_Claim_Recording.wav</div>
+              <div className="text-[10px] text-neutral-text-tertiary">Voice Log</div>
+            </div>
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500/50 ml-2 shadow-[0_0_8px_rgba(245,158,11,0.3)]"></div>
           </div>
         </div>
       </CollapsibleSection>

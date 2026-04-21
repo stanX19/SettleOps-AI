@@ -73,8 +73,7 @@ export default function RootLayout({
             </div>
 
             {/* User Profile */}
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-neutral-background rounded-full border border-neutral-border"></div>
+            <div className="flex items-center space-x-2">
               <div className="text-sm font-medium">Claims Officer</div>
             </div>
           </header>
