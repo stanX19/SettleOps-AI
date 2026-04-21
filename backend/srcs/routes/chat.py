@@ -22,7 +22,7 @@ async def sse_stream(session_id: str):
     The client should connect here **before** sending a POST to ``/api/v1/chat/``.
     Events are pushed by background tasks (agent reply, TTS, etc.).
     """
-    queue = SseService.open(session_id)
+    queue = SseService.subscribe(session_id)
 
     async def _event_generator():
         yield ": ping\ndata: \n\n"
@@ -33,7 +33,7 @@ async def sse_stream(session_id: str):
         except asyncio.CancelledError:
             pass
         finally:
-            SseService.close(session_id)
+            SseService.unsubscribe(session_id, queue)
 
     return StreamingResponse(
         _event_generator(),
