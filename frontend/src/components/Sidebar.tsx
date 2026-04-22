@@ -1,0 +1,84 @@
+"use client";
+
+import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Activity, Briefcase, BarChart2, Filter, MessageSquare } from "lucide-react";
+import { ThemeToggle } from "./ThemeToggle";
+
+export function Sidebar() {
+  const pathname = usePathname();
+
+  return (
+    <aside className="w-[60px] h-full bg-neutral-surface border-r border-neutral-border flex flex-col items-center py-4 flex-shrink-0 z-20">
+      <Link href="/">
+        <div className="w-10 h-10 bg-brand-primary rounded-md flex items-center justify-center font-bold text-brand-on-primary mb-8 shadow-sm cursor-pointer">
+          YT
+        </div>
+      </Link>
+      
+      <nav className="flex flex-col w-full items-center space-y-4 flex-1">
+        <NavItem 
+          icon={<Briefcase />} 
+          label="My Queue" 
+          href="/dashboard" 
+          active={pathname === "/dashboard"} 
+        />
+        <NavItem 
+          icon={<Activity />} 
+          label="Live Engine" 
+          href="/" 
+          active={pathname === "/"} 
+        />
+        <NavItem 
+          icon={<MessageSquare />} 
+          label="Escalations" 
+          href="/escalations" 
+          active={pathname === "/escalations"} 
+        />
+        <NavItem 
+          icon={<BarChart2 />} 
+          label="Analytics" 
+          href="/analytics" 
+          active={pathname === "/analytics"} 
+        />
+        <NavItem 
+          icon={<Filter />} 
+          label="Search Cases" 
+          href="/search" 
+          active={pathname === "/search"} 
+        />
+        
+        <div className="flex-1" />
+        <ThemeToggle />
+      </nav>
+    </aside>
+  );
+}
+
+function NavItem({ 
+  icon, 
+  label, 
+  href, 
+  active = false 
+}: { 
+  icon: React.ReactNode, 
+  label: string, 
+  href: string,
+  active?: boolean 
+}) {
+  return (
+    <Link href={href} className="w-full">
+      <div className={`w-full flex justify-center group relative cursor-pointer py-3 transition-all duration-200 ${active ? 'border-l-3 border-brand-primary bg-brand-primary/5' : 'border-l-3 border-transparent'}`}>
+        <div className={`${active ? 'text-brand-primary' : 'text-neutral-text-secondary group-hover:text-neutral-text-primary'} transition-colors`}>
+          {React.cloneElement(icon as React.ReactElement<any>, { className: "w-6 h-6" })}
+        </div>
+        
+        {/* Tooltip */}
+        <div className="absolute left-full ml-2 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap">
+          {label}
+        </div>
+      </div>
+    </Link>
+  );
+}
