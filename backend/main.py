@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from srcs.database import engine, Base
@@ -13,6 +14,8 @@ from srcs.routes.auth import router as auth_router
 from srcs.routes.chat import router as chat_router
 from srcs.routes.speech import router as speech_router
 from srcs.routes.cases import router as cases_router
+
+from srcs.services.case_service import ApiError
 
 from srcs.config import get_settings
 import os
@@ -35,6 +38,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(ApiError)
+async def _api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
+    """Flatten ApiError to the documented `{detail, code}` response shape.
+
+    Scoped to ApiError only so framework HTTPExceptions (auth challenges,
+    rate-limit Retry-After, etc.) keep their default headers and body.
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail, "code": exc.code},
+        headers=getattr(exc, "headers", None),
+    )
+
 
 # -- Routers ------------------------------------------------------------------
 app.include_router(health_router)

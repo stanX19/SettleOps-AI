@@ -4,6 +4,23 @@ Real agent implementations live in `srcs/services/agents/` and plug in by
 calling `SseService.emit(case_id, ...)` and mutating `CaseState` through this
 service. Until then the stub pipeline below emits the full v5 SSE contract so
 the frontend can integrate end-to-end.
+
+Concurrency discipline
+----------------------
+- Officer-facing endpoints (approve/decline/message) MUST mutate `CaseState`
+  inside `async with CaseStore.lock()`.
+- Pipeline helpers in this module (e.g. `emit_agent_status`,
+  `emit_agent_output`, `generate_artifacts`) are invoked from background
+  pipeline tasks and mutate state without acquiring the store lock. This is
+  safe under asyncio because each helper completes its synchronous mutations
+  before the next `await`, and officer endpoints are gated by status checks
+  that reject `RUNNING` cases. Do not call these helpers from request
+  handlers without first reasoning about that invariant.
+- Known open issue: `approve_case` still holds the global store lock across
+  artifact I/O (medium-severity contention). A concurrent-approve race was
+  identified during review and is intentionally deferred — fixing it
+  correctly needs a per-case lock or an `approval_in_progress` reservation
+  flag rather than a naive lock split.
 """
 from __future__ import annotations
 
@@ -52,11 +69,22 @@ from srcs.services.sse_service import SseService
 
 # -- Error helper -------------------------------------------------------------
 
-def api_error(status_code: int, code: ErrorCode, detail: str) -> HTTPException:
-    return HTTPException(
-        status_code=status_code,
-        detail={"detail": detail, "code": code.value},
-    )
+class ApiError(HTTPException):
+    """HTTPException carrying a contract `code` alongside `detail`.
+
+    A scoped exception handler in `main.py` serialises this to the documented
+    `{"detail": ..., "code": ...}` top-level shape (see api_sse_plan.md §4.2).
+    Framework / stdlib `HTTPException`s are left untouched so headers like
+    `WWW-Authenticate` keep working on auth flows.
+    """
+
+    def __init__(self, status_code: int, code: ErrorCode, detail: str) -> None:
+        super().__init__(status_code=status_code, detail=detail)
+        self.code = code.value
+
+
+def api_error(status_code: int, code: ErrorCode, detail: str) -> ApiError:
+    return ApiError(status_code, code, detail)
 
 
 # -- Category mapping ---------------------------------------------------------

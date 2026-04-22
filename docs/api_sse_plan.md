@@ -116,8 +116,11 @@ Required error codes:
 |---|---|
 | `MISSING_REQUIRED_FILES` | Required upload is missing. |
 | `INVALID_FILE_TYPE` | Uploaded file has an unsupported MIME type. |
+| `FILE_TOO_LARGE` | Uploaded file exceeds the per-type size limit (returned with HTTP 413). |
 | `CASE_NOT_FOUND` | Case ID does not exist. |
 | `INVALID_CASE_ID` | Case ID format is invalid. |
+| `INVALID_DOC_TYPE` | Document selector is not recognized (unknown `doc_type` or photo index out of range). |
+| `DOCUMENT_NOT_FOUND` | Document selector is valid, but the file was never uploaded or is missing on disk. |
 | `INVALID_STATUS` | Action is not allowed from the current status. |
 | `PIPELINE_RUNNING` | Officer action attempted while a run is active. |
 | `CHALLENGES_EXHAUSTED` | Officer has used both challenge attempts. |
@@ -407,7 +410,8 @@ Response:
 
 - `200 OK` with original content type.
 - `404 CASE_NOT_FOUND` if the case does not exist.
-- `404` if the requested document was not uploaded.
+- `404 INVALID_DOC_TYPE` if `doc_type` is not one of the allowed values.
+- `404 DOCUMENT_NOT_FOUND` if the requested document was not uploaded.
 
 ### 6.6 Download Uploaded Photo
 
@@ -420,7 +424,8 @@ GET /api/v1/cases/{case_id}/documents/photo/{index}
 Response:
 
 - `200 OK` with `image/jpeg` or `image/png`.
-- `404` if the index is out of range.
+- `404 INVALID_DOC_TYPE` if the index is out of range.
+- `404 DOCUMENT_NOT_FOUND` if the file is missing on disk.
 
 ### 6.7 Download Generated Artifact
 

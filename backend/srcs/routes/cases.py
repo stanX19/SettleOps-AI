@@ -74,6 +74,18 @@ _PDF_MIMES = {"application/pdf"}
 _PHOTO_MIMES = {"image/jpeg", "image/png"}
 
 
+def _safe_name(name: Optional[str]) -> str:
+    """Strip path components and leading dots from a client-supplied filename.
+
+    Defends against path traversal (`../`, absolute paths, Windows `\\`) by
+    keeping only the basename. Leading dots are stripped so the result can't
+    masquerade as a hidden file or `..`. Empty input falls back to `"file"`.
+    """
+    base = os.path.basename((name or "").replace("\\", "/"))
+    base = base.lstrip(".")
+    return base or "file"
+
+
 async def _save_upload(upload: UploadFile, dest_path: str, max_bytes: int) -> int:
     """Stream *upload* to *dest_path*, enforcing *max_bytes*.
 
@@ -92,7 +104,7 @@ async def _save_upload(upload: UploadFile, dest_path: str, max_bytes: int) -> in
                 if total > max_bytes:
                     raise api_error(
                         413,
-                        ErrorCode.INVALID_FILE_TYPE,
+                        ErrorCode.FILE_TOO_LARGE,
                         f"File exceeds limit ({max_bytes // _MB} MB): {upload.filename}",
                     )
                 f.write(chunk)
@@ -146,11 +158,13 @@ async def create_case(
 
     try:
         police_path = os.path.join(
-            upload_dir, f"police_report_{police_report.filename}"
+            upload_dir, f"police_report_{_safe_name(police_report.filename)}"
         )
-        policy_path = os.path.join(upload_dir, f"policy_pdf_{policy_pdf.filename}")
+        policy_path = os.path.join(
+            upload_dir, f"policy_pdf_{_safe_name(policy_pdf.filename)}"
+        )
         quote_path = os.path.join(
-            upload_dir, f"repair_quotation_{repair_quotation.filename}"
+            upload_dir, f"repair_quotation_{_safe_name(repair_quotation.filename)}"
         )
         await _save_upload(police_report, police_path, _PDF_MAX)
         await _save_upload(policy_pdf, policy_path, _PDF_MAX)
@@ -158,14 +172,15 @@ async def create_case(
 
         photo_paths: list[str] = []
         for i, p in enumerate(photos):
-            path = os.path.join(upload_dir, f"photo_{i}_{p.filename}")
+            path = os.path.join(upload_dir, f"photo_{i}_{_safe_name(p.filename)}")
             await _save_upload(p, path, _PHOTO_MAX)
             photo_paths.append(path)
 
         adjuster_path: Optional[str] = None
         if adjuster_report is not None:
             adjuster_path = os.path.join(
-                upload_dir, f"adjuster_report_{adjuster_report.filename}"
+                upload_dir,
+                f"adjuster_report_{_safe_name(adjuster_report.filename)}",
             )
             await _save_upload(adjuster_report, adjuster_path, _PDF_MAX)
 
@@ -273,10 +288,10 @@ async def get_document(case_id: str, doc_type: str) -> FileResponse:
     state = require_case(case_id)
     field = _DOC_FIELDS.get(doc_type)
     if field is None:
-        raise api_error(404, ErrorCode.CASE_NOT_FOUND, "Document type not recognized")
+        raise api_error(404, ErrorCode.INVALID_DOC_TYPE, "Document type not recognized")
     path = getattr(state, field)
     if not path or not os.path.exists(path):
-        raise api_error(404, ErrorCode.CASE_NOT_FOUND, "Document not uploaded")
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document not uploaded")
     media_type, _ = mimetypes.guess_type(path)
     return FileResponse(path, media_type=media_type or "application/octet-stream")
 
@@ -285,10 +300,10 @@ async def get_document(case_id: str, doc_type: str) -> FileResponse:
 async def get_photo(case_id: str, index: int) -> FileResponse:
     state = require_case(case_id)
     if index < 0 or index >= len(state.photo_paths):
-        raise api_error(404, ErrorCode.CASE_NOT_FOUND, "Photo index out of range")
+        raise api_error(404, ErrorCode.INVALID_DOC_TYPE, "Photo index out of range")
     path = state.photo_paths[index]
     if not os.path.exists(path):
-        raise api_error(404, ErrorCode.CASE_NOT_FOUND, "Photo missing on disk")
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Photo missing on disk")
     media_type, _ = mimetypes.guess_type(path)
     return FileResponse(path, media_type=media_type or "image/jpeg")
 
@@ -385,16 +400,19 @@ async def officer_message(
     background: BackgroundTasks,
 ):
     state = require_case(case_id)
-    ensure_action_allowed(state)
-
-    if state.officer_challenge_count >= 2:
-        raise api_error(
-            409,
-            ErrorCode.CHALLENGES_EXHAUSTED,
-            "Officer has used both challenge attempts",
-        )
 
     async with CaseStore.lock():
+        # Re-check preconditions inside the lock so a concurrent pipeline
+        # transition (or another officer message) can't slip past the guard
+        # between validation and mutation.
+        ensure_action_allowed(state)
+        if state.officer_challenge_count >= 2:
+            raise api_error(
+                409,
+                ErrorCode.CHALLENGES_EXHAUSTED,
+                "Officer has used both challenge attempts",
+            )
+
         target, record = classify_officer_message(state, body.message, body.type)
 
         if target is None:
