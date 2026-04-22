@@ -11,6 +11,9 @@ import os
 from typing import List
 from pydantic import BaseModel, Field
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+REPORTS_DIR = os.path.join(PROJECT_ROOT, "test_reports")
+
 
 # ── Pydantic Models (variables for API) ─────────────────────
 
@@ -97,8 +100,8 @@ def _get_styles():
     ))
     ss.add(ParagraphStyle(
         "SmallText", parent=ss["Normal"],
-        fontName="Helvetica", fontSize=8, textColor=BLACK,
-        leading=10, alignment=TA_CENTER,
+        fontName="Helvetica", fontSize=6.5, textColor=BLACK,
+        leading=8, alignment=TA_CENTER,
     ))
     return ss
 
@@ -119,7 +122,7 @@ def _draw_page(canvas, doc, data):
     # Company header
     y_top = PAGE_H - MARGIN
     canvas.setFont("Helvetica-Bold", 14)
-    canvas.drawString(MARGIN, y_top - 4 * mm, "AIG Malaysia Insurance Berhad")
+    canvas.drawString(MARGIN, y_top - 4 * mm, "MyClaim Insurance Berhad")
 
     canvas.setFont("Helvetica", 8)
     canvas.drawString(
@@ -129,7 +132,7 @@ def _draw_page(canvas, doc, data):
     )
     canvas.drawString(
         MARGIN, y_top - 14 * mm,
-        "Tel: 03-2772 5000 | Fax: 03-2772 5001 | Email: claims@aig.com.my",
+        "Tel: 03-2772 5000 | Fax: 03-2772 5001 | Email: myclaim@settleops.com.my",
     )
 
     # Horizontal divider line below header
@@ -161,7 +164,7 @@ def _build_content(elements, data: RepairApprovalData, styles):
     elements.append(Spacer(1, 6 * mm))
 
     # ── 3. Addressee ──
-    elements.append(Paragraph("The Workshop Manager", styles["Body"]))
+    elements.append(Paragraph("The Workshop Manager / Pengurus Bengkel", styles["Body"]))
     elements.append(Paragraph(data.workshop_name, styles["BodyBold"]))
     elements.append(Paragraph(data.workshop_address, styles["Body"]))
     elements.append(Paragraph(f"Tel: {data.workshop_phone}", styles["Body"]))
@@ -170,9 +173,6 @@ def _build_content(elements, data: RepairApprovalData, styles):
     # ── 4. Document Title ──
     elements.append(Paragraph(
         "MOTOR VEHICLE REPAIR APPROVAL LETTER", styles["DocTitle"],
-    ))
-    elements.append(Paragraph(
-        "(Surat Kelulusan Pembaikan Kenderaan)", styles["DocTitle"],
     ))
     elements.append(Spacer(1, 1 * mm))
     elements.append(HRFlowable(width="100%", thickness=0.5, color=BLACK))
@@ -183,14 +183,14 @@ def _build_content(elements, data: RepairApprovalData, styles):
         "Claim Information / Maklumat Tuntutan", styles["SectionTitle"],
     ))
     claim_rows = [
-        ("Claim No.", data.claim_no),
-        ("Policy No.", data.policy_no),
-        ("Insured Name", data.insured_name),
-        ("NRIC / Company No.", data.nric),
-        ("Vehicle No.", data.vehicle_no),
-        ("Vehicle Make / Model", data.vehicle_model),
-        ("Date of Accident", data.accident_date),
-        ("Date Reported", data.report_date),
+        ("Claim No / No. Tuntutan", data.claim_no),
+        ("Policy No / No. Polisi", data.policy_no),
+        ("Insured Name / Nama Pihak Diinsurans", data.insured_name),
+        ("NRIC / No. KP", data.nric),
+        ("Vehicle No / No. Kenderaan", data.vehicle_no),
+        ("Vehicle Model / Model Kenderaan", data.vehicle_model),
+        ("Date of Accident / Tarikh Kemalangan", data.accident_date),
+        ("Date Reported / Tarikh Dilaporkan", data.report_date),
     ]
     claim_table = Table(
         [[Paragraph(l, styles["BodyBold"]), Paragraph(v, styles["Body"])]
@@ -206,10 +206,10 @@ def _build_content(elements, data: RepairApprovalData, styles):
         "Workshop Information / Maklumat Bengkel", styles["SectionTitle"],
     ))
     ws_rows = [
-        ("Workshop Name", data.workshop_name),
-        ("Panel Workshop Code", data.workshop_code),
-        ("Address", data.workshop_address),
-        ("Contact No.", data.workshop_phone),
+        ("Workshop Name / Nama Bengkel", data.workshop_name),
+        ("Panel Workshop Code / Kod Bengkel Panel", data.workshop_code),
+        ("Address / Alamat", data.workshop_address),
+        ("Contact No / No. Telefon", data.workshop_phone),
     ]
     ws_table = Table(
         [[Paragraph(l, styles["BodyBold"]), Paragraph(v, styles["Body"])]
@@ -227,6 +227,15 @@ def _build_content(elements, data: RepairApprovalData, styles):
         "findings. Having reviewed all relevant documents, we are pleased to inform "
         "that the following repair costs have been approved for the above-mentioned "
         "vehicle.",
+        styles["Body"],
+    ))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        "<i>Kami merujuk kepada perkara di atas dan sebut harga pembaikan yang "
+        "dikemukakan oleh bengkel anda, berserta laporan Penilai Kerugian dan "
+        "dapatan siasatan. Setelah meneliti semua dokumen yang berkaitan, kami "
+        "dengan sukacitanya memaklumkan bahawa kos pembaikan berikut telah "
+        "diluluskan bagi kenderaan yang tersebut di atas.</i>",
         styles["Body"],
     ))
     elements.append(Spacer(1, 6 * mm))
@@ -247,15 +256,15 @@ def _build_content(elements, data: RepairApprovalData, styles):
 
     header_row = [
         Paragraph("No.", styles["TblHeader"]),
-        Paragraph("Description", styles["TblHeader"]),
-        Paragraph("Amount (RM)", styles["TblHeaderRight"]),
+        Paragraph("Description / Keterangan", styles["TblHeader"]),
+        Paragraph("Amount (RM) / Jumlah (RM)", styles["TblHeaderRight"]),
     ]
     cost_items = [
-        ("1", "Spare Parts (Alat Ganti)", data.costs.parts),
-        ("2", "Labour Charges (Upah Kerja)", data.costs.labour),
-        ("3", "Painting Cost (Kos Mengecat)", data.costs.paint),
-        ("4", "Towing Charges (Kos Tunda)", data.costs.towing),
-        ("5", "Miscellaneous (Lain-lain)", data.costs.misc),
+        ("1", "Spare Parts / Alat Ganti", data.costs.parts),
+        ("2", "Labour Charges / Upah Kerja", data.costs.labour),
+        ("3", "Painting Cost / Kos Mengecat", data.costs.paint),
+        ("4", "Towing Charges / Kos Tunda", data.costs.towing),
+        ("5", "Miscellaneous / Lain-lain", data.costs.misc),
     ]
     rows = [header_row]
     for num, desc, amt in cost_items:
@@ -266,7 +275,7 @@ def _build_content(elements, data: RepairApprovalData, styles):
         ])
     rows.append([
         "",
-        Paragraph("TOTAL APPROVED AMOUNT (RM)", styles["BodyBold"]),
+        Paragraph("TOTAL APPROVED AMOUNT / JUMLAH KELULUSAN (RM)", styles["BodyBold"]),
         Paragraph(f"{total:,.2f}", styles["BodyBoldRight"]),
     ])
 
@@ -290,6 +299,12 @@ def _build_content(elements, data: RepairApprovalData, styles):
         "be borne by the insured and are NOT included in the above approved amount.",
         styles["ItalicNote"],
     ))
+    elements.append(Paragraph(
+        "* Caj Kemajuan (Betterment), Lebihan (Excess) dan Endorsemen 2(f) "
+        "(jika berkenaan) adalah tanggungan pihak diinsurans dan TIDAK termasuk "
+        "dalam jumlah kelulusan di atas.",
+        styles["ItalicNote"],
+    ))
     elements.append(Spacer(1, 6 * mm))
 
     # ── 9. Terms and Conditions ──
@@ -297,19 +312,33 @@ def _build_content(elements, data: RepairApprovalData, styles):
         "Terms and Conditions / Terma dan Syarat", styles["SectionTitle"],
     ))
     terms = [
-        "Repairs must be carried out strictly within the approved amount stated above.",
-        "Any additional damage discovered during repair must be reported to us "
-        "immediately for supplementary approval before work proceeds.",
-        "This company shall not be liable for any cost exceeding the approved amount "
-        "without prior written consent.",
-        "Payment will only be processed upon submission of the completed tax invoice, "
-        "repair bill, and satisfaction voucher duly signed by the insured.",
-        "Repairs must be completed within thirty (30) days from the date of this letter.",
-        "Four (4) colour photographs of the vehicle after repair (from four different "
-        "angles) must be submitted to us within 14 days of completion.",
+        ("Repairs must be carried out strictly within the approved amount stated above.",
+         "Pembaikan mestilah dijalankan mengikut jumlah yang telah diluluskan sahaja."),
+        ("Any additional damage discovered during repair must be reported to us "
+         "immediately for supplementary approval before work proceeds.",
+         "Sebarang kerosakan tambahan yang ditemui semasa pembaikan mestilah "
+         "dilaporkan kepada kami dengan segera untuk kelulusan tambahan sebelum "
+         "kerja diteruskan."),
+        ("This company shall not be liable for any cost exceeding the approved "
+         "amount without prior written consent.",
+         "Syarikat ini tidak bertanggungjawab ke atas sebarang kos yang melebihi "
+         "jumlah yang diluluskan tanpa kebenaran bertulis terlebih dahulu."),
+        ("Payment will only be processed upon submission of the completed tax invoice, "
+         "repair bill, and satisfaction voucher duly signed by the insured.",
+         "Pembayaran hanya akan diproses setelah invois cukai, bil pembaikan, dan "
+         "baucar kepuasan yang telah ditandatangani oleh pihak diinsurans dikemukakan."),
+        ("Repairs must be completed within thirty (30) days from the date of this letter.",
+         "Pembaikan mestilah disiapkan dalam tempoh tiga puluh (30) hari dari tarikh "
+         "surat ini."),
+        ("Four (4) colour photographs of the vehicle after repair, taken from four "
+         "different angles, must be submitted within 14 days of completion.",
+         "Empat (4) keping gambar berwarna kenderaan selepas pembaikan dari empat "
+         "sudut yang berlainan mestilah dikemukakan dalam tempoh 14 hari selepas "
+         "siap pembaikan."),
     ]
-    for i, term in enumerate(terms, 1):
-        elements.append(Paragraph(f"{i}. {term}", styles["Body"]))
+    for i, (en, ms) in enumerate(terms, 1):
+        elements.append(Paragraph(f"{i}. {en}", styles["Body"]))
+        elements.append(Paragraph(f"<i>    {ms}</i>", styles["Body"]))
         elements.append(Spacer(1, 1 * mm))
     elements.append(Spacer(1, 4 * mm))
 
@@ -318,10 +347,10 @@ def _build_content(elements, data: RepairApprovalData, styles):
         "Reference Documents / Dokumen Rujukan", styles["SectionTitle"],
     ))
     ref_docs = [
-        "Police Report (Laporan Polis)",
-        "Investigation Result (Keputusan Kes)",
-        "Loss Adjuster’s Report (Laporan Penilai)",
-        "Workshop Repair Quotation (Sebut Harga Pembaikan)",
+        "Police Report / Laporan Polis",
+        "Investigation Result / Keputusan Siasatan",
+        "Loss Adjuster’s Report / Laporan Penilai Kerugian",
+        "Workshop Repair Quotation / Sebut Harga Pembaikan Bengkel",
     ]
     for i, doc_name in enumerate(ref_docs, 1):
         elements.append(Paragraph(f"{i}. {doc_name}", styles["Body"]))
@@ -335,16 +364,23 @@ def _build_content(elements, data: RepairApprovalData, styles):
         "reference above. Thank you.",
         styles["Body"],
     ))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(Paragraph(
+        "<i>Sekiranya anda mempunyai sebarang pertanyaan berkenaan kelulusan ini, "
+        "sila hubungi Jabatan Tuntutan kami di nombor di atas dengan menyatakan "
+        "nombor rujukan tuntutan tersebut. Terima kasih.</i>",
+        styles["Body"],
+    ))
     elements.append(Spacer(1, 10 * mm))
 
     # ── 12. Signature Section ──
     sig_left_rows = [
-        [Paragraph("Authorised Signatory:", styles["Body"])],
+        [Paragraph("Authorised Signatory / Tandatangan Bertauliah:", styles["Body"])],
         [Spacer(1, 15 * mm)],
         [HRFlowable(width=55 * mm, thickness=0.5, color=BLACK)],
         [Paragraph(f"<b>{data.approved_by}</b>", styles["Body"])],
         [Paragraph(data.designation, styles["Body"])],
-        [Paragraph("AIG Malaysia Insurance Berhad", styles["Body"])],
+        [Paragraph("MyClaim Insurance Berhad", styles["Body"])],
         [Paragraph(f"Date: {data.date}", styles["Body"])],
     ]
     sig_left_table = Table(sig_left_rows, colWidths=[60 * mm])
@@ -381,8 +417,8 @@ def _build_content(elements, data: RepairApprovalData, styles):
 
 # ── Main Generator ───────────────────────────────────────────
 def generate_repair_approval_pdf(data: RepairApprovalData) -> str:
-    os.makedirs("reports", exist_ok=True)
-    file_path = os.path.join("reports", f"{data.claim_no}_repair_approval.pdf")
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    file_path = os.path.join(REPORTS_DIR, f"{data.claim_no}_repair_approval.pdf")
 
     styles = _get_styles()
 

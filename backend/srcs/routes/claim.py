@@ -1,34 +1,35 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from srcs.services.pdf_service import generate_repair_approval_pdf, RepairApprovalData
+from srcs.services.pdf_service import generate_repair_approval_pdf, RepairApprovalData, REPORTS_DIR
+from srcs.services.signature_service import sign_and_stamp
 import os
 
 router = APIRouter(prefix="/claims", tags=["Claims"])
 
 
 MOCK_CLAIM_DATA = {
-    "claim_no": "CLM-2026-000123",
-    "policy_no": "POL-12345678",
-    "insured_name": "Ivin Lee",
-    "nric": "010101-10-1234",
-    "vehicle_no": "ABC1234",
-    "vehicle_model": "Perodua Myvi 1.5",
-    "accident_date": "01/04/2026",
-    "report_date": "02/04/2026",
-    "workshop_name": "XYZ Auto Service Sdn Bhd",
-    "workshop_code": "PWS-00123",
-    "workshop_address": "No. 12, Jalan Industri 3, Taman Perindustrian, 47500 Subang Jaya, Selangor",
-    "workshop_phone": "012-3456789",
+    "claim_no": "CLM-2026-000456",
+    "policy_no": "POL-87654321",
+    "insured_name": "Ahmad bin Ibrahim",
+    "nric": "850315-14-5678",
+    "vehicle_no": "WKL8899",
+    "vehicle_model": "Honda City 1.5 V",
+    "accident_date": "10/04/2026",
+    "report_date": "11/04/2026",
+    "workshop_name": "Weng Heng Motor Sdn Bhd",
+    "workshop_code": "PWS-00789",
+    "workshop_address": "No. 88, Jalan PJS 11/20, Bandar Sunway, 46150 Petaling Jaya, Selangor",
+    "workshop_phone": "03-5621 8888",
     "costs": {
-        "parts": 3000.00,
-        "labour": 1200.00,
-        "paint": 800.00,
-        "towing": 200.00,
-        "misc": 150.00,
+        "parts": 4500.00,
+        "labour": 1800.00,
+        "paint": 1200.00,
+        "towing": 350.00,
+        "misc": 200.00,
     },
-    "approved_by": "John Tan Wei Ming",
-    "designation": "Senior Claims Executive",
-    "date": "05/04/2026",
+    "approved_by": "Siti Nurhaliza binti Mohd",
+    "designation": "Claims Manager",
+    "date": "15/04/2026",
 }
 
 
@@ -60,10 +61,30 @@ def generate_mock_report():
     )
 
 
+@router.get("/generate-mock-signed-report")
+def generate_mock_signed_report():
+    data = RepairApprovalData(**MOCK_CLAIM_DATA)
+    try:
+        unsigned_path = generate_repair_approval_pdf(data)
+        signed_path = sign_and_stamp(
+            pdf_path=unsigned_path,
+            signer_name=data.approved_by,
+            designation=data.designation,
+            sign_date=data.date,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    return FileResponse(
+        path=signed_path,
+        media_type="application/pdf",
+        filename=f"repair_approval_{data.claim_no}_signed.pdf",
+    )
+
+
 @router.get("/{claim_no}/repair-approval")
 def get_repair_approval(claim_no: str):
     """Retrieve a previously generated repair approval PDF."""
-    file_path = os.path.join("reports", f"{claim_no}_repair_approval.pdf")
+    file_path = os.path.join(REPORTS_DIR, f"{claim_no}_repair_approval.pdf")
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Report not found. Generate it first.")
     return FileResponse(
