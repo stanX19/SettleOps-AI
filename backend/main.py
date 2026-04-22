@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from srcs.routes.chat import router as chat_router
 from srcs.routes.speech import router as speech_router
 from srcs.routes.cases import router as cases_router
 
+from srcs.schemas.case_dto import ErrorCode
 from srcs.services.case_service import ApiError
 
 from srcs.config import get_settings
@@ -51,6 +53,44 @@ async def _api_error_handler(_: Request, exc: ApiError) -> JSONResponse:
         content={"detail": exc.detail, "code": exc.code},
         headers=getattr(exc, "headers", None),
     )
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_error_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    """Map missing-body-field errors on multipart uploads to the documented
+    400 `MISSING_REQUIRED_FILES` contract shape.
+
+    FastAPI's default 422 body is `{"detail": [...]}` with a different schema
+    than our API contract, and callers relying on the contract's `code` field
+    would not see `MISSING_REQUIRED_FILES`. Route signatures can stay required
+    (so the generated OpenAPI schema stays honest) because this handler is
+    what produces the contract-compliant error.
+
+    Other validation errors fall through to the default 422 shape so we don't
+    silently change behaviour for JSON bodies, path params, or query strings.
+    """
+    errors = exc.errors()
+    content_type = request.headers.get("content-type", "")
+    missing_body_fields = [
+        e for e in errors
+        if e.get("type") == "missing"
+        and isinstance(e.get("loc"), (list, tuple))
+        and len(e["loc"]) >= 2
+        and e["loc"][0] == "body"
+    ]
+    if missing_body_fields and content_type.startswith("multipart/form-data"):
+        names = [str(e["loc"][-1]) for e in missing_body_fields]
+        return JSONResponse(
+            status_code=400,
+            content={
+                "detail": f"Missing required files: {', '.join(names)}",
+                "code": ErrorCode.MISSING_REQUIRED_FILES.value,
+            },
+        )
+
+    return JSONResponse(status_code=422, content={"detail": errors})
 
 
 # -- Routers ------------------------------------------------------------------

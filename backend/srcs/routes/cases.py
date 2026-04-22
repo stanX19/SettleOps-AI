@@ -43,6 +43,7 @@ from srcs.services.case_service import (
     case_upload_dir,
     category_options,
     classify_officer_message,
+    current_artifacts_ready,
     ensure_action_allowed,
     generate_artifacts,
     require_case,
@@ -346,28 +347,36 @@ async def get_artifact(case_id: str, artifact_type: str) -> FileResponse:
 @router.post("/{case_id}/approve", response_model=ApproveResponse)
 async def approve_case(case_id: str) -> ApproveResponse:
     state = require_case(case_id)
-    if state.status not in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED):
-        raise api_error(
-            409, ErrorCode.INVALID_STATUS, "Approve is only valid when awaiting officer"
-        )
 
     async with CaseStore.lock():
-        # If escalated with no active artifacts, generate before approval.
-        has_current_pdf = any(
-            r.artifact_type == ArtifactType.DECISION_PDF and not r.superseded
-            for r in state.artifacts
-        )
-        if state.status == CaseStatus.ESCALATED and not has_current_pdf:
+        # Re-check inside the lock: a concurrent pipeline transition or
+        # officer message could have moved `state.status` between the
+        # initial read and acquiring the lock.
+        if state.status not in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED):
+            raise api_error(
+                409,
+                ErrorCode.INVALID_STATUS,
+                "Approve is only valid when awaiting officer",
+            )
+
+        # Escalated cases may land here before artifacts are generated, or
+        # with only the PDF ready if a prior `generate_artifacts` was cut
+        # short between the PDF emit and the JSON write. Regenerate when
+        # either required artifact is missing.
+        if state.status == CaseStatus.ESCALATED and not current_artifacts_ready(state):
             await generate_artifacts(state)
 
-        state.operator_decision = "approved"
-        state.approved_at = now_iso()
+        # Transition first; if it fails, decision fields stay untouched.
         try:
             transition_status(state, CaseStatus.APPROVED)
         except InvalidStatusTransition as exc:
             raise api_error(409, ErrorCode.INVALID_STATUS, str(exc))
 
-    return ApproveResponse(status=state.status, pdf_ready=True)
+        state.operator_decision = "approved"
+        state.approved_at = now_iso()
+        pdf_ready = current_artifacts_ready(state)
+
+    return ApproveResponse(status=state.status, pdf_ready=pdf_ready)
 
 
 # -- Officer: decline --------------------------------------------------------
@@ -375,18 +384,24 @@ async def approve_case(case_id: str) -> ApproveResponse:
 @router.post("/{case_id}/decline", response_model=DeclineResponse)
 async def decline_case(case_id: str, body: DeclineRequest) -> DeclineResponse:
     state = require_case(case_id)
-    if state.status not in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED):
-        raise api_error(
-            409, ErrorCode.INVALID_STATUS, "Decline is only valid when awaiting officer"
-        )
 
     async with CaseStore.lock():
-        state.operator_decision = "declined"
-        state.operator_decision_reason = body.reason
+        # Re-check inside the lock to close the TOCTOU window that
+        # `approve_case` suffered from before.
+        if state.status not in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED):
+            raise api_error(
+                409,
+                ErrorCode.INVALID_STATUS,
+                "Decline is only valid when awaiting officer",
+            )
+
         try:
             transition_status(state, CaseStatus.DECLINED)
         except InvalidStatusTransition as exc:
             raise api_error(409, ErrorCode.INVALID_STATUS, str(exc))
+
+        state.operator_decision = "declined"
+        state.operator_decision_reason = body.reason
 
     return DeclineResponse(status=state.status)
 

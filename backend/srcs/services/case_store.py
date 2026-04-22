@@ -18,7 +18,6 @@ from srcs.schemas.case_dto import (
     ArtifactType,
     BlackboardSection,
     CaseStatus,
-    ErrorCode,
 )
 
 

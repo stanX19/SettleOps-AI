@@ -309,6 +309,36 @@ def _supersede_artifacts(state: CaseState, artifact_type: ArtifactType) -> None:
             a.superseded = True
 
 
+_REQUIRED_ARTIFACT_TYPES: tuple[ArtifactType, ...] = (
+    ArtifactType.DECISION_PDF,
+    ArtifactType.AUDIT_TRAIL_JSON,
+)
+
+
+def current_artifacts_ready(state: CaseState) -> bool:
+    """True iff every required artifact type has a non-superseded record
+    whose file exists on disk.
+
+    `generate_artifacts` is not atomic across PDF and audit JSON — it awaits
+    an SSE emit between writing the two — so a PDF record alone does not
+    imply the audit trail is ready. Callers that need "both artifacts are
+    truly available" (approve flow, `pdf_ready` response flag) must use this
+    helper instead of a single-type check.
+    """
+    for a_type in _REQUIRED_ARTIFACT_TYPES:
+        rec = next(
+            (
+                r
+                for r in state.artifacts
+                if r.artifact_type == a_type and not r.superseded
+            ),
+            None,
+        )
+        if rec is None or not os.path.exists(rec.path):
+            return False
+    return True
+
+
 async def generate_artifacts(state: CaseState) -> None:
     """Write stub artifacts and emit `artifact.created` for each."""
     adir = case_artifact_dir(state.case_id)
