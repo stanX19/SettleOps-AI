@@ -229,18 +229,35 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
 async def emit_agent_status(
     state: CaseState, agent: AgentId, status: AgentStatus
 ) -> None:
+    def _active_agent() -> Optional[AgentId]:
+        current_agent = state.current_agent
+        if current_agent is not None:
+            current_state = state.agent_states[current_agent]
+            if current_state.status in (AgentStatus.WORKING, AgentStatus.WAITING):
+                return current_agent
+        active_agents = [
+            candidate
+            for candidate, candidate_state in state.agent_states.items()
+            if candidate_state.status in (AgentStatus.WORKING, AgentStatus.WAITING)
+        ]
+        return active_agents[-1] if active_agents else None
+
     rs = state.agent_states[agent]
+    timestamp = now_iso()
     rs.status = status
     if status is AgentStatus.WORKING:
-        rs.started_at = now_iso()
+        rs.started_at = timestamp
+        state.current_agent = agent
+    elif status is AgentStatus.WAITING:
         state.current_agent = agent
     elif status in (AgentStatus.COMPLETED, AgentStatus.ERROR):
-        rs.completed_at = now_iso()
+        rs.completed_at = timestamp
+        state.current_agent = _active_agent()
     await SseService.emit(
         state.case_id,
         SseAgentStatusChangedData(
             case_id=state.case_id,
-            timestamp=now_iso(),
+            timestamp=timestamp,
             agent=agent,
             status=status,
         ),

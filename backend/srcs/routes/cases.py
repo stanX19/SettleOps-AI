@@ -8,7 +8,7 @@ import asyncio
 import mimetypes
 import os
 import shutil
-from typing import Optional
+from typing import BinaryIO, Optional
 
 from fastapi import (
     APIRouter,
@@ -87,18 +87,18 @@ def _safe_name(name: Optional[str]) -> str:
     return base or "file"
 
 
-async def _save_upload(upload: UploadFile, dest_path: str, max_bytes: int) -> int:
-    """Stream *upload* to *dest_path*, enforcing *max_bytes*.
-
-    Removes the partially-written file and raises 413 if the limit is exceeded.
-    The caller is responsible for cleaning up sibling files if an earlier
-    upload in the same request failed.
-    """
+def _write_upload_file(
+    file_obj: BinaryIO,
+    dest_path: str,
+    max_bytes: int,
+    filename: Optional[str],
+) -> int:
+    """Write a spooled upload file to disk, enforcing a byte limit."""
     total = 0
     try:
         with open(dest_path, "wb") as f:
             while True:
-                chunk = await upload.read(1024 * 64)
+                chunk = file_obj.read(1024 * 64)
                 if not chunk:
                     break
                 total += len(chunk)
@@ -106,11 +106,10 @@ async def _save_upload(upload: UploadFile, dest_path: str, max_bytes: int) -> in
                     raise api_error(
                         413,
                         ErrorCode.FILE_TOO_LARGE,
-                        f"File exceeds limit ({max_bytes // _MB} MB): {upload.filename}",
+                        f"File exceeds limit ({max_bytes // _MB} MB): {filename}",
                     )
                 f.write(chunk)
     except BaseException:
-        # Ensure the half-written file never lingers.
         if os.path.exists(dest_path):
             try:
                 os.remove(dest_path)
@@ -118,6 +117,22 @@ async def _save_upload(upload: UploadFile, dest_path: str, max_bytes: int) -> in
                 pass
         raise
     return total
+
+
+async def _save_upload(upload: UploadFile, dest_path: str, max_bytes: int) -> int:
+    """Stream *upload* to *dest_path*, enforcing *max_bytes*.
+
+    Removes the partially-written file and raises 413 if the limit is exceeded.
+    The caller is responsible for cleaning up sibling files if an earlier
+    upload in the same request failed.
+    """
+    return await asyncio.to_thread(
+        _write_upload_file,
+        upload.file,
+        dest_path,
+        max_bytes,
+        upload.filename,
+    )
 
 
 def _require_mime(upload: UploadFile, allowed: set[str]) -> None:
@@ -412,12 +427,16 @@ async def decline_case(case_id: str, body: DeclineRequest) -> DeclineResponse:
 
 # -- Officer: message (challenge / clarification) ---------------------------
 
-@router.post("/{case_id}/message")
+@router.post(
+    "/{case_id}/message",
+    response_model=MessageClarificationResponse | MessageRerunResponse,
+    status_code=200,
+)
 async def officer_message(
     case_id: str,
     body: MessageRequest,
     background: BackgroundTasks,
-):
+) -> MessageClarificationResponse | MessageRerunResponse:
     state = require_case(case_id)
 
     async with CaseStore.lock():

@@ -112,11 +112,10 @@ class SseService:
         queues = cls._subscribers.get(session_id)
         if not queues:
             return
-        msg = {"event": event_name, "data": data_json}
         # Snapshot the list: a subscriber may unsubscribe concurrently.
         for q in list(queues):
             try:
-                q.put_nowait(msg)
+                q.put_nowait({"event": event_name, "data": data_json})
             except asyncio.QueueFull:
                 # Subscriber isn't draining. Disconnect rather than block the
                 # broadcaster or grow memory unboundedly — the client can
