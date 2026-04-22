@@ -15,7 +15,6 @@ from fastapi import (
     BackgroundTasks,
     File,
     Form,
-    HTTPException,
     Request,
     UploadFile,
 )
@@ -35,7 +34,6 @@ from srcs.schemas.case_dto import (
     MessageClarificationResponse,
     MessageRequest,
     MessageRerunResponse,
-    OfficerMessageType,
 )
 from srcs.services.case_service import (
     api_error,
@@ -117,6 +115,11 @@ def _write_upload_file(
                 pass
         raise
     return total
+
+
+def _write_text_file(path: str, content: str) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
 
 
 async def _save_upload(upload: UploadFile, dest_path: str, max_bytes: int) -> int:
@@ -203,8 +206,7 @@ async def create_case(
         transcript_path: Optional[str] = None
         if chat_transcript:
             transcript_path = os.path.join(upload_dir, "chat_transcript.txt")
-            with open(transcript_path, "w", encoding="utf-8") as f:
-                f.write(chat_transcript)
+            await asyncio.to_thread(_write_text_file, transcript_path, chat_transcript)
     except BaseException:
         # Any upload failure wipes the per-case directory so no orphaned
         # files linger on disk and no half-initialised case enters the store.

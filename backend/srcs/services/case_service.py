@@ -326,6 +326,16 @@ def _supersede_artifacts(state: CaseState, artifact_type: ArtifactType) -> None:
             a.superseded = True
 
 
+def _write_pdf_artifact(path: str, content: bytes) -> None:
+    with open(path, "wb") as f:
+        f.write(content)
+
+
+def _write_json_artifact(path: str, payload: dict[str, Any]) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+
+
 _REQUIRED_ARTIFACT_TYPES: tuple[ArtifactType, ...] = (
     ArtifactType.DECISION_PDF,
     ArtifactType.AUDIT_TRAIL_JSON,
@@ -364,8 +374,9 @@ async def generate_artifacts(state: CaseState) -> None:
     pdf_name = f"claim_decision_{state.case_id}_v{pdf_version}.pdf"
     pdf_path = os.path.join(adir, pdf_name)
     # Stub PDF payload — a teammate will swap this for ReportLab output.
-    with open(pdf_path, "wb") as f:
-        f.write(b"%PDF-1.4\n% stub decision\n")
+    await asyncio.to_thread(
+        _write_pdf_artifact, pdf_path, b"%PDF-1.4\n% stub decision\n"
+    )
 
     _supersede_artifacts(state, ArtifactType.DECISION_PDF)
     state.artifacts.append(
@@ -400,8 +411,7 @@ async def generate_artifacts(state: CaseState) -> None:
         "auditor_loop_count": state.auditor_loop_count,
         "officer_challenge_count": state.officer_challenge_count,
     }
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(payload, f, indent=2)
+    await asyncio.to_thread(_write_json_artifact, json_path, payload)
 
     _supersede_artifacts(state, ArtifactType.AUDIT_TRAIL_JSON)
     state.artifacts.append(
