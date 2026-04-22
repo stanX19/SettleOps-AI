@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from srcs.database import get_db
 from srcs.schemas.chat_dto import ChatRequest, ChatMessageResponse, ChatAcceptedResponse
 from srcs.services.chat_service import ChatService
-from srcs.services.sse_service import SseService
+from srcs.services.sse_service import CLOSE_EVENT_KEY, SseService
 
 router: APIRouter = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
@@ -29,6 +29,10 @@ async def sse_stream(session_id: str):
         try:
             while True:
                 msg = await queue.get()
+                # Broadcaster disconnected this subscriber (queue full).
+                # Exit cleanly; client can reconnect and re-fetch state.
+                if msg.get("event") == CLOSE_EVENT_KEY:
+                    break
                 yield f"event: {msg['event']}\ndata: {msg['data']}\n\n"
         except asyncio.CancelledError:
             pass

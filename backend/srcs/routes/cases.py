@@ -59,7 +59,7 @@ from srcs.services.case_store import (
     now_iso,
     transition_status,
 )
-from srcs.services.sse_service import SseService
+from srcs.services.sse_service import CLOSE_EVENT_KEY, SseService
 
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
@@ -254,6 +254,10 @@ async def stream_case(case_id: str, request: Request) -> StreamingResponse:
                     break
                 try:
                     msg = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    # Broadcaster disconnected this subscriber (queue full).
+                    # Exit cleanly; client recovers via GET /cases/{id}.
+                    if msg.get("event") == CLOSE_EVENT_KEY:
+                        break
                     yield f"event: {msg['event']}\ndata: {msg['data']}\n\n"
                 except asyncio.TimeoutError:
                     yield ": keepalive\n\n"

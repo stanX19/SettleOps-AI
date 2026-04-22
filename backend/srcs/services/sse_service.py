@@ -53,6 +53,18 @@ _EVENT_MAP: dict[type, Enum] = {
 }
 
 
+# Per-subscriber queue bound. The stream generator wakes every 15 s for a
+# keepalive (see cases.py stream handler), so a healthy consumer drains each
+# queue well under this cap. Reaching the cap means the client isn't reading
+# at all — we disconnect that subscriber and let it recover via the snapshot
+# endpoint documented in api_sse_plan.md §6 rather than unbounded memory use.
+_MAX_QUEUE_SIZE: int = 256
+
+# Sentinel published into a queue when the broadcaster is forcing a close.
+# The stream generator recognises this key and exits cleanly.
+CLOSE_EVENT_KEY: str = "__close__"
+
+
 class SseService:
     """Manages active SSE subscribers keyed by session_id.
 
@@ -66,8 +78,13 @@ class SseService:
 
     @classmethod
     def subscribe(cls, session_id: str) -> asyncio.Queue:
-        """Register a new subscriber for *session_id* and return its queue."""
-        queue: asyncio.Queue = asyncio.Queue()
+        """Register a new subscriber for *session_id* and return its queue.
+
+        Queues are bounded (`_MAX_QUEUE_SIZE`). When the bound is hit during
+        `_broadcast`, the subscriber is disconnected via a close sentinel
+        rather than allowing unbounded memory growth for a stalled client.
+        """
+        queue: asyncio.Queue = asyncio.Queue(maxsize=_MAX_QUEUE_SIZE)
         cls._subscribers.setdefault(session_id, []).append(queue)
         return queue
 
@@ -98,7 +115,22 @@ class SseService:
         msg = {"event": event_name, "data": data_json}
         # Snapshot the list: a subscriber may unsubscribe concurrently.
         for q in list(queues):
-            await q.put(msg)
+            try:
+                q.put_nowait(msg)
+            except asyncio.QueueFull:
+                # Subscriber isn't draining. Disconnect rather than block the
+                # broadcaster or grow memory unboundedly — the client can
+                # recover via GET /cases/{id}. Free one slot for the close
+                # sentinel so the stream generator wakes up and exits.
+                try:
+                    q.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                try:
+                    q.put_nowait({"event": CLOSE_EVENT_KEY, "data": ""})
+                except asyncio.QueueFull:
+                    pass
+                cls.unsubscribe(session_id, q)
 
     @classmethod
     async def emit(cls, session_id: str, payload: Any) -> None:
