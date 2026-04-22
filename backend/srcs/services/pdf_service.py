@@ -1,409 +1,402 @@
-from reportlab.pdfgen import canvas
-from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
-    Paragraph, Spacer, PageBreak, HRFlowable)
+from reportlab.platypus import (
+    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image,
+)
+from reportlab.platypus.flowables import HRFlowable
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
+from reportlab.lib.units import mm, cm
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
-from PIL import Image as PILImage
-import io, os
-from datetime import date
-from typing import Literal, Optional
-from pydantic import BaseModel
+import os
+from typing import List
+from pydantic import BaseModel, Field
 
 
-class ClaimReportData(BaseModel):
-    claim_ref_no: str
-    generated_date: date
-    claimant_name: str
-    claimant_ic: str
-    claimant_phone: str
-    claimant_address: str
-    policy_number: str
-    accident_date: date
-    accident_time: str
-    accident_location: str
-    police_report_no: str
-    accident_description: str
-    vehicle_plate: str
-    vehicle_make_model: str
-    vehicle_year: int
-    damage_description: str
-    estimated_repair_cost: float
-    tp_name: Optional[str] = None
-    tp_ic: Optional[str] = None
-    tp_vehicle_plate: Optional[str] = None
-    tp_insurer: Optional[str] = None
-    tp_policy_no: Optional[str] = None
-    adjuster_name: str
-    adjuster_license: str
-    inspection_date: date
-    approved_amount: float
-    adjuster_remarks: str
-    claim_status: Literal["PENDING", "APPROVED", "REJECTED"] = "PENDING"
-    officer_name: Optional[str] = None
-    officer_remarks: Optional[str] = None
+# ── Pydantic Models (variables for API) ─────────────────────
+
+class CostBreakdown(BaseModel):
+    parts: float = Field(..., ge=0)
+    labour: float = Field(..., ge=0)
+    paint: float = Field(..., ge=0)
+    towing: float = Field(..., ge=0)
+    misc: float = Field(..., ge=0)
 
 
-NAVY = colors.HexColor("#1a3557")
-STEEL = colors.HexColor("#2c5f8a")
-LABEL_GRAY = colors.HexColor("#666666")
-VALUE_BLACK = colors.HexColor("#000000")
-BORDER_GRAY = colors.HexColor("#cccccc")
-ROW_ALT = colors.HexColor("#f7f7f7")
-APPROVED_GREEN = colors.HexColor("#1a7a3c")
-STAMP_APPROVED = colors.Color(0x1a / 255, 0x7a / 255, 0x3c / 255, alpha=0.12)
-STAMP_REJECTED = colors.Color(0xa0 / 255, 0, 0, alpha=0.12)
-STAMP_PENDING = colors.Color(0xb3 / 255, 0x62 / 255, 0, alpha=0.12)
+class RepairApprovalData(BaseModel):
+    claim_no: str = Field(..., min_length=1)
+    policy_no: str = Field(..., min_length=1)
+    insured_name: str = Field(..., min_length=1)
+    nric: str = Field(..., min_length=1)
+    vehicle_no: str = Field(..., min_length=1)
+    vehicle_model: str = Field(..., min_length=1)
+    accident_date: str = Field(..., min_length=1)
+    report_date: str = Field(..., min_length=1)
+    workshop_name: str = Field(..., min_length=1)
+    workshop_code: str = Field(..., min_length=1)
+    workshop_address: str = Field(..., min_length=1)
+    workshop_phone: str = Field(..., min_length=1)
+    costs: CostBreakdown
+    approved_by: str = Field(..., min_length=1)
+    designation: str = Field(..., min_length=1)
+    date: str = Field(..., min_length=1)
 
+
+# ── Page Constants ───────────────────────────────────────────
 PAGE_W, PAGE_H = A4
-MARGIN = 20 * mm
-HEADER_H = 18 * mm
+MARGIN = 2.5 * cm
+AVAIL_W = PAGE_W - 2 * MARGIN
+HEADER_H = 22 * mm
+
+BLACK = colors.black
+GREY_FILL = colors.HexColor("#CCCCCC")
 
 
+# ── Styles ───────────────────────────────────────────────────
 def _get_styles():
     ss = getSampleStyleSheet()
-
     ss.add(ParagraphStyle(
-        "SectionBar", parent=ss["Normal"],
-        fontName="Helvetica-Bold", fontSize=10, textColor=colors.white,
-        backColor=STEEL, spaceBefore=10, spaceAfter=4,
-        leftIndent=4, leading=16,
+        "DocTitle", parent=ss["Normal"],
+        fontName="Helvetica-Bold", fontSize=12, textColor=BLACK,
+        alignment=TA_CENTER, leading=15,
     ))
     ss.add(ParagraphStyle(
-        "FieldLabel", parent=ss["Normal"],
-        fontName="Helvetica", fontSize=8, textColor=LABEL_GRAY,
+        "SectionTitle", parent=ss["Normal"],
+        fontName="Helvetica-Bold", fontSize=10, textColor=BLACK,
+        leading=13, spaceBefore=2, spaceAfter=4,
     ))
     ss.add(ParagraphStyle(
-        "FieldValue", parent=ss["Normal"],
-        fontName="Helvetica", fontSize=10, textColor=VALUE_BLACK,
+        "Body", parent=ss["Normal"],
+        fontName="Helvetica", fontSize=9, textColor=BLACK, leading=12,
     ))
     ss.add(ParagraphStyle(
-        "FieldValueBold", parent=ss["Normal"],
-        fontName="Helvetica-Bold", fontSize=10, textColor=VALUE_BLACK,
+        "BodyBold", parent=ss["Normal"],
+        fontName="Helvetica-Bold", fontSize=9, textColor=BLACK, leading=12,
     ))
     ss.add(ParagraphStyle(
-        "FieldValueRight", parent=ss["Normal"],
-        fontName="Helvetica-Bold", fontSize=10, textColor=VALUE_BLACK,
-        alignment=TA_RIGHT,
+        "BodyRight", parent=ss["Normal"],
+        fontName="Helvetica", fontSize=9, textColor=BLACK,
+        leading=12, alignment=TA_RIGHT,
     ))
     ss.add(ParagraphStyle(
-        "AmountGreen", parent=ss["Normal"],
-        fontName="Helvetica-Bold", fontSize=10, textColor=APPROVED_GREEN,
-        alignment=TA_RIGHT,
+        "BodyBoldRight", parent=ss["Normal"],
+        fontName="Helvetica-Bold", fontSize=9, textColor=BLACK,
+        leading=12, alignment=TA_RIGHT,
     ))
     ss.add(ParagraphStyle(
-        "CenterItalic", parent=ss["Normal"],
-        fontName="Helvetica-Oblique", fontSize=10, textColor=LABEL_GRAY,
-        alignment=TA_CENTER,
+        "TblHeader", parent=ss["Normal"],
+        fontName="Helvetica-Bold", fontSize=9, textColor=BLACK, leading=12,
     ))
     ss.add(ParagraphStyle(
-        "TitleStyle", parent=ss["Normal"],
-        fontName="Helvetica-Bold", fontSize=16, textColor=VALUE_BLACK,
-        alignment=TA_CENTER, spaceAfter=4,
+        "TblHeaderRight", parent=ss["Normal"],
+        fontName="Helvetica-Bold", fontSize=9, textColor=BLACK,
+        leading=12, alignment=TA_RIGHT,
     ))
     ss.add(ParagraphStyle(
-        "SubtitleStyle", parent=ss["Normal"],
-        fontName="Helvetica", fontSize=10, textColor=LABEL_GRAY,
-        alignment=TA_CENTER, spaceAfter=12,
+        "ItalicNote", parent=ss["Normal"],
+        fontName="Helvetica-Oblique", fontSize=8, textColor=BLACK, leading=10,
     ))
     ss.add(ParagraphStyle(
-        "BoxParagraph", parent=ss["Normal"],
-        fontName="Helvetica", fontSize=10, textColor=VALUE_BLACK,
-        leading=14,
+        "SmallText", parent=ss["Normal"],
+        fontName="Helvetica", fontSize=8, textColor=BLACK,
+        leading=10, alignment=TA_CENTER,
     ))
     return ss
 
 
-def _field_cell(label, value, styles):
-    return [
-        Paragraph(label, styles["FieldLabel"]),
-        Paragraph(str(value), styles["FieldValue"]),
-    ]
+# ── Canvas: header, footer, page border ─────────────────────
+def _draw_page(canvas, doc, data):
+    canvas.saveState()
+
+    # Page border frame
+    canvas.setStrokeColor(BLACK)
+    canvas.setLineWidth(0.5)
+    border_margin = MARGIN - 5 * mm
+    canvas.rect(
+        border_margin, border_margin,
+        PAGE_W - 2 * border_margin, PAGE_H - 2 * border_margin,
+    )
+
+    # Company header
+    y_top = PAGE_H - MARGIN
+    canvas.setFont("Helvetica-Bold", 14)
+    canvas.drawString(MARGIN, y_top - 4 * mm, "AIG Malaysia Insurance Berhad")
+
+    canvas.setFont("Helvetica", 8)
+    canvas.drawString(
+        MARGIN, y_top - 10 * mm,
+        "Level 18, Menara IGB, Mid Valley City, Lingkaran Syed Putra, "
+        "59200 Kuala Lumpur",
+    )
+    canvas.drawString(
+        MARGIN, y_top - 14 * mm,
+        "Tel: 03-2772 5000 | Fax: 03-2772 5001 | Email: claims@aig.com.my",
+    )
+
+    # Horizontal divider line below header
+    canvas.setLineWidth(0.5)
+    canvas.line(MARGIN, y_top - 18 * mm, PAGE_W - MARGIN, y_top - 18 * mm)
+
+    canvas.restoreState()
 
 
-def _two_col_table(rows, col_widths=None):
-    avail = PAGE_W - 2 * MARGIN
-    if col_widths is None:
-        col_widths = [avail / 2, avail / 2]
-    style_cmds = [
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+# ── Build document content (platypus) ────────────────────────
+def _build_content(elements, data: RepairApprovalData, styles):
+    label_w = AVAIL_W * 0.35
+    value_w = AVAIL_W * 0.65
+
+    TABLE_STYLE = TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, BLACK),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, BLACK),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ])
+
+    # ── 2. Document Reference ──
+    elements.append(Spacer(1, 4 * mm))
+    elements.append(Paragraph(f"Our Ref: {data.claim_no}", styles["Body"]))
+    elements.append(Paragraph(f"Date: {data.date}", styles["Body"]))
+    elements.append(Spacer(1, 6 * mm))
+
+    # ── 3. Addressee ──
+    elements.append(Paragraph("The Workshop Manager", styles["Body"]))
+    elements.append(Paragraph(data.workshop_name, styles["BodyBold"]))
+    elements.append(Paragraph(data.workshop_address, styles["Body"]))
+    elements.append(Paragraph(f"Tel: {data.workshop_phone}", styles["Body"]))
+    elements.append(Spacer(1, 8 * mm))
+
+    # ── 4. Document Title ──
+    elements.append(Paragraph(
+        "MOTOR VEHICLE REPAIR APPROVAL LETTER", styles["DocTitle"],
+    ))
+    elements.append(Paragraph(
+        "(Surat Kelulusan Pembaikan Kenderaan)", styles["DocTitle"],
+    ))
+    elements.append(Spacer(1, 1 * mm))
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=BLACK))
+    elements.append(Spacer(1, 6 * mm))
+
+    # ── 5. Claim Information Table ──
+    elements.append(Paragraph(
+        "Claim Information / Maklumat Tuntutan", styles["SectionTitle"],
+    ))
+    claim_rows = [
+        ("Claim No.", data.claim_no),
+        ("Policy No.", data.policy_no),
+        ("Insured Name", data.insured_name),
+        ("NRIC / Company No.", data.nric),
+        ("Vehicle No.", data.vehicle_no),
+        ("Vehicle Make / Model", data.vehicle_model),
+        ("Date of Accident", data.accident_date),
+        ("Date Reported", data.report_date),
     ]
-    for i in range(len(rows)):
-        if i % 2 == 1:
-            style_cmds.append(("BACKGROUND", (0, i), (-1, i), ROW_ALT))
-    t = Table(rows, colWidths=col_widths, hAlign="LEFT")
-    t.setStyle(TableStyle(style_cmds))
-    return t
+    claim_table = Table(
+        [[Paragraph(l, styles["BodyBold"]), Paragraph(v, styles["Body"])]
+         for l, v in claim_rows],
+        colWidths=[label_w, value_w], hAlign="LEFT",
+    )
+    claim_table.setStyle(TABLE_STYLE)
+    elements.append(claim_table)
+    elements.append(Spacer(1, 6 * mm))
 
+    # ── 6. Workshop Information Table ──
+    elements.append(Paragraph(
+        "Workshop Information / Maklumat Bengkel", styles["SectionTitle"],
+    ))
+    ws_rows = [
+        ("Workshop Name", data.workshop_name),
+        ("Panel Workshop Code", data.workshop_code),
+        ("Address", data.workshop_address),
+        ("Contact No.", data.workshop_phone),
+    ]
+    ws_table = Table(
+        [[Paragraph(l, styles["BodyBold"]), Paragraph(v, styles["Body"])]
+         for l, v in ws_rows],
+        colWidths=[label_w, value_w], hAlign="LEFT",
+    )
+    ws_table.setStyle(TABLE_STYLE)
+    elements.append(ws_table)
+    elements.append(Spacer(1, 6 * mm))
 
-def _bordered_box(text, styles, min_height=None):
-    avail = PAGE_W - 2 * MARGIN - 12
-    p = Paragraph(text, styles["BoxParagraph"])
-    row_data = [[p]]
-    t = Table(row_data, colWidths=[avail])
-    style_cmds = [
-        ("BOX", (0, 0), (-1, -1), 0.5, BORDER_GRAY),
+    # ── 7. Opening Paragraph ──
+    elements.append(Paragraph(
+        "We refer to the above matter and the repair quotation submitted by your "
+        "workshop, together with the Loss Adjuster’s report and investigation "
+        "findings. Having reviewed all relevant documents, we are pleased to inform "
+        "that the following repair costs have been approved for the above-mentioned "
+        "vehicle.",
+        styles["Body"],
+    ))
+    elements.append(Spacer(1, 6 * mm))
+
+    # ── 8. Approved Cost Table ──
+    elements.append(Paragraph(
+        "Approved Repair Costs / Kos Pembaikan Diluluskan", styles["SectionTitle"],
+    ))
+
+    total = (
+        data.costs.parts + data.costs.labour + data.costs.paint
+        + data.costs.towing + data.costs.misc
+    )
+
+    no_w = AVAIL_W * 0.08
+    desc_w = AVAIL_W * 0.62
+    amt_w = AVAIL_W * 0.30
+
+    header_row = [
+        Paragraph("No.", styles["TblHeader"]),
+        Paragraph("Description", styles["TblHeader"]),
+        Paragraph("Amount (RM)", styles["TblHeaderRight"]),
+    ]
+    cost_items = [
+        ("1", "Spare Parts (Alat Ganti)", data.costs.parts),
+        ("2", "Labour Charges (Upah Kerja)", data.costs.labour),
+        ("3", "Painting Cost (Kos Mengecat)", data.costs.paint),
+        ("4", "Towing Charges (Kos Tunda)", data.costs.towing),
+        ("5", "Miscellaneous (Lain-lain)", data.costs.misc),
+    ]
+    rows = [header_row]
+    for num, desc, amt in cost_items:
+        rows.append([
+            Paragraph(num, styles["Body"]),
+            Paragraph(desc, styles["Body"]),
+            Paragraph(f"{amt:,.2f}", styles["BodyRight"]),
+        ])
+    rows.append([
+        "",
+        Paragraph("TOTAL APPROVED AMOUNT (RM)", styles["BodyBold"]),
+        Paragraph(f"{total:,.2f}", styles["BodyBoldRight"]),
+    ])
+
+    cost_table = Table(rows, colWidths=[no_w, desc_w, amt_w], hAlign="LEFT")
+    cost_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), GREY_FILL),
+        ("BOX", (0, 0), (-1, -1), 0.5, BLACK),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, BLACK),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LINEABOVE", (0, -1), (-1, -1), 1, BLACK),
+    ]))
+    elements.append(cost_table)
+    elements.append(Spacer(1, 2 * mm))
+
+    elements.append(Paragraph(
+        "* Betterment, Excess and Endorsement 2(f) charges (if applicable) are to "
+        "be borne by the insured and are NOT included in the above approved amount.",
+        styles["ItalicNote"],
+    ))
+    elements.append(Spacer(1, 6 * mm))
+
+    # ── 9. Terms and Conditions ──
+    elements.append(Paragraph(
+        "Terms and Conditions / Terma dan Syarat", styles["SectionTitle"],
+    ))
+    terms = [
+        "Repairs must be carried out strictly within the approved amount stated above.",
+        "Any additional damage discovered during repair must be reported to us "
+        "immediately for supplementary approval before work proceeds.",
+        "This company shall not be liable for any cost exceeding the approved amount "
+        "without prior written consent.",
+        "Payment will only be processed upon submission of the completed tax invoice, "
+        "repair bill, and satisfaction voucher duly signed by the insured.",
+        "Repairs must be completed within thirty (30) days from the date of this letter.",
+        "Four (4) colour photographs of the vehicle after repair (from four different "
+        "angles) must be submitted to us within 14 days of completion.",
     ]
-    if min_height:
-        style_cmds.append(("MINROWHEIGHT", (0, 0), (-1, -1), min_height))
-    t.setStyle(TableStyle(style_cmds))
-    return t
+    for i, term in enumerate(terms, 1):
+        elements.append(Paragraph(f"{i}. {term}", styles["Body"]))
+        elements.append(Spacer(1, 1 * mm))
+    elements.append(Spacer(1, 4 * mm))
+
+    # ── 10. Reference Documents ──
+    elements.append(Paragraph(
+        "Reference Documents / Dokumen Rujukan", styles["SectionTitle"],
+    ))
+    ref_docs = [
+        "Police Report (Laporan Polis)",
+        "Investigation Result (Keputusan Kes)",
+        "Loss Adjuster’s Report (Laporan Penilai)",
+        "Workshop Repair Quotation (Sebut Harga Pembaikan)",
+    ]
+    for i, doc_name in enumerate(ref_docs, 1):
+        elements.append(Paragraph(f"{i}. {doc_name}", styles["Body"]))
+        elements.append(Spacer(1, 1 * mm))
+    elements.append(Spacer(1, 4 * mm))
+
+    # ── 11. Closing Paragraph ──
+    elements.append(Paragraph(
+        "Should you have any queries regarding this approval, please do not hesitate "
+        "to contact our Claims Department at the above number quoting the claim "
+        "reference above. Thank you.",
+        styles["Body"],
+    ))
+    elements.append(Spacer(1, 10 * mm))
+
+    # ── 12. Signature Section ──
+    sig_left_rows = [
+        [Paragraph("Authorised Signatory:", styles["Body"])],
+        [Spacer(1, 15 * mm)],
+        [HRFlowable(width=55 * mm, thickness=0.5, color=BLACK)],
+        [Paragraph(f"<b>{data.approved_by}</b>", styles["Body"])],
+        [Paragraph(data.designation, styles["Body"])],
+        [Paragraph("AIG Malaysia Insurance Berhad", styles["Body"])],
+        [Paragraph(f"Date: {data.date}", styles["Body"])],
+    ]
+    sig_left_table = Table(sig_left_rows, colWidths=[60 * mm])
+    sig_left_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+    ]))
+
+    stamp_box = Table(
+        [[Paragraph("Company Stamp / Cop Syarikat", styles["SmallText"])]],
+        colWidths=[45 * mm], rowHeights=[45 * mm],
+    )
+    stamp_box.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, BLACK),
+        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+
+    sig_main = Table(
+        [[sig_left_table, stamp_box]],
+        colWidths=[AVAIL_W * 0.55, AVAIL_W * 0.45],
+    )
+    sig_main.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (0, 0), "TOP"),
+        ("VALIGN", (1, 0), (1, 0), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+    ]))
+    elements.append(sig_main)
 
 
-def _draw_header_footer(c, doc, data: ClaimReportData):
-    c.saveState()
-
-    # Header bar
-    c.setFillColor(NAVY)
-    c.rect(MARGIN, PAGE_H - MARGIN - HEADER_H, PAGE_W - 2 * MARGIN, HEADER_H, fill=1, stroke=0)
-
-    # Header left text
-    c.setFillColor(colors.white)
-    c.setFont("Helvetica-Bold", 13)
-    c.drawString(MARGIN + 6, PAGE_H - MARGIN - HEADER_H + 7 * mm, "MyClaim Insurance Berhad")
-
-    # Header right text
-    c.setFont("Helvetica", 9)
-    c.drawRightString(PAGE_W - MARGIN - 6, PAGE_H - MARGIN - HEADER_H + 10 * mm,
-                      f"Claim Ref: {data.claim_ref_no}")
-    c.drawRightString(PAGE_W - MARGIN - 6, PAGE_H - MARGIN - HEADER_H + 5.5 * mm,
-                      f"Generated: {data.generated_date.strftime('%d/%m/%Y')}")
-
-    # Line below header
-    c.setStrokeColor(STEEL)
-    c.setLineWidth(1)
-    c.line(MARGIN, PAGE_H - MARGIN - HEADER_H - 1, PAGE_W - MARGIN, PAGE_H - MARGIN - HEADER_H - 1)
-
-    # Footer
-    c.setFont("Helvetica", 8)
-    c.setFillColor(LABEL_GRAY)
-    c.drawCentredString(PAGE_W / 2, MARGIN - 12 * mm,
-                        "CONFIDENTIAL — FOR OFFICER USE ONLY")
-
-    page_num = doc.page
-    c.drawRightString(PAGE_W - MARGIN, MARGIN - 12 * mm,
-                      f"Page {page_num}")
-
-    c.restoreState()
-
-    _draw_stamp(c, data.claim_status)
-
-
-def _draw_stamp(c, status):
-    c.saveState()
-    c.translate(PAGE_W / 2, PAGE_H / 2)
-    c.rotate(35)
-
-    if status == "APPROVED":
-        c.setFillColor(STAMP_APPROVED)
-    elif status == "REJECTED":
-        c.setFillColor(STAMP_REJECTED)
-    else:
-        c.setFillColor(STAMP_PENDING)
-
-    c.setFont("Helvetica-Bold", 64)
-    c.drawCentredString(0, 0, status)
-    c.restoreState()
-
-
-def _on_page(c, doc, data):
-    _draw_header_footer(c, doc, data)
-
-
-def _add_page_count(file_path):
-    from reportlab.pdfgen import canvas as canvas_mod
-    from PyPDF2 import PdfReader, PdfWriter
-
-    reader = PdfReader(file_path)
-    total = len(reader.pages)
-    writer = PdfWriter()
-
-    for i, page in enumerate(reader.pages):
-        packet = io.BytesIO()
-        overlay = canvas_mod.Canvas(packet, pagesize=A4)
-        overlay.setFont("Helvetica", 8)
-        overlay.setFillColor(LABEL_GRAY)
-        overlay.drawRightString(PAGE_W - MARGIN, MARGIN - 12 * mm,
-                                f"Page {i + 1} of {total}")
-        overlay.save()
-        packet.seek(0)
-
-        overlay_reader = PdfReader(packet)
-        page.merge_page(overlay_reader.pages[0])
-        writer.add_page(page)
-
-    with open(file_path, "wb") as f:
-        writer.write(f)
-
-
-def generate_claim_report(data: ClaimReportData) -> str:
+# ── Main Generator ───────────────────────────────────────────
+def generate_repair_approval_pdf(data: RepairApprovalData) -> str:
     os.makedirs("reports", exist_ok=True)
-    file_path = os.path.join("reports", f"{data.claim_ref_no}.pdf")
+    file_path = os.path.join("reports", f"{data.claim_no}_repair_approval.pdf")
 
     styles = _get_styles()
-    avail_width = PAGE_W - 2 * MARGIN
 
     doc = SimpleDocTemplate(
         file_path, pagesize=A4,
         leftMargin=MARGIN, rightMargin=MARGIN,
-        topMargin=MARGIN + HEADER_H + 4 * mm,
-        bottomMargin=MARGIN + 4 * mm,
+        topMargin=MARGIN + HEADER_H,
+        bottomMargin=MARGIN + 5 * mm,
     )
 
     elements = []
+    _build_content(elements, data, styles)
 
-    # SECTION 1 — Report title block
-    elements.append(Spacer(1, 6 * mm))
-    elements.append(Paragraph("MOTOR ACCIDENT CLAIM REPORT", styles["TitleStyle"]))
-    elements.append(Paragraph(f"Policy No: {data.policy_number}", styles["SubtitleStyle"]))
-
-    # SECTION 2 — Claimant information
-    elements.append(Paragraph("Claimant Information", styles["SectionBar"]))
-    elements.append(Spacer(1, 2 * mm))
-    sec2_rows = [
-        _field_cell("Name", data.claimant_name, styles) +
-        _field_cell("IC Number", data.claimant_ic, styles),
-        _field_cell("Phone", data.claimant_phone, styles) +
-        _field_cell("Policy No", data.policy_number, styles),
-        _field_cell("Address", data.claimant_address, styles) + ["", ""],
-    ]
-    elements.append(_two_col_table(sec2_rows))
-
-    # SECTION 3 — Accident details
-    elements.append(Paragraph("Accident Details", styles["SectionBar"]))
-    elements.append(Spacer(1, 2 * mm))
-    sec3_rows = [
-        _field_cell("Date & Time",
-                    f"{data.accident_date.strftime('%d/%m/%Y')}  {data.accident_time}",
-                    styles) +
-        _field_cell("Location", data.accident_location, styles),
-    ]
-    elements.append(_two_col_table(sec3_rows))
-    elements.append(Spacer(1, 2 * mm))
-    elements.append(_bordered_box(data.accident_description, styles))
-    elements.append(Spacer(1, 2 * mm))
-    sec3_pr = [
-        _field_cell("Police Report No", data.police_report_no, styles) + ["", ""],
-    ]
-    elements.append(_two_col_table(sec3_pr))
-
-    # SECTION 4 — Vehicle information
-    elements.append(Paragraph("Vehicle Information", styles["SectionBar"]))
-    elements.append(Spacer(1, 2 * mm))
-    sec4_rows = [
-        _field_cell("Plate No", data.vehicle_plate, styles) +
-        _field_cell("Make & Model", data.vehicle_make_model, styles),
-        _field_cell("Year", str(data.vehicle_year), styles) +
-        _field_cell("Damage Description", data.damage_description, styles),
-    ]
-    elements.append(_two_col_table(sec4_rows))
-    elements.append(Spacer(1, 2 * mm))
-    elements.append(Paragraph(
-        f"Estimated Repair Cost: RM {data.estimated_repair_cost:,.2f}",
-        styles["FieldValueRight"],
-    ))
-
-    # SECTION 5 — Third party information
-    elements.append(Paragraph("Third Party Information", styles["SectionBar"]))
-    elements.append(Spacer(1, 2 * mm))
-    tp_fields = [data.tp_name, data.tp_ic, data.tp_vehicle_plate, data.tp_insurer, data.tp_policy_no]
-    if all(v is None for v in tp_fields):
-        elements.append(Paragraph("No third party involved", styles["CenterItalic"]))
-    else:
-        sec5_rows = [
-            _field_cell("Name", data.tp_name or "—", styles) +
-            _field_cell("IC Number", data.tp_ic or "—", styles),
-            _field_cell("Vehicle Plate", data.tp_vehicle_plate or "—", styles) +
-            _field_cell("Insurer", data.tp_insurer or "—", styles),
-            _field_cell("Policy No", data.tp_policy_no or "—", styles) + ["", ""],
-        ]
-        elements.append(_two_col_table(sec5_rows))
-
-    # SECTION 6 — Loss adjuster assessment
-    elements.append(Paragraph("Loss Adjuster Assessment", styles["SectionBar"]))
-    elements.append(Spacer(1, 2 * mm))
-    sec6_rows = [
-        _field_cell("Adjuster Name", data.adjuster_name, styles) +
-        _field_cell("Licence No", data.adjuster_license, styles),
-        _field_cell("Inspection Date", data.inspection_date.strftime("%d/%m/%Y"), styles) +
-        ["", ""],
-    ]
-    elements.append(_two_col_table(sec6_rows))
-    elements.append(Spacer(1, 2 * mm))
-    elements.append(Paragraph(
-        f"Approved Amount: RM {data.approved_amount:,.2f}",
-        styles["AmountGreen"],
-    ))
-    elements.append(Spacer(1, 2 * mm))
-    elements.append(_bordered_box(data.adjuster_remarks, styles))
-
-    # SECTION 7 — Officer decision
-    elements.append(Paragraph("Officer Decision", styles["SectionBar"]))
-    elements.append(Spacer(1, 4 * mm))
-
-    def _checkbox(label, checked):
-        mark = "■" if checked else "□"
-        return Paragraph(f"{mark}  {label}", styles["FieldValueBold"])
-
-    cb_row = [[
-        _checkbox("APPROVED", data.claim_status == "APPROVED"),
-        _checkbox("REJECTED", data.claim_status == "REJECTED"),
-        _checkbox("PENDING", data.claim_status == "PENDING"),
-    ]]
-    cb_table = Table(cb_row, colWidths=[avail_width / 3] * 3)
-    cb_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    elements.append(cb_table)
-    elements.append(Spacer(1, 3 * mm))
-
-    elements.append(Paragraph("Officer Remarks:", styles["FieldLabel"]))
-    elements.append(Spacer(1, 1 * mm))
-    elements.append(_bordered_box(data.officer_remarks or "", styles, min_height=30 * mm))
-    elements.append(Spacer(1, 4 * mm))
-
-    officer_line_data = [
-        [Paragraph("Officer Name:", styles["FieldLabel"]),
-         Paragraph(f"  {data.officer_name or ''}", styles["FieldValue"]),
-         Paragraph("__________________________", styles["FieldValue"])],
-    ]
-    officer_table = Table(officer_line_data, colWidths=[avail_width * 0.2, avail_width * 0.35, avail_width * 0.45])
-    officer_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-    ]))
-    elements.append(officer_table)
-    elements.append(Spacer(1, 6 * mm))
-
-    sig_data = [
-        [Paragraph("Authorised Signature: ___________________________", styles["FieldValue"]),
-         Paragraph("Date: _______________", styles["FieldValue"])],
-    ]
-    sig_table = Table(sig_data, colWidths=[avail_width * 0.6, avail_width * 0.4])
-    sig_table.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-    ]))
-    elements.append(sig_table)
-
-    on_page = lambda c, doc: _on_page(c, doc, data)
+    on_page = lambda c, doc_tmpl: _draw_page(c, doc_tmpl, data)
     doc.build(elements, onFirstPage=on_page, onLaterPages=on_page)
-
-    _add_page_count(file_path)
 
     return file_path

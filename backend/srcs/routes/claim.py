@@ -1,67 +1,73 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from srcs.services.pdf_service import generate_claim_report, ClaimReportData
+from srcs.services.pdf_service import generate_repair_approval_pdf, RepairApprovalData
 import os
 
 router = APIRouter(prefix="/claims", tags=["Claims"])
 
 
-@router.post("/generate-report")
-def generate_report(data: ClaimReportData):
+MOCK_CLAIM_DATA = {
+    "claim_no": "CLM-2026-000123",
+    "policy_no": "POL-12345678",
+    "insured_name": "Ivin Lee",
+    "nric": "010101-10-1234",
+    "vehicle_no": "ABC1234",
+    "vehicle_model": "Perodua Myvi 1.5",
+    "accident_date": "01/04/2026",
+    "report_date": "02/04/2026",
+    "workshop_name": "XYZ Auto Service Sdn Bhd",
+    "workshop_code": "PWS-00123",
+    "workshop_address": "No. 12, Jalan Industri 3, Taman Perindustrian, 47500 Subang Jaya, Selangor",
+    "workshop_phone": "012-3456789",
+    "costs": {
+        "parts": 3000.00,
+        "labour": 1200.00,
+        "paint": 800.00,
+        "towing": 200.00,
+        "misc": 150.00,
+    },
+    "approved_by": "John Tan Wei Ming",
+    "designation": "Senior Claims Executive",
+    "date": "05/04/2026",
+}
+
+
+@router.post("/generate-repair-approval")
+def generate_repair_approval(data: RepairApprovalData):
     try:
-        file_path = generate_claim_report(data)
+        file_path = generate_repair_approval_pdf(data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
     return FileResponse(
         path=file_path,
         media_type="application/pdf",
-        filename=f"{data.claim_ref_no}_report.pdf",
+        filename=f"repair_approval_{data.claim_no}.pdf",
         headers={"Content-Disposition": "attachment"},
     )
 
 
-@router.get("/{claim_ref}/report")
-def get_report(claim_ref: str):
-    file_path = os.path.join("reports", f"{claim_ref}.pdf")
+@router.get("/generate-mock-report")
+def generate_mock_report():
+    data = RepairApprovalData(**MOCK_CLAIM_DATA)
+    try:
+        file_path = generate_repair_approval_pdf(data)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=f"repair_approval_{data.claim_no}.pdf",
+    )
+
+
+@router.get("/{claim_no}/repair-approval")
+def get_repair_approval(claim_no: str):
+    """Retrieve a previously generated repair approval PDF."""
+    file_path = os.path.join("reports", f"{claim_no}_repair_approval.pdf")
     if not os.path.isfile(file_path):
         raise HTTPException(status_code=404, detail="Report not found. Generate it first.")
     return FileResponse(
         path=file_path,
         media_type="application/pdf",
-        filename=f"{claim_ref}_report.pdf",
+        filename=f"repair_approval_{claim_no}.pdf",
     )
-
-
-# --- Malaysian test data (for manual / unit testing) ---
-# {
-#     "claim_ref_no": "CLM-2025-001234",
-#     "generated_date": "2025-03-15",
-#     "claimant_name": "Muhammad Hafiz bin Abdullah",
-#     "claimant_ic": "900615-14-5890",
-#     "claimant_phone": "011-2345 6789",
-#     "claimant_address": "No. 12, Jalan Mawar 3, Taman Bunga, 47500 Subang Jaya, Selangor",
-#     "policy_number": "POL-MY-2024-887766",
-#     "accident_date": "2025-03-14",
-#     "accident_time": "08:45",
-#     "accident_location": "Lebuhraya KESAS, KM 12.5, arah Klang, Shah Alam, Selangor",
-#     "police_report_no": "PDRM/SAL/2025/03/4421",
-#     "accident_description": "Kenderaan tertuduh memotong lorong secara mengejut menyebabkan perlanggaran sisi kanan. Kenderaan insured bergerak lurus di lorong tengah.",
-#     "vehicle_plate": "WXY 4521",
-#     "vehicle_make_model": "Perodua Myvi 1.5 AV",
-#     "vehicle_year": 2022,
-#     "damage_description": "Kerosakan bahagian depan kanan, bumper depan, bonnet, lampu hadapan kanan, fender kanan",
-#     "estimated_repair_cost": 8750.00,
-#     "tp_name": "Lim Chee Keong",
-#     "tp_ic": "851123-10-7654",
-#     "tp_vehicle_plate": "PJL 3388",
-#     "tp_insurer": "Allianz General Insurance Malaysia",
-#     "tp_policy_no": null,
-#     "adjuster_name": "Ahmad Fauzi bin Osman",
-#     "adjuster_license": "PIAM/ADJ/2019/00334",
-#     "inspection_date": "2025-03-17",
-#     "approved_amount": 7900.00,
-#     "adjuster_remarks": "Kerosakan konsisten dengan fakta kemalangan. Kadar baik pulih diluluskan berdasarkan jadual CART.",
-#     "claim_status": "PENDING",
-#     "officer_name": null,
-#     "officer_remarks": null
-# }
