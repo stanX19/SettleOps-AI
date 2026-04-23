@@ -16,6 +16,7 @@ from srcs.routes.chat import router as chat_router
 from srcs.routes.speech import router as speech_router
 from srcs.routes.claim import router as claim_router, mock_router as claim_mock_router
 from srcs.routes.cases import router as cases_router
+from srcs.routes.signature import router as signature_router
 
 from srcs.schemas.case_dto import ErrorCode
 from srcs.services.case_service import ApiError
@@ -103,6 +104,7 @@ app.include_router(claim_router)
 if settings.DEBUG:
     app.include_router(claim_mock_router)
 app.include_router(cases_router)
+app.include_router(signature_router)
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
