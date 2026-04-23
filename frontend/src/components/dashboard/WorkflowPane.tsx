@@ -19,10 +19,10 @@ import { Play, RotateCcw } from 'lucide-react';
 
 // ---- Custom Agent Node ----
 function AgentNode({ data }: NodeProps) {
-  const { label, status, detail, type } = data as { label: string, status: 'idle' | 'running' | 'success' | 'error' | 'warning', detail: string, type?:  string };
-  
+  const { label, status, detail, type } = data as { label: string, status: 'idle' | 'running' | 'success' | 'error' | 'warning', detail: string, type?: string };
+
   let statusClasses = "bg-neutral-surface border-neutral-border text-neutral-text-secondary";
-  
+
   if (status === 'running') {
     statusClasses = "bg-brand-primary-light border-brand-primary text-brand-on-primary agent-node-running";
   } else if (status === 'success') {
@@ -52,7 +52,7 @@ const nodeTypes = {
 // ---- Graph Logic ----
 const getInitialNodes = () => [
   { id: '1', type: 'agent', position: { x: 250, y: 50 }, data: { label: 'Intake Agent', status: 'idle', detail: 'Awaiting Run' } },
-  { id: '2', type: 'agent', position: { x: 50,  y: 200 }, data: { label: 'Policy Agent', status: 'idle', detail: 'Awaiting Intake' } },
+  { id: '2', type: 'agent', position: { x: 50, y: 200 }, data: { label: 'Policy Agent', status: 'idle', detail: 'Awaiting Intake' } },
   { id: '3', type: 'agent', position: { x: 250, y: 200 }, data: { label: 'Liability Agent', status: 'idle', detail: 'Awaiting Intake' } },
   { id: '4', type: 'agent', position: { x: 450, y: 200 }, data: { label: 'Fraud Agent', status: 'idle', detail: 'Awaiting Intake' } },
   { id: '5', type: 'agent', position: { x: 250, y: 350 }, data: { label: 'Payout Agent', status: 'idle', detail: 'Awaiting Agents' } },
@@ -108,13 +108,13 @@ export function WorkflowPane() {
     setDemoState('running');
     setNodes(getInitialNodes());
     setEdges(getInitialEdges());
-    
+
     // Intake
     setTimeout(() => { updateNode('1', 'running', 'Parsing PDFs...'); }, 500);
-    setTimeout(() => { 
+    setTimeout(() => {
       updateNode('1', 'success', 'Parsed 1.2s');
-      updateEdge('e1-2', true, 'var(--color-brand-primary)'); 
-      updateEdge('e1-3', true, 'var(--color-brand-primary)'); 
+      updateEdge('e1-2', true, 'var(--color-brand-primary)');
+      updateEdge('e1-3', true, 'var(--color-brand-primary)');
       updateEdge('e1-4', true, 'var(--color-brand-primary)');
       updateNode('2', 'running', 'Checking rules...');
       updateNode('3', 'running', 'Evaluating fault...');
@@ -122,30 +122,30 @@ export function WorkflowPane() {
     }, 2000);
 
     // Parallel Branch 1: Policy
-    setTimeout(() => { 
-      updateNode('2', 'success', 'Clause 4.2(a) Match'); 
+    setTimeout(() => {
+      updateNode('2', 'success', 'Clause 4.2(a) Match');
       updateEdge('e1-2', false, 'var(--color-semantic-success)');
       updateEdge('e2-5', true, 'var(--color-brand-primary)');
     }, 3500);
 
     // Parallel Branch 2: Fraud
-    setTimeout(() => { 
+    setTimeout(() => {
       updateNode('4', 'success', 'Suspicion 0.18');
       updateEdge('e1-4', false, 'var(--color-semantic-success)');
-      updateEdge('e4-5', true, 'var(--color-brand-primary)'); 
+      updateEdge('e4-5', true, 'var(--color-brand-primary)');
     }, 4500);
 
     // Parallel Branch 3: Liability
-    setTimeout(() => { 
-      updateNode('3', 'success', 'TP 100% Fault'); 
+    setTimeout(() => {
+      updateNode('3', 'success', 'TP 100% Fault');
       updateEdge('e1-3', false, 'var(--color-semantic-success)');
       updateEdge('e3-5', true, 'var(--color-brand-primary)');
     }, 5500);
 
     // Payout Reconciles
     setTimeout(() => {
-      updateEdge('e2-5', false, 'var(--color-semantic-success)'); 
-      updateEdge('e3-5', false, 'var(--color-semantic-success)'); 
+      updateEdge('e2-5', false, 'var(--color-semantic-success)');
+      updateEdge('e3-5', false, 'var(--color-semantic-success)');
       updateEdge('e4-5', false, 'var(--color-semantic-success)');
       updateNode('5', 'running', 'Computing logic...');
     }, 6000);
@@ -194,7 +194,7 @@ export function WorkflowPane() {
         <div>
           <h2 className="text-lg font-semibold text-neutral-text-primary">Live Orchestration</h2>
           <div className="text-sm font-mono text-neutral-text-secondary mt-1 flex items-center">
-            Status: 
+            Status:
             {demoState === 'running' ? (
               <span className="text-brand-primary ml-2 flex items-center"><span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse mr-2"></span>Running LangGraph DAG</span>
             ) : demoState === 'completed' ? (
@@ -204,7 +204,7 @@ export function WorkflowPane() {
             )}
           </div>
         </div>
-        
+
         <div className="pointer-events-auto flex items-center bg-neutral-surface shadow-card border border-neutral-border p-1 rounded-md">
           {demoState !== 'running' ? (
             <Button size="sm" variant="ghost" onClick={runDemo} className="text-brand-primary hover:text-brand-primary hover:bg-brand-primary-light h-8">
@@ -223,6 +223,7 @@ export function WorkflowPane() {
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
+        fitViewOptions={{ padding: 0.5 }}
         className="bg-neutral-background"
         minZoom={0.5}
         maxZoom={1.5}
