@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 # -- Fixed string values ------------------------------------------------------
 
 class CaseStatus(str, Enum):
+    DRAFT = "draft"
     SUBMITTED = "submitted"
     RUNNING = "running"
     AWAITING_APPROVAL = "awaiting_approval"
