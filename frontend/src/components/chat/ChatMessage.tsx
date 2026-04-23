@@ -4,7 +4,7 @@ import { FileText, Image as ImageIcon, Paperclip } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatMessage as ChatMessageType, DocKey, getSlot } from "./types";
 
-const LOGO_SRC = "/Logo__2_-removebg-preview.png";
+const LOGO_SRC = "/logo.png";
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -18,8 +18,8 @@ export function ChatMessageBubble({ message, onUploadForDoc }: ChatMessageProps)
     <div className={cn("flex gap-3", isBot ? "justify-start" : "justify-end")}>
       {/* Bot avatar */}
       {isBot && (
-        <div className="shrink-0 mt-1 h-8 w-8 overflow-hidden rounded-full border border-neutral-border bg-neutral-surface shadow-card">
-          <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-cover" />
+        <div className="shrink-0 mt-1 h-8 w-8">
+          <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-contain" />
         </div>
       )}
 
