@@ -33,12 +33,12 @@ export default function RootLayout({
         <Sidebar />
 
         {/* Main Content Area */}
-        <div className="flex flex-col flex-1 h-full overflow-hidden relative">
+        <div className="flex flex-col flex-1 min-w-0 h-full overflow-hidden relative">
           {/* Top Navigation Bar */}
           <Header />
 
           {/* Page Content */}
-          <main className="flex-1 overflow-hidden h-[calc(100vh-64px)] w-full">
+          <main className="flex-1 min-w-0 overflow-hidden h-[calc(100vh-64px)] w-full">
             {children}
           </main>
         </div>
