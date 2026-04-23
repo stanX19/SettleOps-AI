@@ -1,8 +1,8 @@
-import { 
-  CaseSnapshot, 
-  CaseStatus, 
-  OfficerMessageType, 
-  AgentId 
+import {
+  CaseSnapshot,
+  CaseStatus,
+  OfficerMessageType,
+  AgentId
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -73,15 +73,30 @@ export const api = {
   },
 
   /**
-   * Submit a new case with required documents
+   * Initialize a draft case and get a case ID
    */
-  async createCase(files: {
-    police_report: File;
-    policy_pdf: File;
-    repair_quotation: File;
-    photos: File[];
-    adjuster_report?: File;
-  }): Promise<{ case_id: string }> {
+  async initiateDraftCase(): Promise<{ case_id: string; status: CaseStatus }> {
+    const res = await fetch(`${API_BASE}/api/v1/cases`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    return handleResponse(res);
+  },
+
+  /**
+   * Submit documents for a specific case ID and start the workflow
+   */
+  async submitDocuments(
+    caseId: string,
+    files: {
+      police_report: File;
+      policy_pdf: File;
+      repair_quotation: File;
+      photos: File[];
+      adjuster_report?: File;
+    }
+  ): Promise<{ case_id: string; status: CaseStatus }> {
     const form = new FormData();
     form.append("police_report", files.police_report);
     form.append("policy_pdf", files.policy_pdf);
@@ -92,10 +107,26 @@ export const api = {
     if (files.adjuster_report) {
       form.append("adjuster_report", files.adjuster_report);
     }
-    const res = await fetch(`${API_BASE}/api/v1/cases`, {
+
+    const res = await fetch(`${API_BASE}/api/v1/cases/${caseId}/documents`, {
       method: "POST",
       body: form,
     });
     return handleResponse(res);
+  },
+
+  /**
+   * Legacy wrapper: Submit a new case with required documents.
+   * Now performs draft creation then document submission.
+   */
+  async createCase(files: {
+    police_report: File;
+    policy_pdf: File;
+    repair_quotation: File;
+    photos: File[];
+    adjuster_report?: File;
+  }): Promise<{ case_id: string }> {
+    const draft = await this.initiateDraftCase();
+    return this.submitDocuments(draft.case_id, files);
   },
 };

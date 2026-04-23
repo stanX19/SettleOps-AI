@@ -15,7 +15,7 @@ import { ChatInput } from "@/components/chat/ChatInput";
 
 type SingleFileDocKey = Exclude<DocKey, "photos">;
 const PDF_DOC_ORDER: SingleFileDocKey[] = ["police_report", "policy_pdf", "repair_quotation", "adjuster_report"];
-const LOGO_SRC = "/Logo__2_-removebg-preview.png";
+const LOGO_SRC = "/logo.png";
 
 // -- Bot helpers ----------------------------------------------------------
 
@@ -49,12 +49,12 @@ function WelcomeHero() {
       className="flex w-full flex-col items-center gap-2 text-center"
       style={{ maxWidth: "32rem" }}
     >
-      <div className="h-14 w-14 overflow-hidden rounded-full border border-neutral-border bg-neutral-surface shadow-card">
-        <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-cover" />
+      <div className="h-32 w-32">
+        <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-contain" />
       </div>
-      <h1 className="text-xl font-semibold text-neutral-text-primary">Start a new claim</h1>
-      <p className="w-full text-balance text-sm leading-6 text-neutral-text-secondary">
-        Upload your documents and describe the incident. Our AI will process everything automatically.
+      <h1 className="text-3xl font-semibold text-neutral-text-primary">Start a new claim</h1>
+      <p className="w-full text-balance text-base leading-6 text-neutral-text-secondary">
+        Upload your documents and describe the incident.
       </p>
     </div>
   );
@@ -298,7 +298,7 @@ export default function ChatPage() {
       {hasUserMessages && (
         <div className="flex flex-col h-full bg-neutral-background">
           {/* Scrollable thread */}
-          <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-6">
+          <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
             <div
               className="mx-auto flex w-full min-w-0 flex-col gap-6"
               style={{ maxWidth: "42rem" }}

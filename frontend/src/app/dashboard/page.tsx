@@ -81,6 +81,12 @@ const mockClaims: Claim[] = [
 
 export default function DashboardPage() {
   const router = useRouter();
+  const handleNewClaim = () => {
+    const year = new Date().getFullYear();
+    const randomNum = Math.floor(Math.random() * 90000) + 10000;
+    const newCaseId = `CLM-${year}-${randomNum}`;
+    router.push(`/workflow/${newCaseId}/manage`);
+  };
 
   return (
     <div className="flex flex-col h-full w-full bg-neutral-background p-6 overflow-y-auto custom-scrollbar">
@@ -91,7 +97,11 @@ export default function DashboardPage() {
           <p className="text-neutral-text-secondary text-sm">Monitor and manage all active insurance claims in real-time.</p>
         </div>
 
-        <button className="flex items-center space-x-2 bg-brand-primary hover:bg-brand-primary-hover text-brand-on-primary px-4 py-2 rounded-md font-medium transition-colors shadow-sm">
+        <button
+          id="new-claim-button"
+          onClick={handleNewClaim}
+          className="flex items-center space-x-2 bg-brand-primary hover:bg-brand-primary-hover text-brand-on-primary px-4 py-2 rounded-md font-medium transition-colors shadow-sm"
+        >
           <Plus className="w-4 h-4" />
           <span>New Claim</span>
         </button>
@@ -201,9 +211,9 @@ function StatCard({ label, value, trend, warning, danger, success }: {
       <div className="flex items-baseline justify-between">
         <h3 className="text-2xl font-bold text-neutral-text-primary">{value}</h3>
         <span className={`text-xs font-medium ${danger ? 'text-semantic-danger' :
-            success ? 'text-semantic-success' :
-              warning ? 'text-semantic-warning' :
-                'text-semantic-success'
+          success ? 'text-semantic-success' :
+            warning ? 'text-semantic-warning' :
+              'text-semantic-success'
           }`}>
           {trend}
         </span>
