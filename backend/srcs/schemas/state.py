@@ -23,6 +23,7 @@ class ClaimWorkflowState(TypedDict):
     documents: List[dict]
     
     # Partitioned Blackboard: separate keys prevent shallow-merge data loss in parallel paths
+    case_facts: Annotated[dict[str, Any], dict_merge]
     policy_results: Annotated[dict[str, Any], dict_merge]
     liability_results: Annotated[dict[str, Any], dict_merge]
     damage_results: Annotated[dict[str, Any], dict_merge]
