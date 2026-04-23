@@ -2,9 +2,12 @@ import enum
 import logging
 import traceback
 import asyncio
+import hashlib
 import random
 import json
 import re
+import time
+from collections import OrderedDict
 from typing import Any
 
 from dotenv import load_dotenv
@@ -156,6 +159,8 @@ class RotatingRunnable(BaseChatModel):
 
 class RotatingLLM:
     MAX_RETRIES = 2
+    CACHE_MAX_SIZE = 256
+    CACHE_HIT_DELAY_DIVISOR = 10
 
     _PENALTIES: dict[_Outcome, int] = {
         _Outcome.SUCCESS: 1,
@@ -178,6 +183,8 @@ class RotatingLLM:
         self.cooldown_seconds: int = cooldown_seconds
         self._lock: asyncio.Lock = asyncio.Lock()
         self._call_counts: dict[str, int] = {c.api_key: 0 for c in llm_configs}
+        self._cache_lock: asyncio.Lock = asyncio.Lock()
+        self._response_cache: OrderedDict[str, tuple[AIMessage, LLMConfig, float]] = OrderedDict()
         random.shuffle(self.llm_configs)
 
     @staticmethod
@@ -254,6 +261,70 @@ class RotatingLLM:
             logger.debug("  %s %-7s (..%s) : [ %-6d ]%s",
                          icon, config.provider, config.api_key[-4:], count, status)
 
+    @staticmethod
+    def _json_safe(value: Any) -> Any:
+        """Convert value into a deterministic JSON-serializable structure."""
+        if isinstance(value, BaseMessage):
+            return value.model_dump(mode="json")
+        if isinstance(value, dict):
+            return {
+                str(k): RotatingLLM._json_safe(v)
+                for k, v in sorted(value.items(), key=lambda item: str(item[0]))
+            }
+        if isinstance(value, (list, tuple)):
+            return [RotatingLLM._json_safe(v) for v in value]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            return value
+        return repr(value)
+
+    @staticmethod
+    def _make_cache_key(
+            messages: list[BaseMessage],
+            temperature: float,
+            model: str | None,
+            kwargs: dict[str, Any]
+    ) -> str:
+        """Create a stable cache key for semantically identical LLM calls."""
+        payload = {
+            "messages": RotatingLLM._json_safe(messages),
+            "temperature": temperature,
+            "model": model,
+            "kwargs": RotatingLLM._json_safe(kwargs),
+        }
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    async def _get_cached_response(self, cache_key: str) -> tuple[AIMessage, LLMConfig, float] | None:
+        async with self._cache_lock:
+            cached = self._response_cache.get(cache_key)
+            if cached is None:
+                return None
+            self._response_cache.move_to_end(cache_key)
+            message, config, elapsed_seconds = cached
+            return message.model_copy(deep=True), config, elapsed_seconds
+
+    async def _store_cached_response(
+            self,
+            cache_key: str,
+            message: AIMessage,
+            config: LLMConfig,
+            elapsed_seconds: float
+    ) -> None:
+        async with self._cache_lock:
+            self._response_cache[cache_key] = (
+                message.model_copy(deep=True),
+                config,
+                elapsed_seconds,
+            )
+            self._response_cache.move_to_end(cache_key)
+            while len(self._response_cache) > self.CACHE_MAX_SIZE:
+                self._response_cache.popitem(last=False)
+
+    async def clear_cache(self) -> None:
+        """Clear cached LLM responses."""
+        async with self._cache_lock:
+            self._response_cache.clear()
+
     async def _invoke_core(
             self,
             messages: list[BaseMessage],
@@ -271,6 +342,7 @@ class RotatingLLM:
             invoke_config: LangChain RunnableConfig forwarded to ainvoke
                 (callbacks, tags, metadata, timeouts, etc.).
             **kwargs: Additional LLM parameters.
+                Pass use_cache=False to bypass response caching.
 
         Returns:
             Tuple of (AI response message, config used).
@@ -280,6 +352,17 @@ class RotatingLLM:
         """
         last_exc: Exception | None = None
         self._log_request(messages)
+        use_cache = bool(kwargs.pop("use_cache", True))
+        cache_key: str | None = None
+        if use_cache:
+            cache_key = self._make_cache_key(messages, temperature, model, kwargs)
+            cached = await self._get_cached_response(cache_key)
+            if cached is not None:
+                cached_message, cached_config, cached_elapsed = cached
+                logger.info("[RotatingLLM] CACHE HIT provider=%s model=%s",
+                            cached_config.provider, model or cached_config.model)
+                await asyncio.sleep(cached_elapsed / self.CACHE_HIT_DELAY_DIVISOR)
+                return cached_message, cached_config
 
         for attempt in range(self.MAX_RETRIES + 1):
             config: LLMConfig = await self._pick_config()
@@ -289,9 +372,11 @@ class RotatingLLM:
                         config.provider, attempt + 1, self.MAX_RETRIES + 1, config.api_key[-4:])
 
             try:
+                start_time = time.perf_counter()
                 result: AIMessage = await runnable.ainvoke(
                     messages, config=invoke_config, **kwargs
                 )
+                elapsed_seconds = time.perf_counter() - start_time
                 async with self._lock:
                     self._call_counts[config.api_key] += self._PENALTIES[_Outcome.SUCCESS]
 
@@ -307,6 +392,10 @@ class RotatingLLM:
                         )
                     logger.debug("[RotatingLLM] response: %s", preview)
                 self._log_health()
+                if cache_key is not None:
+                    await self._store_cached_response(
+                        cache_key, result, config, elapsed_seconds
+                    )
                 return result, config
 
             except Exception as exc:

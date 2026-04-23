@@ -35,6 +35,7 @@ def now_iso() -> str:
 # -- Status transitions -------------------------------------------------------
 
 _VALID_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
+    CaseStatus.DRAFT: {CaseStatus.SUBMITTED, CaseStatus.FAILED},
     CaseStatus.SUBMITTED: {CaseStatus.RUNNING, CaseStatus.FAILED},
     CaseStatus.RUNNING: {
         CaseStatus.AWAITING_APPROVAL,
