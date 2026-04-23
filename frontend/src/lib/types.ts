@@ -4,6 +4,7 @@
  */
 
 export enum CaseStatus {
+  DRAFT = "draft",
   SUBMITTED = "submitted",
   RUNNING = "running",
   AWAITING_APPROVAL = "awaiting_approval",
