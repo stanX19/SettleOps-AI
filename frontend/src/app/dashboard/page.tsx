@@ -1,18 +1,19 @@
 "use client";
 
 import React from "react";
-import { 
-  Search, 
-  Filter, 
-  ChevronDown, 
-  MoreHorizontal, 
-  AlertCircle, 
-  CheckCircle2, 
-  Clock, 
+import {
+  Search,
+  Filter,
+  ChevronDown,
+  MoreHorizontal,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
   User,
   ArrowUpRight,
   Plus
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface Claim {
   id: string;
@@ -26,59 +27,61 @@ interface Claim {
 }
 
 const mockClaims: Claim[] = [
-  { 
-    id: "CLM-29384", 
-    claimant: "Alex Rivers", 
-    vehicle: "2022 Tesla Model 3", 
-    policy: "POL-88219", 
-    lossDate: "2h ago", 
-    status: "In Progress", 
-    priority: "High", 
-    assigned: "JD" 
+  {
+    id: "CLM-29384",
+    claimant: "Alex Rivers",
+    vehicle: "2022 Tesla Model 3",
+    policy: "POL-88219",
+    lossDate: "2h ago",
+    status: "In Progress",
+    priority: "High",
+    assigned: "JD"
   },
-  { 
-    id: "CLM-29385", 
-    claimant: "Sarah Chen", 
-    vehicle: "2021 BMW X5", 
-    policy: "POL-77102", 
-    lossDate: "5h ago", 
-    status: "Pending Review", 
-    priority: "Medium", 
-    assigned: "SK" 
+  {
+    id: "CLM-29385",
+    claimant: "Sarah Chen",
+    vehicle: "2021 BMW X5",
+    policy: "POL-77102",
+    lossDate: "5h ago",
+    status: "Pending Review",
+    priority: "Medium",
+    assigned: "SK"
   },
-  { 
-    id: "CLM-29386", 
-    claimant: "Michael Brown", 
-    vehicle: "2023 Ford F-150", 
-    policy: "POL-99384", 
-    lossDate: "1d ago", 
-    status: "Awaiting Docs", 
-    priority: "Low", 
-    assigned: "JD" 
+  {
+    id: "CLM-29386",
+    claimant: "Michael Brown",
+    vehicle: "2023 Ford F-150",
+    policy: "POL-99384",
+    lossDate: "1d ago",
+    status: "Awaiting Docs",
+    priority: "Low",
+    assigned: "JD"
   },
-  { 
-    id: "CLM-29387", 
-    claimant: "Elena Rodriguez", 
-    vehicle: "2020 Honda CR-V", 
-    policy: "POL-11203", 
-    lossDate: "3d ago", 
-    status: "Completed", 
-    priority: "Medium", 
-    assigned: "AR" 
+  {
+    id: "CLM-29387",
+    claimant: "Elena Rodriguez",
+    vehicle: "2020 Honda CR-V",
+    policy: "POL-11203",
+    lossDate: "3d ago",
+    status: "Completed",
+    priority: "Medium",
+    assigned: "AR"
   },
-  { 
-    id: "CLM-29388", 
-    claimant: "David Kim", 
-    vehicle: "2024 Porsche Taycan", 
-    policy: "POL-55421", 
-    lossDate: "45m ago", 
-    status: "Escalated", 
-    priority: "Critical", 
-    assigned: "SK" 
+  {
+    id: "CLM-29388",
+    claimant: "David Kim",
+    vehicle: "2024 Porsche Taycan",
+    policy: "POL-55421",
+    lossDate: "45m ago",
+    status: "Escalated",
+    priority: "Critical",
+    assigned: "SK"
   },
 ];
 
 export default function DashboardPage() {
+  const router = useRouter();
+
   return (
     <div className="flex flex-col h-full w-full bg-neutral-background p-6 overflow-y-auto custom-scrollbar">
       {/* Header Section */}
@@ -87,7 +90,7 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-bold text-neutral-text-primary mb-2">Claims Queue</h1>
           <p className="text-neutral-text-secondary text-sm">Monitor and manage all active insurance claims in real-time.</p>
         </div>
-        
+
         <button className="flex items-center space-x-2 bg-brand-primary hover:bg-brand-primary-hover text-brand-on-primary px-4 py-2 rounded-md font-medium transition-colors shadow-sm">
           <Plus className="w-4 h-4" />
           <span>New Claim</span>
@@ -119,7 +122,11 @@ export default function DashboardPage() {
           </thead>
           <tbody className="divide-y divide-neutral-border">
             {mockClaims.map((claim) => (
-              <tr key={claim.id} className="hover:bg-neutral-background/30 transition-colors group cursor-pointer">
+              <tr
+                key={claim.id}
+                onClick={() => router.push(`/workflow/${claim.id}`)}
+                className="hover:bg-neutral-background/30 transition-colors group cursor-pointer"
+              >
                 <td className="px-4 py-4">
                   <div className="flex items-center space-x-2">
                     <span className="font-mono text-xs font-medium text-brand-primary">{claim.id}</span>
@@ -155,7 +162,10 @@ export default function DashboardPage() {
                   </div>
                 </td>
                 <td className="px-4 py-4 text-right">
-                  <button className="p-1 hover:bg-neutral-background rounded-md transition-colors text-neutral-text-tertiary hover:text-neutral-text-primary">
+                  <button
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-1 hover:bg-neutral-background rounded-md transition-colors text-neutral-text-tertiary hover:text-neutral-text-primary"
+                  >
                     <MoreHorizontal className="w-4 h-4" />
                   </button>
                 </td>
@@ -163,7 +173,7 @@ export default function DashboardPage() {
             ))}
           </tbody>
         </table>
-        
+
         {/* Pagination Mock */}
         <div className="px-4 py-3 bg-neutral-background/20 border-t border-neutral-border flex items-center justify-between">
           <span className="text-xs text-neutral-text-tertiary">Showing 1-5 of 124 claims</span>
@@ -177,9 +187,9 @@ export default function DashboardPage() {
   );
 }
 
-function StatCard({ label, value, trend, warning, danger, success }: { 
-  label: string; 
-  value: string; 
+function StatCard({ label, value, trend, warning, danger, success }: {
+  label: string;
+  value: string;
   trend: string;
   warning?: boolean;
   danger?: boolean;
@@ -190,12 +200,11 @@ function StatCard({ label, value, trend, warning, danger, success }: {
       <p className="text-xs font-medium text-neutral-text-tertiary uppercase tracking-wider mb-1">{label}</p>
       <div className="flex items-baseline justify-between">
         <h3 className="text-2xl font-bold text-neutral-text-primary">{value}</h3>
-        <span className={`text-xs font-medium ${
-          danger ? 'text-semantic-danger' : 
-          success ? 'text-semantic-success' : 
-          warning ? 'text-semantic-warning' : 
-          'text-semantic-success'
-        }`}>
+        <span className={`text-xs font-medium ${danger ? 'text-semantic-danger' :
+            success ? 'text-semantic-success' :
+              warning ? 'text-semantic-warning' :
+                'text-semantic-success'
+          }`}>
           {trend}
         </span>
       </div>
@@ -247,9 +256,9 @@ function PriorityIndicator({ priority }: { priority: Claim["priority"] }) {
     <div className="flex flex-col space-y-1">
       <div className="flex space-x-0.5">
         {[...Array(4)].map((_, i) => (
-          <div 
-            key={i} 
-            className={`w-3 h-1 rounded-full ${i < dots[priority] ? color[priority] : 'bg-neutral-border'}`} 
+          <div
+            key={i}
+            className={`w-3 h-1 rounded-full ${i < dots[priority] ? color[priority] : 'bg-neutral-border'}`}
           />
         ))}
       </div>
