@@ -129,6 +129,7 @@ class CaseState:
     case_facts: Optional[dict[str, Any]] = None
     policy_verdict: Optional[dict[str, Any]] = None
     liability_verdict: Optional[dict[str, Any]] = None
+    damage_result: Optional[dict[str, Any]] = None
     fraud_assessment: Optional[dict[str, Any]] = None
     payout_recommendation: Optional[dict[str, Any]] = None
     audit_result: Optional[dict[str, Any]] = None
@@ -164,6 +165,7 @@ class CaseState:
             BlackboardSection.CASE_FACTS: self.case_facts,
             BlackboardSection.POLICY_VERDICT: self.policy_verdict,
             BlackboardSection.LIABILITY_VERDICT: self.liability_verdict,
+            BlackboardSection.DAMAGE_RESULT: self.damage_result,
             BlackboardSection.FRAUD_ASSESSMENT: self.fraud_assessment,
             BlackboardSection.PAYOUT_RECOMMENDATION: self.payout_recommendation,
             BlackboardSection.AUDIT_RESULT: self.audit_result,
@@ -178,6 +180,8 @@ class CaseState:
             self.policy_verdict = data
         elif section is BlackboardSection.LIABILITY_VERDICT:
             self.liability_verdict = data
+        elif section is BlackboardSection.DAMAGE_RESULT:
+            self.damage_result = data
         elif section is BlackboardSection.FRAUD_ASSESSMENT:
             self.fraud_assessment = data
         elif section is BlackboardSection.PAYOUT_RECOMMENDATION:

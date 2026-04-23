@@ -28,14 +28,29 @@ def dict_merge(x: dict[str, Any], y: dict[str, Any]) -> dict[str, Any]:
         return x
     return {**x, **y}
 
+def first_value(x: Any, y: Any) -> Any:
+    """Reducer that keeps the first value (useful for immutable fields like case_id)."""
+    return x if x is not None else y
+
+class ClusterState(TypedDict):
+    """Isolated state for a single parallel analysis cluster."""
+    case_id: str
+    documents: List[dict]
+    case_facts: dict[str, Any]
+    active_challenge: Optional[ChallengeState]
+    
+    # The result key will be mapped back to the specific global section (e.g., policy_results)
+    results: Annotated[dict[str, Any], dict_merge]
+    trace_log: Annotated[List[str], operator.add]
+
 class ClaimWorkflowState(TypedDict):
     """Global state for the Auditor-Orchestrated Insurance Claims Workflow."""
     
     # Base Data
-    case_id: str
+    case_id: Annotated[str, first_value]
     documents: List[dict]
     
-    # Partitioned Blackboard: separate keys prevent shallow-merge data loss in parallel paths
+    # Partitioned Blackboard
     case_facts: Annotated[dict[str, Any], dict_merge]
     policy_results: Annotated[dict[str, Any], dict_merge]
     liability_results: Annotated[dict[str, Any], dict_merge]
@@ -43,12 +58,12 @@ class ClaimWorkflowState(TypedDict):
     fraud_results: Annotated[dict[str, Any], dict_merge]
     payout_results: Annotated[dict[str, Any], dict_merge]
     
-    # Trace Log: Every agent MUST append their reasoning here
+    # Trace Log
     trace_log: Annotated[List[str], operator.add]
     
     # Routing & Loop Controls
     active_challenge: Optional[ChallengeState]
-    status: str  # e.g., "ingesting", "analyzing", "awaiting_approval", "completed"
+    status: Annotated[str, first_value] # Use reducer to prevent collision on status
     
     # Metadata
     current_agent: Optional[str]

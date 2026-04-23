@@ -65,6 +65,8 @@ from srcs.services.case_store import (
     transition_status,
 )
 from srcs.services.sse_service import SseService
+from srcs.schemas.state import ClaimWorkflowState
+from srcs.services.workflow_engine import run_workflow_with_sse
 
 
 # -- Error helper -------------------------------------------------------------
@@ -497,8 +499,40 @@ async def _run_agent_stub(
     await emit_agent_status(state, agent, AgentStatus.COMPLETED)
 
 
+# -- Workflow State Mapper ---------------------------------------------------
+
+def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
+    """Maps internal CaseState to LangGraph ClaimWorkflowState."""
+    docs = []
+    if case.police_report_path:
+        docs.append({"filename": os.path.basename(case.police_report_path), "doc_type": "police_report"})
+    if case.policy_pdf_path:
+        docs.append({"filename": os.path.basename(case.policy_pdf_path), "doc_type": "policy_covernote"})
+    if case.repair_quotation_path:
+        docs.append({"filename": os.path.basename(case.repair_quotation_path), "doc_type": "workshop_quote"})
+    
+    for p in case.photo_paths:
+        docs.append({"filename": os.path.basename(p), "doc_type": "photo"})
+
+    return ClaimWorkflowState(
+        case_id=case.case_id,
+        documents=docs,
+        case_facts=case.case_facts or {},
+        policy_results=case.policy_verdict or {},
+        liability_results=case.liability_verdict or {},
+        damage_results=case.damage_result or {},
+        fraud_results=case.fraud_assessment or {},
+        payout_results=case.payout_recommendation or {},
+        trace_log=[],
+        active_challenge=None,
+        status=case.status.value,
+        current_agent=case.current_agent,
+        latest_user_message=None
+    )
+
+
 async def run_pipeline(case_id: str) -> None:
-    """Background entry point for the initial pipeline run."""
+    """Background entry point for the agentic workflow."""
     state = CaseStore.get(case_id)
     if state is None:
         return
@@ -531,30 +565,20 @@ async def run_pipeline(case_id: str) -> None:
     )
 
     try:
-        await _run_agent_stub(state, AgentId.INTAKE, BlackboardSection.CASE_FACTS)
+        # Assemble initial state for LangGraph
+        initial_workflow_state = _to_workflow_state(state)
+        
+        # Execute the Agentic Graph
+        await run_workflow_with_sse(case_id, initial_workflow_state)
 
-        # Fan out policy/liability/fraud
-        await asyncio.gather(
-            _run_agent_stub(state, AgentId.POLICY, BlackboardSection.POLICY_VERDICT),
-            _run_agent_stub(
-                state, AgentId.LIABILITY, BlackboardSection.LIABILITY_VERDICT
-            ),
-            _run_agent_stub(
-                state, AgentId.FRAUD, BlackboardSection.FRAUD_ASSESSMENT
-            ),
-        )
-
-        await _run_agent_stub(
-            state, AgentId.PAYOUT, BlackboardSection.PAYOUT_RECOMMENDATION
-        )
-        await _run_agent_stub(
-            state, AgentId.AUDITOR, BlackboardSection.AUDIT_RESULT
-        )
-
+        # After graph completion/interrupt, sync back to CaseState if needed
+        # (SSE already handled updates, but we need final artifacts)
         await generate_artifacts(state)
 
         async with CaseStore.lock():
-            transition_status(state, CaseStatus.AWAITING_APPROVAL)
+            # If the graph ended normally, it should be awaiting approval
+            if state.status == CaseStatus.RUNNING:
+                transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
 
         await SseService.emit(
@@ -562,7 +586,7 @@ async def run_pipeline(case_id: str) -> None:
             SseWorkflowCompletedData(
                 case_id=case_id,
                 timestamp=now_iso(),
-                status=CaseStatus.AWAITING_APPROVAL,
+                status=state.status,
                 pdf_ready=True,
                 auditor_loop_count=state.auditor_loop_count,
                 officer_challenge_count=state.officer_challenge_count,
@@ -606,12 +630,9 @@ _RERUN_CHAINS: dict[AgentId, list[tuple[AgentId, BlackboardSection]]] = {
 async def run_partial_pipeline(
     case_id: str, target_agent: AgentId, message_id: str, officer_message: str
 ) -> None:
+    """Handles surgical reruns triggered by human feedback."""
     state = CaseStore.get(case_id)
     if state is None:
-        return
-
-    chain = _RERUN_CHAINS.get(target_agent)
-    if chain is None:
         return
 
     await SseService.emit(
@@ -624,28 +645,21 @@ async def run_partial_pipeline(
             message_id=message_id,
         ),
     )
-    await emit_message_to_agent(
-        state,
-        from_agent=AgentId.AUDITOR,
-        to_agent=target_agent,
-        message=(
-            f"Officer challenged the {target_agent.value} decision. "
-            "Re-evaluate and propagate changes downstream."
-        ),
-        reason=officer_message,
-        trigger=AuditorTrigger.OFFICER_MESSAGE,
-        loop_count=0,
-        message_id=message_id,
-    )
-
+    
+    # Map the human feedback into the active_challenge for the graph
+    workflow_state = _to_workflow_state(state)
+    workflow_state["latest_user_message"] = officer_message
+    
     try:
-        for agent, section in chain:
-            await _run_agent_stub(state, agent, section)
+        # Re-run the graph with the new challenge
+        # The refiner node will translate the latest_user_message into a ChallengeState
+        await run_workflow_with_sse(case_id, workflow_state)
 
         await generate_artifacts(state)
 
         async with CaseStore.lock():
-            transition_status(state, CaseStatus.AWAITING_APPROVAL)
+            if state.status == CaseStatus.RUNNING:
+                transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
 
         await SseService.emit(
@@ -653,7 +667,7 @@ async def run_partial_pipeline(
             SseWorkflowCompletedData(
                 case_id=case_id,
                 timestamp=now_iso(),
-                status=CaseStatus.AWAITING_APPROVAL,
+                status=state.status,
                 pdf_ready=True,
                 auditor_loop_count=state.auditor_loop_count,
                 officer_challenge_count=state.officer_challenge_count,
