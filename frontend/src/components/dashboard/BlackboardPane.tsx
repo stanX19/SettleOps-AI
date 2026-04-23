@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 import { useCaseStore } from "@/stores/case-store"
 import { BlackboardSection } from "@/lib/types"
+import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer"
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -238,17 +239,19 @@ export function BlackboardPane() {
                   <Bot className="w-4 h-4 text-black" />
                 </div>
                 <div className="bg-neutral-surface border border-neutral-border p-3 rounded-tr-xl rounded-br-xl rounded-bl-xl max-w-[85%] shadow-sm">
-                  <p className="text-xs text-neutral-text-primary leading-relaxed">
-                    Hello! I am your AI Claims Strategist. How can I help you optimize this settlement workflow today?
-                  </p>
+                  <MarkdownRenderer
+                    content="Hello! I am your AI Claims Strategist. How can I help you optimize this settlement workflow **today**?"
+                    className="text-xs text-neutral-text-primary"
+                  />
                 </div>
               </div>
 
               <div className="flex items-start space-x-3 justify-end">
                 <div className="bg-brand-primary/10 p-3 rounded-tl-xl rounded-bl-xl rounded-br-xl max-w-[85%] shadow-sm">
-                  <p className="text-xs text-neutral-text-primary leading-relaxed">
-                    Can you check if there are any conflicting statements between the claimant and the police report?
-                  </p>
+                  <MarkdownRenderer
+                    content="Can you check if there are any conflicting statements between the claimant and the police report?"
+                    className="text-xs text-neutral-text-primary prose-p:text-neutral-text-primary"
+                  />
                 </div>
                 <div className="w-8 h-8 rounded-full bg-neutral-surface border border-neutral-border flex items-center justify-center flex-shrink-0">
                   <User className="w-4 h-4 text-neutral-text-primary" />
@@ -260,9 +263,10 @@ export function BlackboardPane() {
                   <Bot className="w-4 h-4 text-black" />
                 </div>
                 <div className="bg-neutral-surface border border-neutral-border p-3 rounded-tr-xl rounded-br-xl rounded-bl-xl max-w-[85%] shadow-sm">
-                  <p className="text-xs text-neutral-text-primary leading-relaxed">
-                    Based on my analysis of the uploaded evidence, the claimant mentions the intersection was clear, but the police report (Doc Ref: PR-923) indicates a traffic signal malfunction reported 10 minutes prior. This significantly impacts the liability split.
-                  </p>
+                  <MarkdownRenderer
+                    content="Based on my analysis of the uploaded evidence, the claimant mentions the intersection was clear, but the police report (Doc Ref: PR-923) indicates a traffic signal malfunction reported 10 minutes prior. This significantly impacts the liability split."
+                    className="text-xs text-neutral-text-primary"
+                  />
                 </div>
               </div>
             </div>

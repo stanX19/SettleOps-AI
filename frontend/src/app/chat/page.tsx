@@ -298,7 +298,7 @@ export default function ChatPage() {
       {hasUserMessages && (
         <div className="flex flex-col h-full bg-neutral-background">
           {/* Scrollable thread */}
-          <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-6">
+          <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
             <div
               className="mx-auto flex w-full min-w-0 flex-col gap-6"
               style={{ maxWidth: "42rem" }}

@@ -3,6 +3,7 @@
 import { FileText, Image as ImageIcon, Paperclip } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatMessage as ChatMessageType, DocKey, getSlot } from "./types";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 const LOGO_SRC = "/logo.png";
 
@@ -67,7 +68,10 @@ export function ChatMessageBubble({ message, onUploadForDoc }: ChatMessageProps)
               : "bg-brand-primary text-brand-on-primary rounded-tr-sm"
           )}
         >
-          <p className="whitespace-pre-wrap">{message.text}</p>
+          <MarkdownRenderer 
+            content={message.text} 
+            className={cn(isBot ? "text-neutral-text-primary" : "text-brand-on-primary prose-strong:text-brand-on-primary prose-p:text-brand-on-primary")} 
+          />
         </div>
 
         {/* Bot inline upload prompts for missing docs */}
