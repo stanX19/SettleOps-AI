@@ -12,7 +12,7 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
         sub_tasks: A list of functions (nodes) to execute in parallel.
         
     Returns:
-        A compiled LangGraph StateGraph.
+        A LangGraph StateGraph builder (uncompiled).
     """
     builder = StateGraph(ClaimWorkflowState)
 

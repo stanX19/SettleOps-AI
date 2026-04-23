@@ -10,6 +10,10 @@
     - Used the `Send` API to handle dynamic/parallel fan-out of sub-tasks.
     - Integrated a `reflection_wrapper` that automatically checks for an `active_challenge` matching the `cluster_id` and injects relevant feedback into the tasks.
     - Fixed a state duplication issue by ensuring the entry node (`fan_out_node`) returns an empty update instead of the full state.
+- **PR Refinements**: 
+    - Corrected `cluster_factory.py` docstrings to reflect that it returns a `StateGraph` builder.
+    - Aligned all PMContext documentation with **Python 3.12** to match the actual runtime environment.
+    - Updated the `AgenticWorkflowPlan.md` with the missing Phase 3 description and corrected the Payout node example to use partitioned state keys.
 
 ### Roadblocks & Resolutions
 - **Environment**: The `.venv` was initially empty. I had to run `pip install -r requirements.txt` to enable LangGraph functionality.

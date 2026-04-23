@@ -5,9 +5,10 @@ This document provides a detailed step-by-step implementation guide for the Agen
 ## 1. System Architecture Overview
 The system follows a **4-Phase Interactive Map-Reduce Architecture** designed for high-precision human-in-the-loop (HITL) refinement.
 
-- **Phase 1 (Ingestion):** Extraction, categorization, and deterministic validation gate.
-- **Phase 2 (Analysis):** Parallel **Partitioned Clusters** (Policy, Liability, Damage, Fraud) with built-in **Reflection** capabilities.
-- **Phase 4 (Refinement):** A continuous loop involving an **AI Auditor** and a **Human Decision Gate** (via Chat).
+- Phase 1 (Ingestion): Extraction, categorization, and deterministic validation gate.
+- Phase 2 (Analysis): Parallel Partitioned Clusters (Policy, Liability, Damage, Fraud) with built-in Reflection capabilities.
+- Phase 3 (Payout/Auditor): Consolidation through a Payout Engine followed by an AI Auditor review.
+- Phase 4 (Refinement): A continuous loop involving a Human Decision Gate (via Chat).
 
 ### Core Philosophy: "The Evergreen Graph"
 The graph does not automatically end. It pauses at a **Decision Gate** and waits for a human signature. If challenged, it performs a "Surgical Loop" back to the relevant cluster.
@@ -49,9 +50,9 @@ graph TD
 
 ## 2. Environment & Dependencies
 **Requirements:**
-- Python 3.14.3
-- langchain-core==1.2.12
-- langgraph==1.0.8
+- Python 3.12 (See backend/requirements.txt for source of truth)
+- langchain-core
+- langgraph
 
 ---
 
@@ -170,13 +171,14 @@ File: `project/backend/srcs/agents/payout.py`
 **CRITICAL:** This must NOT be an LLM node.
 ```python
 def payout_node(state: ClaimWorkflowState):
-    facts = state["blackboard"].get("CaseFacts")
-    liability = state["blackboard"].get("LiabilityVerdict")
-    damage = state["blackboard"].get("DamageRecommendation")
+    case_facts = state.get("case_facts", {})
+    policy = state.get("policy_results", {})
+    liability = state.get("liability_results", {})
+    damage = state.get("damage_results", {})
     
     # Calculation: (Verified_Total * Liability_%) - Excess - Depreciation
-    # Apply policy caps from PolicyVerdict
-    return {"blackboard": {"PayoutRecommendation": result}}
+    # Apply policy caps and limits from policy_results
+    return {"payout_results": result}
 ```
 
 ---
