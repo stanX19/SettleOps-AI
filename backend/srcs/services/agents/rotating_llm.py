@@ -1,4 +1,5 @@
 import enum
+import logging
 import traceback
 import asyncio
 import random
@@ -16,7 +17,7 @@ from langchain_core.runnables import Runnable
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from srcs.config import get_settings
 from srcs.logger import logger
@@ -77,11 +78,14 @@ class LLMConfig:
         """
         use_model: str = model if model else self.model
         if self.provider == "ilmu":
+            # max_retries=0: rotation layer owns retries + backoff.
+            # Letting ChatOpenAI also retry would amplify 429s.
             return ChatOpenAI(
                 model=use_model,
                 base_url=self.base_url,
                 api_key=self.api_key,
                 temperature=temperature,
+                max_retries=0,
                 **kwargs
             )
         raise ValueError(f"Unknown provider: {self.provider}")
@@ -102,7 +106,7 @@ class RotatingRunnable(BaseChatModel):
     rotating_llm: Any
     temperature: float = 0.7
     model: str | None = None
-    extra_kwargs: dict[str, Any] = {}
+    extra_kwargs: dict[str, Any] = Field(default_factory=dict)
 
     @property
     def _llm_type(self) -> str:
@@ -115,7 +119,9 @@ class RotatingRunnable(BaseChatModel):
             run_manager: CallbackManagerForLLMRun | None = None,
             **kwargs: Any
     ) -> ChatResult:
-        raise NotImplementedError("Use async interface (_agenerate)")
+        raise NotImplementedError(
+            "RotatingRunnable is async-only; use ainvoke()/astream() instead of invoke()."
+        )
 
     async def _agenerate(
             self,
@@ -128,8 +134,16 @@ class RotatingRunnable(BaseChatModel):
         if stop:
             merged["stop"] = stop
 
+        # Extract LangChain RunnableConfig (if caller forwarded it) so we can
+        # thread callbacks/tags/metadata to the inner ainvoke.
+        invoke_config: dict[str, Any] | None = merged.pop("config", None)
+
         result, _ = await self.rotating_llm._invoke_core(
-            messages, self.temperature, self.model, **merged
+            messages,
+            self.temperature,
+            self.model,
+            invoke_config=invoke_config,
+            **merged,
         )
         return ChatResult(generations=[ChatGeneration(message=result)])
 
@@ -225,7 +239,9 @@ class RotatingLLM:
         threshold_error: int = RotatingLLM._PENALTIES[_Outcome.ERROR]
         threshold_limit: int = int(RotatingLLM._PENALTIES[_Outcome.RATE_LIMIT] * 0.8)
 
-        logger.info("[ROTATING_LLM] USAGE SUMMARY:")
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+        logger.debug("[ROTATING_LLM] USAGE SUMMARY:")
         for config in self.llm_configs:
             count: int = self._call_counts[config.api_key]
             diff: int = count - min_count
@@ -235,14 +251,15 @@ class RotatingLLM:
             icon: str = "[X]" if is_penalized else "[!]" if is_limited else "[OK]"
             status: str = " (PENALIZED)" if is_penalized else ""
 
-            logger.info("  %s %-7s (..%s) : [ %-6d ]%s",
-                        icon, config.provider, config.api_key[-4:], count, status)
+            logger.debug("  %s %-7s (..%s) : [ %-6d ]%s",
+                         icon, config.provider, config.api_key[-4:], count, status)
 
     async def _invoke_core(
             self,
             messages: list[BaseMessage],
             temperature: float,
             model: str | None,
+            invoke_config: dict[str, Any] | None = None,
             **kwargs: Any
     ) -> tuple[AIMessage, LLMConfig]:
         """Single chokepoint for picking key, calling LLM, and recording outcome.
@@ -251,6 +268,8 @@ class RotatingLLM:
             messages: List of messages to send.
             temperature: Sampling temperature.
             model: Model name override.
+            invoke_config: LangChain RunnableConfig forwarded to ainvoke
+                (callbacks, tags, metadata, timeouts, etc.).
             **kwargs: Additional LLM parameters.
 
         Returns:
@@ -270,11 +289,23 @@ class RotatingLLM:
                         config.provider, attempt + 1, self.MAX_RETRIES + 1, config.api_key[-4:])
 
             try:
-                result: AIMessage = await runnable.ainvoke(messages, **kwargs)
+                result: AIMessage = await runnable.ainvoke(
+                    messages, config=invoke_config, **kwargs
+                )
                 async with self._lock:
                     self._call_counts[config.api_key] += self._PENALTIES[_Outcome.SUCCESS]
 
-                logger.info("[RotatingLLM] OK key=...%s\n%s", config.api_key[-4:], result.content)
+                logger.info("[RotatingLLM] OK provider=%s key=...%s",
+                            config.provider, config.api_key[-4:])
+                if logger.isEnabledFor(logging.DEBUG):
+                    preview: str = self._extract_text(result.content)
+                    if len(preview) > 500:
+                        preview = (
+                            preview[:250]
+                            + f"\n... [TRUNCATED {len(preview) - 500} chars] ...\n"
+                            + preview[-250:]
+                        )
+                    logger.debug("[RotatingLLM] response: %s", preview)
                 self._log_health()
                 return result, config
 
@@ -289,6 +320,14 @@ class RotatingLLM:
                                outcome.value, type(exc).__name__, config.api_key[-4:])
                 self._log_health()
                 last_exc = exc
+
+                # Exponential backoff on rate limit so we don't hammer the
+                # provider with a single-key pool. 1s, 2s, 4s, ...
+                if (
+                    outcome is _Outcome.RATE_LIMIT
+                    and attempt < self.MAX_RETRIES
+                ):
+                    await asyncio.sleep(2 ** attempt)
 
         raise last_exc
 
@@ -313,8 +352,16 @@ class RotatingLLM:
 
         Returns:
             The LLM configuration with the lowest count.
+
+        Raises:
+            RuntimeError: If no LLM configurations have been loaded.
         """
         async with self._lock:
+            if not self.llm_configs:
+                raise RuntimeError(
+                    "No LLM configurations loaded — "
+                    "check ILMU_API_KEY in backend/.env"
+                )
             return min(self.llm_configs, key=lambda c: self._call_counts[c.api_key])
 
     @staticmethod
@@ -472,7 +519,7 @@ class RotatingLLM:
 
         try:
             result, used_config = await self._invoke_core(
-                msgs, temperature, model, **llm_kwargs
+                msgs, temperature, model, invoke_config=config, **llm_kwargs
             )
             text: str = self._extract_text(result.content)
             return LLMResponse(text=text, model=str(used_config), status="ok")
