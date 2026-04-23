@@ -7,6 +7,8 @@ import { Activity, Briefcase, BarChart2, MessageSquare, Bell } from "lucide-reac
 import { ThemeToggle } from "./ThemeToggle";
 import { useCaseStore } from "@/stores/case-store";
 
+const LOGO_SRC = "/Logo__2_-removebg-preview.png";
+
 export function Sidebar() {
   const pathname = usePathname();
 
@@ -15,8 +17,8 @@ export function Sidebar() {
   return (
     <aside className="w-[60px] h-full bg-neutral-surface border-r border-neutral-border flex flex-col items-center py-4 flex-shrink-0 z-20">
       <Link href="/dashboard">
-        <div className="w-10 h-10 bg-brand-primary rounded-md flex items-center justify-center font-bold text-brand-on-primary mb-8 shadow-sm cursor-pointer text-sm">
-          S.AI
+        <div className="w-10 h-10 rounded-md flex items-center justify-center mb-8 shadow-sm cursor-pointer overflow-hidden bg-neutral-background border border-neutral-border">
+          <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-cover" />
         </div>
       </Link>
 
@@ -65,7 +67,7 @@ function NavItem({
   href,
   active = false
 }: {
-  icon: React.ReactNode,
+  icon: React.ReactElement<{ className?: string }>,
   label: string,
   href: string,
   active?: boolean
@@ -74,7 +76,7 @@ function NavItem({
     <Link href={href} className="w-full">
       <div className={`w-full flex justify-center group relative cursor-pointer py-3 transition-all duration-200 ${active ? 'border-l-3 border-brand-primary bg-brand-primary/5' : 'border-l-3 border-transparent'}`}>
         <div className={`${active ? 'text-brand-primary' : 'text-neutral-text-secondary group-hover:text-neutral-text-primary'} transition-colors`}>
-          {React.cloneElement(icon as React.ReactElement<any>, { className: "w-6 h-6" })}
+          {React.cloneElement(icon, { className: "w-6 h-6" })}
         </div>
 
         {/* Tooltip */}
