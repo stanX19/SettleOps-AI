@@ -15,7 +15,7 @@ interface PageProps {
 
 export default function WorkflowCasePage({ params }: PageProps) {
   const { caseId } = use(params);
-  const [blackboardWidth, setBlackboardWidth] = useState(290);
+  const [blackboardWidth, setBlackboardWidth] = useState(350);
   const [isResizing, setIsResizing] = useState(false);
   const setCase = useCaseStore(state => state.setCase);
   const resetCase = useCaseStore(state => state.reset);
@@ -56,7 +56,7 @@ export default function WorkflowCasePage({ params }: PageProps) {
     (e: MouseEvent) => {
       if (isResizing) {
         const newWidth = window.innerWidth - e.clientX;
-        if (newWidth >= 290 && newWidth <= 600) {
+        if (newWidth >= 320 && newWidth <= 600) {
           setBlackboardWidth(newWidth);
         }
       }
@@ -77,7 +77,7 @@ export default function WorkflowCasePage({ params }: PageProps) {
     <div className="flex flex-col h-full w-full bg-neutral-background select-none">
       <div className="flex flex-1 overflow-hidden">
         {/* Left Pane: Inputs */}
-        <div className="w-[290px] min-w-[290px] h-full border-r border-neutral-border bg-neutral-surface overflow-hidden">
+        <div className="w-[320px] min-w-[320px] h-full border-r border-neutral-border bg-neutral-surface overflow-hidden">
           <InputsPane />
         </div>
 
