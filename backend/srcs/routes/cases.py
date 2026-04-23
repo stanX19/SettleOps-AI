@@ -147,18 +147,13 @@ def _require_mime(upload: UploadFile, allowed: set[str]) -> None:
         )
 
 
-# -- Create case --------------------------------------------------------------
-
-@router.post("", response_model=CaseCreateResponse, status_code=201)
-async def create_case(
-    background: BackgroundTasks,
-    police_report: UploadFile = File(...),
-    policy_pdf: UploadFile = File(...),
-    repair_quotation: UploadFile = File(...),
-    photos: list[UploadFile] = File(...),
-    adjuster_report: Optional[UploadFile] = File(None),
-    chat_transcript: Optional[str] = Form(None),
-) -> CaseCreateResponse:
+def _validate_case_uploads(
+    police_report: UploadFile,
+    policy_pdf: UploadFile,
+    repair_quotation: UploadFile,
+    photos: list[UploadFile],
+    adjuster_report: Optional[UploadFile],
+) -> None:
     if not photos:
         raise api_error(
             400, ErrorCode.MISSING_REQUIRED_FILES, "At least one photo is required"
@@ -172,7 +167,16 @@ async def create_case(
     if adjuster_report is not None:
         _require_mime(adjuster_report, _PDF_MIMES)
 
-    case_id = CaseStore.new_case_id()
+
+async def _save_case_uploads(
+    case_id: str,
+    police_report: UploadFile,
+    policy_pdf: UploadFile,
+    repair_quotation: UploadFile,
+    photos: list[UploadFile],
+    adjuster_report: Optional[UploadFile],
+    chat_transcript: Optional[str],
+) -> tuple[str, str, str, Optional[str], list[str], Optional[str]]:
     upload_dir = case_upload_dir(case_id)
 
     try:
@@ -209,22 +213,94 @@ async def create_case(
             await asyncio.to_thread(_write_text_file, transcript_path, chat_transcript)
     except BaseException:
         # Any upload failure wipes the per-case directory so no orphaned
-        # files linger on disk and no half-initialised case enters the store.
+        # files linger on disk.
         shutil.rmtree(upload_dir, ignore_errors=True)
         raise
 
+    return (
+        police_path,
+        policy_path,
+        quote_path,
+        adjuster_path,
+        photo_paths,
+        transcript_path,
+    )
+
+
+# -- Create case --------------------------------------------------------------
+
+@router.post("", response_model=CaseCreateResponse, status_code=201)
+async def create_case_draft() -> CaseCreateResponse:
+    case_id = CaseStore.new_case_id()
     state = CaseState(
         case_id=case_id,
         submitted_at=now_iso(),
-        status=CaseStatus.SUBMITTED,
-        police_report_path=police_path,
-        policy_pdf_path=policy_path,
-        repair_quotation_path=quote_path,
-        adjuster_report_path=adjuster_path,
-        photo_paths=photo_paths,
-        chat_transcript=transcript_path,
+        status=CaseStatus.DRAFT,
     )
     CaseStore.add(state)
+    return CaseCreateResponse(case_id=case_id, status=state.status)
+
+
+@router.post("/{case_id}/documents", response_model=CaseCreateResponse)
+async def submit_case_documents(
+    case_id: str,
+    background: BackgroundTasks,
+    police_report: UploadFile = File(...),
+    policy_pdf: UploadFile = File(...),
+    repair_quotation: UploadFile = File(...),
+    photos: list[UploadFile] = File(...),
+    adjuster_report: Optional[UploadFile] = File(None),
+    chat_transcript: Optional[str] = Form(None),
+) -> CaseCreateResponse:
+    state = require_case(case_id)
+    if state.status != CaseStatus.DRAFT:
+        raise api_error(
+            409,
+            ErrorCode.INVALID_STATUS,
+            "Documents can only be submitted for a draft case",
+        )
+
+    _validate_case_uploads(
+        police_report,
+        policy_pdf,
+        repair_quotation,
+        photos,
+        adjuster_report,
+    )
+    (
+        police_path,
+        policy_path,
+        quote_path,
+        adjuster_path,
+        photo_paths,
+        transcript_path,
+    ) = await _save_case_uploads(
+        case_id,
+        police_report,
+        policy_pdf,
+        repair_quotation,
+        photos,
+        adjuster_report,
+        chat_transcript,
+    )
+
+    async with CaseStore.lock():
+        state = require_case(case_id)
+        if state.status != CaseStatus.DRAFT:
+            shutil.rmtree(case_upload_dir(case_id), ignore_errors=True)
+            raise api_error(
+                409,
+                ErrorCode.INVALID_STATUS,
+                "Documents can only be submitted for a draft case",
+            )
+
+        state.police_report_path = police_path
+        state.policy_pdf_path = policy_path
+        state.repair_quotation_path = quote_path
+        state.adjuster_report_path = adjuster_path
+        state.photo_paths = photo_paths
+        state.chat_transcript = transcript_path
+        transition_status(state, CaseStatus.SUBMITTED)
 
     background.add_task(run_pipeline, case_id)
 
@@ -243,6 +319,7 @@ async def list_cases() -> list[CaseListItem]:
             current_agent=s.current_agent,
         )
         for s in CaseStore.all()
+        if s.status != CaseStatus.DRAFT
     ]
 
 
