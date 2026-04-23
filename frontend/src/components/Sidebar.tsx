@@ -5,15 +5,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Activity, Briefcase, BarChart2, MessageSquare, Bell } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
+import { useCaseStore } from "@/stores/case-store";
 
 export function Sidebar() {
   const pathname = usePathname();
 
+  const caseId = useCaseStore(state => state.case_id);
+
   return (
     <aside className="w-[60px] h-full bg-neutral-surface border-r border-neutral-border flex flex-col items-center py-4 flex-shrink-0 z-20">
-      <Link href="/">
-        <div className="w-10 h-10 bg-brand-primary rounded-md flex items-center justify-center font-bold text-brand-on-primary mb-8 shadow-sm cursor-pointer">
-          YT
+      <Link href="/dashboard">
+        <div className="w-10 h-10 bg-brand-primary rounded-md flex items-center justify-center font-bold text-brand-on-primary mb-8 shadow-sm cursor-pointer text-sm">
+          S.AI
         </div>
       </Link>
 
@@ -33,8 +36,8 @@ export function Sidebar() {
         <NavItem
           icon={<Activity />}
           label="Live workflow"
-          href="/"
-          active={pathname === "/"}
+          href={caseId ? `/workflow/${caseId}` : "/workflow/CLM-2026-00001"}
+          active={pathname.startsWith("/workflow")}
         />
         <NavItem
           icon={<Bell />}

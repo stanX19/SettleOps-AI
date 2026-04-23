@@ -32,7 +32,7 @@ function CollapsibleSection({ title, icon, count, children, defaultOpen = true }
 
 export function InputsPane() {
   return (
-    <div className="p-4 h-full overflow-y-auto bg-neutral-background custom-scrollbar">
+    <div className="pl-6 pr-5 py-4 h-full overflow-y-auto bg-neutral-background custom-scrollbar">
       <div className="flex flex-col mb-6 space-y-1">
         <h2 className="text-lg font-semibold text-neutral-text-primary flex items-center">
           Case Assets
