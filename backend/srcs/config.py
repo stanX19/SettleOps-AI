@@ -14,21 +14,15 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = os.path.join(ROOT, "uploads")
     REPORTS_DIR: str = os.path.join(ROOT, "generated", "reports")
     
-    # Gemini Configuration
-    GEMINI_API_KEY: str = ""
-    GEMINI_API_KEY_LIST: list[str] = []
-    GEMINI_MODEL_NAME: str = "gemini-2.5-flash"
-    STRONG_GEMINI_MODEL_NAME: str = "gemini-2.5-flash"
+    # Ilmu Configuration (OpenAI-compatible)
+    ILMU_API_KEY: str = ""
+    ILMU_BASE_URL: str = "https://api.ilmu.ai/v1"
+    ILMU_MODEL_NAME: str = "ilmu-glm-5.1"
 
     # ElevenLabs (Speech) Configuration
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_MODEL: str = "eleven_multilingual_v2"
     ELEVENLABS_DEFAULT_VOICE_ID: str = "PoHUWWWMHFrA8z7Q88pu"
-
-    # MiniMax Configuration
-    MINIMAX_API_KEY: str = ""
-    MINIMAX_TEXT_MODEL: str = "MiniMax-M2.5"
-    MINIMAX_TTS_MODEL: str = "speech-2.8-hd"
 
     # Cantonese AI
     CANTONESE_API_KEY: str = ""
