@@ -51,3 +51,4 @@ run_frontend.bat
 *.pdf
 
 /.claude
+/backend/scratch
