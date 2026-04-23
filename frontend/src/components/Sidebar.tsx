@@ -3,52 +3,55 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Briefcase, BarChart2, Filter, MessageSquare } from "lucide-react";
+import { Activity, Briefcase, BarChart2, MessageSquare, Bell } from "lucide-react";
 import { ThemeToggle } from "./ThemeToggle";
+import { useCaseStore } from "@/stores/case-store";
 
 export function Sidebar() {
   const pathname = usePathname();
 
+  const caseId = useCaseStore(state => state.case_id);
+
   return (
     <aside className="w-[60px] h-full bg-neutral-surface border-r border-neutral-border flex flex-col items-center py-4 flex-shrink-0 z-20">
-      <Link href="/">
-        <div className="w-10 h-10 bg-brand-primary rounded-md flex items-center justify-center font-bold text-brand-on-primary mb-8 shadow-sm cursor-pointer">
-          YT
+      <Link href="/dashboard">
+        <div className="w-10 h-10 bg-brand-primary rounded-md flex items-center justify-center font-bold text-brand-on-primary mb-8 shadow-sm cursor-pointer text-sm">
+          S.AI
         </div>
       </Link>
-      
+
       <nav className="flex flex-col w-full items-center space-y-4 flex-1">
-        <NavItem 
-          icon={<Briefcase />} 
-          label="My Queue" 
-          href="/dashboard" 
-          active={pathname === "/dashboard"} 
+        <NavItem
+          icon={<MessageSquare />}
+          label="Start a new workflow"
+          href="/chat"
+          active={pathname === "/chat"}
         />
-        <NavItem 
-          icon={<Activity />} 
-          label="Live Engine" 
-          href="/" 
-          active={pathname === "/"} 
+        <NavItem
+          icon={<Briefcase />}
+          label="Dashboard"
+          href="/dashboard"
+          active={pathname === "/dashboard"}
         />
-        <NavItem 
-          icon={<MessageSquare />} 
-          label="Escalations" 
-          href="/escalations" 
-          active={pathname === "/escalations"} 
+        <NavItem
+          icon={<Activity />}
+          label="Live workflow"
+          href={caseId ? `/workflow/${caseId}` : "/workflow/CLM-2026-00001"}
+          active={pathname.startsWith("/workflow")}
         />
-        <NavItem 
-          icon={<BarChart2 />} 
-          label="Analytics" 
-          href="/analytics" 
-          active={pathname === "/analytics"} 
+        <NavItem
+          icon={<Bell />}
+          label="Notifications"
+          href="/notification"
+          active={pathname === "/notification"}
         />
-        <NavItem 
-          icon={<Filter />} 
-          label="Search Cases" 
-          href="/search" 
-          active={pathname === "/search"} 
+        <NavItem
+          icon={<BarChart2 />}
+          label="Analytics"
+          href="/analytics"
+          active={pathname === "/analytics"}
         />
-        
+
         <div className="flex-1" />
         <ThemeToggle />
       </nav>
@@ -56,16 +59,16 @@ export function Sidebar() {
   );
 }
 
-function NavItem({ 
-  icon, 
-  label, 
-  href, 
-  active = false 
-}: { 
-  icon: React.ReactNode, 
-  label: string, 
+function NavItem({
+  icon,
+  label,
+  href,
+  active = false
+}: {
+  icon: React.ReactNode,
+  label: string,
   href: string,
-  active?: boolean 
+  active?: boolean
 }) {
   return (
     <Link href={href} className="w-full">
@@ -73,7 +76,7 @@ function NavItem({
         <div className={`${active ? 'text-brand-primary' : 'text-neutral-text-secondary group-hover:text-neutral-text-primary'} transition-colors`}>
           {React.cloneElement(icon as React.ReactElement<any>, { className: "w-6 h-6" })}
         </div>
-        
+
         {/* Tooltip */}
         <div className="absolute left-full ml-2 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap">
           {label}

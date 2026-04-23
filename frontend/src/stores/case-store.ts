@@ -1,0 +1,110 @@
+import { create } from "zustand";
+import { 
+  CaseSnapshot, 
+  CaseStatus, 
+  AgentId, 
+  AgentStatus,
+  AgentStateInfo,
+  DocumentInfo,
+  ArtifactInfo,
+  OfficerMessageInfo,
+  SseWorkflowStarted,
+  SseAgentStatusChanged,
+  SseAgentOutput,
+  SseAgentMessageToAgent,
+  SseArtifactCreated,
+  SseWorkflowCompleted
+} from "../lib/types";
+
+interface CaseState extends CaseSnapshot {
+  // Store Actions
+  setCase: (snapshot: CaseSnapshot) => void;
+  reset: () => void;
+  
+  // SSE Event Handlers
+  handleWorkflowStarted: (data: SseWorkflowStarted) => void;
+  handleAgentStatusChanged: (data: SseAgentStatusChanged) => void;
+  handleAgentOutput: (data: SseAgentOutput) => void;
+  handleAgentMessageToAgent: (data: SseAgentMessageToAgent) => void;
+  handleArtifactCreated: (data: SseArtifactCreated) => void;
+  handleWorkflowCompleted: (data: SseWorkflowCompleted) => void;
+}
+
+const initialState: CaseSnapshot = {
+  case_id: "",
+  status: CaseStatus.SUBMITTED,
+  submitted_at: "",
+  documents: [],
+  agents: {},
+  blackboard: {},
+  artifacts: [],
+  officer_messages: [],
+  auditor_loop_count: 0,
+  officer_challenge_count: 0,
+  awaiting_clarification: false,
+  chatbox_enabled: false,
+  current_agent: null,
+};
+
+export const useCaseStore = create<CaseState>((set) => ({
+  ...initialState,
+
+  setCase: (snapshot) => set(snapshot),
+  
+  reset: () => set(initialState),
+
+  handleWorkflowStarted: (data) => set((state) => ({
+    status: CaseStatus.RUNNING,
+    current_agent: data.target_agent || null,
+    // On officer rerun, we might want to clear downstream agent statuses, 
+    // but the backend will send status_changed events anyway.
+  })),
+
+  handleAgentStatusChanged: (data) => set((state) => ({
+    agents: {
+      ...state.agents,
+      [data.agent]: {
+        ...state.agents[data.agent],
+        status: data.status,
+      }
+    },
+    current_agent: data.status === AgentStatus.WORKING ? data.agent : state.current_agent
+  })),
+
+  handleAgentOutput: (data) => set((state) => ({
+    blackboard: {
+      ...state.blackboard,
+      [data.section]: data.data
+    }
+  })),
+
+  handleAgentMessageToAgent: (data) => set((state) => ({
+    auditor_loop_count: data.loop_count,
+    // We could also add a system message to officer_messages here if we want to show agent talk
+  })),
+
+  handleArtifactCreated: (data) => set((state) => ({
+    artifacts: [
+      ...state.artifacts.map(a => 
+        a.artifact_type === data.artifact_type ? { ...a, superseded: true } : a
+      ),
+      {
+        artifact_type: data.artifact_type,
+        filename: data.filename,
+        url: data.url,
+        ready: true,
+        version: data.version,
+        superseded: false
+      }
+    ]
+  })),
+
+  handleWorkflowCompleted: (data) => set((state) => ({
+    status: data.status,
+    pdf_ready: data.pdf_ready, // Note: pdf_ready isn't in CaseSnapshot but is in WorkflowCompleted
+    auditor_loop_count: data.auditor_loop_count,
+    officer_challenge_count: data.officer_challenge_count,
+    chatbox_enabled: data.chatbox_enabled,
+    current_agent: null
+  })),
+}));

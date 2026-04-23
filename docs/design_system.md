@@ -1,7 +1,7 @@
 # Yellow Trading Dashboard Theme — Design System
 
-**Version:** 1.0.0  
-**Theme:** Light  
+**Version:** 1.0.0
+**Theme:** Light
 
 ---
 
