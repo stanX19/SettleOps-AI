@@ -49,3 +49,5 @@ run_frontend.bat
 *.mp3
 *.m4a
 *.pdf
+
+/.claude

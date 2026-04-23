@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from srcs.database import get_db
 from srcs.schemas.chat_dto import ChatRequest, ChatMessageResponse, ChatAcceptedResponse
 from srcs.services.chat_service import ChatService
-from srcs.services.sse_service import SseService
+from srcs.services.sse_service import CLOSE_EVENT_KEY, SseService
 
 router: APIRouter = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
@@ -22,18 +22,22 @@ async def sse_stream(session_id: str):
     The client should connect here **before** sending a POST to ``/api/v1/chat/``.
     Events are pushed by background tasks (agent reply, TTS, etc.).
     """
-    queue = SseService.open(session_id)
+    queue = SseService.subscribe(session_id)
 
     async def _event_generator():
         yield ": ping\ndata: \n\n"
         try:
             while True:
                 msg = await queue.get()
+                # Broadcaster disconnected this subscriber (queue full).
+                # Exit cleanly; client can reconnect and re-fetch state.
+                if msg.get("event") == CLOSE_EVENT_KEY:
+                    break
                 yield f"event: {msg['event']}\ndata: {msg['data']}\n\n"
         except asyncio.CancelledError:
             pass
         finally:
-            SseService.close(session_id)
+            SseService.unsubscribe(session_id, queue)
 
     return StreamingResponse(
         _event_generator(),
