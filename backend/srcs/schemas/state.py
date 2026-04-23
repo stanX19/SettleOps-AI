@@ -1,5 +1,18 @@
 from typing import Annotated, TypedDict, Any, Optional, List
 import operator
+from enum import Enum
+
+class WorkflowNodes(str, Enum):
+    """Centralized node identifiers to decouple service logic from graph topology."""
+    POLICY_CLUSTER = "policy_cluster"
+    LIABILITY_CLUSTER = "liability_cluster"
+    DAMAGE_CLUSTER = "damage_cluster"
+    FRAUD_CLUSTER = "fraud_cluster"
+    REFINER = "refiner"
+    REPORT_GENERATOR = "report_generator"
+    DECISION_GATE = "decision_gate"
+
+MAX_ITERATIONS = 3
 
 class ChallengeState(TypedDict):
     """Represents a human or auditor challenge to a specific agent's decision."""
