@@ -1,17 +1,18 @@
 import io
 import os
+import logging
 from datetime import datetime
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm, cm
 from reportlab.lib import colors
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
+logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 ASSETS_DIR = os.path.join(PROJECT_ROOT, "backend", "assets")
 DEFAULT_STAMP_PATH = os.path.join(ASSETS_DIR, "MyClaim-Stamp.png")
-REPORTS_DIR = os.path.join(PROJECT_ROOT, "test_reports")
 
 PAGE_W, PAGE_H = A4
 MARGIN = 2.5 * cm
@@ -59,6 +60,8 @@ def _create_signature_overlay(
             preserveAspectRatio=True,
             mask="auto",
         )
+    elif stamp_path:
+        logger.warning("Stamp image not found at %s — skipping stamp overlay", stamp_path)
 
     c.save()
     buf.seek(0)

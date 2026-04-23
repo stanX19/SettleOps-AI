@@ -8,11 +8,28 @@ from reportlab.lib.units import mm, cm
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 import os
+import re
+import logging
+from pathlib import Path
 from typing import List
 from pydantic import BaseModel, Field
+from srcs.config import get_settings
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-REPORTS_DIR = os.path.join(PROJECT_ROOT, "test_reports")
+logger = logging.getLogger(__name__)
+
+CLAIM_NO_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+
+
+def get_report_path(claim_no: str, suffix: str = "_repair_approval.pdf") -> str:
+    if not CLAIM_NO_PATTERN.match(claim_no):
+        raise ValueError("Invalid claim number format")
+    settings = get_settings()
+    reports_dir = Path(settings.REPORTS_DIR).resolve()
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    file_path = (reports_dir / f"{claim_no}{suffix}").resolve()
+    if not file_path.is_relative_to(reports_dir):
+        raise ValueError("Path traversal detected")
+    return str(file_path)
 
 
 # ── Pydantic Models (variables for API) ─────────────────────
@@ -417,8 +434,7 @@ def _build_content(elements, data: RepairApprovalData, styles):
 
 # ── Main Generator ───────────────────────────────────────────
 def generate_repair_approval_pdf(data: RepairApprovalData) -> str:
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-    file_path = os.path.join(REPORTS_DIR, f"{data.claim_no}_repair_approval.pdf")
+    file_path = get_report_path(data.claim_no)
 
     styles = _get_styles()
 

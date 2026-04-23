@@ -1,10 +1,20 @@
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
-from srcs.services.pdf_service import generate_repair_approval_pdf, RepairApprovalData, REPORTS_DIR
-from srcs.services.signature_service import sign_and_stamp
+import logging
 import os
 
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
+
+from srcs.services.pdf_service import (
+    generate_repair_approval_pdf,
+    RepairApprovalData,
+    get_report_path,
+)
+from srcs.services.signature_service import sign_and_stamp
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/claims", tags=["Claims"])
+mock_router = APIRouter(prefix="/claims", tags=["Claims (Mock)"])
 
 
 MOCK_CLAIM_DATA = {
@@ -37,8 +47,11 @@ MOCK_CLAIM_DATA = {
 def generate_repair_approval(data: RepairApprovalData):
     try:
         file_path = generate_repair_approval_pdf(data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        logger.exception("PDF generation failed")
+        raise HTTPException(status_code=500, detail="PDF generation failed")
     return FileResponse(
         path=file_path,
         media_type="application/pdf",
@@ -47,13 +60,33 @@ def generate_repair_approval(data: RepairApprovalData):
     )
 
 
-@router.get("/generate-mock-report")
+@router.get("/{claim_no}/repair-approval")
+def get_repair_approval(claim_no: str):
+    """Retrieve a previously generated repair approval PDF."""
+    try:
+        file_path = get_report_path(claim_no)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid claim number format")
+    if not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="Report not found. Generate it first.")
+    return FileResponse(
+        path=file_path,
+        media_type="application/pdf",
+        filename=f"repair_approval_{claim_no}.pdf",
+    )
+
+
+# ── Mock / debug-only routes ────────────────────────────────
+
+
+@mock_router.get("/generate-mock-report")
 def generate_mock_report():
     data = RepairApprovalData(**MOCK_CLAIM_DATA)
     try:
         file_path = generate_repair_approval_pdf(data)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    except Exception:
+        logger.exception("Mock PDF generation failed")
+        raise HTTPException(status_code=500, detail="PDF generation failed")
     return FileResponse(
         path=file_path,
         media_type="application/pdf",
@@ -61,7 +94,7 @@ def generate_mock_report():
     )
 
 
-@router.get("/generate-mock-signed-report")
+@mock_router.get("/generate-mock-signed-report")
 def generate_mock_signed_report():
     data = RepairApprovalData(**MOCK_CLAIM_DATA)
     try:
@@ -72,23 +105,11 @@ def generate_mock_signed_report():
             designation=data.designation,
             sign_date=data.date,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"PDF generation failed: {str(e)}")
+    except Exception:
+        logger.exception("Mock signed PDF generation failed")
+        raise HTTPException(status_code=500, detail="PDF generation failed")
     return FileResponse(
         path=signed_path,
         media_type="application/pdf",
         filename=f"repair_approval_{data.claim_no}_signed.pdf",
-    )
-
-
-@router.get("/{claim_no}/repair-approval")
-def get_repair_approval(claim_no: str):
-    """Retrieve a previously generated repair approval PDF."""
-    file_path = os.path.join(REPORTS_DIR, f"{claim_no}_repair_approval.pdf")
-    if not os.path.isfile(file_path):
-        raise HTTPException(status_code=404, detail="Report not found. Generate it first.")
-    return FileResponse(
-        path=file_path,
-        media_type="application/pdf",
-        filename=f"repair_approval_{claim_no}.pdf",
     )
