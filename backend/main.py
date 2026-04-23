@@ -14,6 +14,7 @@ from srcs.routes.health import router as health_router
 from srcs.routes.auth import router as auth_router
 from srcs.routes.chat import router as chat_router
 from srcs.routes.speech import router as speech_router
+from srcs.routes.claim import router as claim_router, mock_router as claim_mock_router
 from srcs.routes.cases import router as cases_router
 
 from srcs.schemas.case_dto import ErrorCode
@@ -98,6 +99,9 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(speech_router)
+app.include_router(claim_router)
+if settings.DEBUG:
+    app.include_router(claim_mock_router)
 app.include_router(cases_router)
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

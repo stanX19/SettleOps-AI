@@ -4,9 +4,8 @@ sqlalchemy
 aiosqlite
 pydantic
 pydantic-settings
-google-genai
 langchain
-langchain-google-genai
+langchain-openai
 langgraph
 sse-starlette
 python-multipart
@@ -18,3 +17,6 @@ passlib
 bcrypt==3.2.2
 pyjwt
 watchfiles
+python-dotenv
+reportlab
+pypdf
