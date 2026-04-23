@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
     ROOT: str = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     UPLOAD_DIR: str = os.path.join(ROOT, "uploads")
+    REPORTS_DIR: str = os.path.join(ROOT, "generated", "reports")
     
     # Gemini Configuration
     GEMINI_API_KEY: str = ""
