@@ -296,10 +296,6 @@ function DocumentRow({ name, size, onDelete }: { name: string, size: string, onD
 
 function StatusBadge({ status }: { status: CaseStatus }) {
   const configs: Record<CaseStatus, { label: string; styles: string }> = {
-    [CaseStatus.DRAFT]: {
-      label: 'Draft',
-      styles: 'bg-neutral-text-tertiary'
-    },
     [CaseStatus.RUNNING]: {
       label: 'Ongoing',
       styles: 'bg-brand-primary'
