@@ -28,6 +28,17 @@ import os
 async def lifespan(_app: FastAPI):
     # Init DB tables
     Base.metadata.create_all(bind=engine)
+    
+    # Seed a default case for development/testing
+    from srcs.services.case_store import CaseStore, CaseState, now_iso, CaseStatus
+    if not CaseStore.get("CLM-2026-00001"):
+        CaseStore.add(CaseState(
+            case_id="CLM-2026-00001",
+            submitted_at=now_iso(),
+            status=CaseStatus.AWAITING_APPROVAL # Start in a state where analysis is done
+        ))
+        print("INFO: Seeded development case CLM-2026-00001", flush=True)
+        
     yield
 
 settings = get_settings()
