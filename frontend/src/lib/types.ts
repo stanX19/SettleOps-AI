@@ -94,7 +94,7 @@ export interface CaseListItem {
   case_id: string;
   status: CaseStatus;
   submitted_at: string;
-  current_agent?: AgentId;
+  current_agent: AgentId | null;
 }
 
 export interface CaseSnapshot {

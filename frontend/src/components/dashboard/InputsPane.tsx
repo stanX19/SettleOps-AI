@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/primitives/Card";
-import { FileText, Image as ImageIcon, ChevronDown, ChevronRight, CheckCircle2, Wrench, Mail, Play, Mic, FileQuestion } from "lucide-react";
+import { FileText, Image as ImageIcon, ChevronDown, ChevronRight, CheckCircle2, Wrench, FileQuestion } from "lucide-react";
 import { Badge } from "@/components/primitives/Badge";
 import { useCaseStore } from "@/stores/case-store";
 import { CaseStatus } from "@/lib/types";

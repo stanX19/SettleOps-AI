@@ -1,16 +1,13 @@
 "use client";
 
-import React, { use, useState, useRef } from "react";
+import React, { use, useState, useRef, useEffect } from "react";
 import {
   FileText,
   Upload,
   ChevronLeft,
   Play,
   Trash2,
-  CheckCircle2,
-  Clock,
   AlertCircle,
-  ShieldCheck,
   Loader2
 } from "lucide-react";
 import Link from "next/link";
@@ -39,6 +36,19 @@ export default function ManageCasePage({ params }: PageProps) {
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch actual status on mount
+  useEffect(() => {
+    const fetchStatus = async () => {
+      try {
+        const snapshot = await api.getCaseSnapshot(caseId);
+        setStatus(snapshot.status);
+      } catch (err) {
+        console.error("Failed to fetch case status:", err);
+      }
+    };
+    fetchStatus();
+  }, [caseId]);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -212,7 +222,7 @@ export default function ManageCasePage({ params }: PageProps) {
                   </div>
                   <h4 className="text-neutral-text-primary font-medium mb-1">No evidence uploaded yet</h4>
                   <p className="text-xs text-neutral-text-tertiary max-w-[240px]">
-                    Upload relevant PDF documents (Police Report, Policy, Quote) to begin the settlement orchestration.
+                    Upload relevant PDF documents or images (Police Report, Policy, Quote) to begin the settlement orchestration.
                   </p>
                   <Button variant="ghost" onClick={handleUploadClick} className="mt-4 text-brand-primary">
                     Select Files

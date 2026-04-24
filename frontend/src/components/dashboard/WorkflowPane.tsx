@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/primitives/Button';
-import { Settings, Wrench } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { useCaseStore } from '@/stores/case-store';
 import { AgentId, AgentStatus, CaseStatus } from '@/lib/types';
 import { useParams } from 'next/navigation';
@@ -327,7 +327,7 @@ export function WorkflowPane() {
             </div>
             <h3 className="text-lg font-semibold text-neutral-text-primary mb-2">Syncing with Backend...</h3>
             <p className="text-sm text-neutral-text-secondary mb-4">
-              We're having trouble fetching the case topology. Please ensure the backend is running at <code className="bg-neutral-background px-1 py-0.5 rounded">localhost:8000</code>.
+              We're having trouble fetching the case topology. Please ensure the backend is running and reachable, then try again.
             </p>
             <Button onClick={() => window.location.reload()} variant="primary" size="sm">
               Retry Connection

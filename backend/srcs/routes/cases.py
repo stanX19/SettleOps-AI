@@ -210,7 +210,9 @@ async def _save_case_uploads(
         photo_paths: list[str] = []
         for i, p in enumerate(photos):
             path = os.path.join(upload_dir, f"photo_{i}_{_safe_name(p.filename)}")
-            await _save_upload(p, path, _PHOTO_MAX)
+            # Dynamic limit based on content type
+            limit = _PDF_MAX if p.content_type in _PDF_MIMES else _PHOTO_MAX
+            await _save_upload(p, path, limit)
             photo_paths.append(path)
 
         adjuster_path: Optional[str] = None

@@ -16,7 +16,8 @@ import {
   Send,
   User,
   Bot,
-  ArrowUp
+  ArrowUp,
+  Wrench
 } from "lucide-react"
 import { useCaseStore } from "@/stores/case-store"
 import { BlackboardSection } from "@/lib/types"
@@ -184,7 +185,7 @@ export function BlackboardPane() {
   const renderDamageResult = (data: any) => (
     <OutputCard title="Damage Assessment" icon={<Wrench className="w-4 h-4" />} status="success">
       <Field label="Assessment" value={data.assessment || "Analyzing damage..."} />
-      <Field label="Repair Estimate" value={data.total_estimate ? `RM ${data.total_estimate.toLocaleString()}` : "N/A"} />
+      <Field label="Repair Estimate" value={data.total_estimate != null ? `RM ${data.total_estimate.toLocaleString()}` : "N/A"} />
       <div className="flex flex-wrap gap-1 mt-1">
         {data.parts_replaced?.map((p: string) => <Tag key={p}>{p}</Tag>)}
       </div>
