@@ -110,6 +110,7 @@ class SseService:
     @classmethod
     async def _broadcast(cls, session_id: str, event_name: str, data_json: str) -> None:
         queues = cls._subscribers.get(session_id)
+        # print(f"DEBUG: [SSE] Broadcasting to {session_id}. Subscribers: {len(queues) if queues else 0}", flush=True)
         if not queues:
             return
         # Snapshot the list: a subscriber may unsubscribe concurrently.
@@ -140,6 +141,7 @@ class SseService:
         event_type = _EVENT_MAP.get(type(payload))
         if event_type is None:
             raise ValueError(f"Unknown SSE payload type: {type(payload).__name__}")
+        
         await cls._broadcast(
             session_id,
             event_type.value,

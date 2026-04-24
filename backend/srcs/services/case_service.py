@@ -65,6 +65,12 @@ from srcs.services.case_store import (
     transition_status,
 )
 from srcs.services.sse_service import SseService
+from srcs.schemas.state import ClaimWorkflowState
+from srcs.services.workflow_engine import (
+    run_workflow_with_sse,
+    resume_workflow_with_sse as resume_workflow_with_sse_engine,
+    TOPOLOGY
+)
 
 
 # -- Error helper -------------------------------------------------------------
@@ -200,6 +206,14 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
                 status=rs.status,
                 started_at=rs.started_at,
                 completed_at=rs.completed_at,
+                sub_tasks={
+                    name: AgentStateInfo(
+                        status=sub_rs.status,
+                        started_at=sub_rs.started_at,
+                        completed_at=sub_rs.completed_at
+                    )
+                    for name, sub_rs in rs.sub_tasks.items()
+                }
             )
             for agent, rs in state.agent_states.items()
         },
@@ -221,6 +235,7 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
         awaiting_clarification=state.awaiting_clarification,
         chatbox_enabled=state.chatbox_enabled(),
         current_agent=state.current_agent,
+        topology=TOPOLOGY
     )
 
 
@@ -403,6 +418,12 @@ async def generate_artifacts(state: CaseState) -> None:
     json_version = _next_artifact_version(state, ArtifactType.AUDIT_TRAIL_JSON)
     json_name = f"audit_trail_{state.case_id}_v{json_version}.json"
     json_path = os.path.join(adir, json_name)
+    # Check for technical errors in clusters to apply watermark
+    has_errors = any(
+        rs.status == AgentStatus.ERROR or any(sub.status == AgentStatus.ERROR for sub in rs.sub_tasks.values())
+        for rs in state.agent_states.values()
+    )
+
     payload = {
         "case_id": state.case_id,
         "generated_at": now_iso(),
@@ -410,6 +431,7 @@ async def generate_artifacts(state: CaseState) -> None:
         "blackboard": _blackboard_for(state),
         "auditor_loop_count": state.auditor_loop_count,
         "officer_challenge_count": state.officer_challenge_count,
+        "manual_override_disclaimer": "TECHNICAL OVERRIDE: One or more autonomous checks failed or were bypassed." if has_errors else None
     }
     await asyncio.to_thread(_write_json_artifact, json_path, payload)
 
@@ -497,13 +519,79 @@ async def _run_agent_stub(
     await emit_agent_status(state, agent, AgentStatus.COMPLETED)
 
 
+# -- Workflow State Mapper ---------------------------------------------------
+
+def _read_doc_content(path: Optional[str]) -> str:
+    """Helper to read document content from disk for agent consumption."""
+    if not path or not os.path.exists(path):
+        return "[No content available]"
+    try:
+        # We assume transcripts/markdown for now as per the PR overview
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return "[Error reading content]"
+
+
+def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
+    """Maps internal CaseState to LangGraph ClaimWorkflowState."""
+    docs = []
+    if case.police_report_path:
+        docs.append({
+            "filename": os.path.basename(case.police_report_path),
+            "doc_type": "police_report",
+            "content": _read_doc_content(case.police_report_path)
+        })
+    if case.policy_pdf_path:
+        docs.append({
+            "filename": os.path.basename(case.policy_pdf_path),
+            "doc_type": "policy_covernote",
+            "content": _read_doc_content(case.policy_pdf_path)
+        })
+    if case.repair_quotation_path:
+        docs.append({
+            "filename": os.path.basename(case.repair_quotation_path),
+            "doc_type": "workshop_quote",
+            "content": _read_doc_content(case.repair_quotation_path)
+        })
+    
+    for i, p in enumerate(case.photo_paths):
+        # Without direct Vision support in this node, we pass a hint to the tagger
+        docs.append({
+            "filename": os.path.basename(p),
+            "doc_type": "photo",
+            "content": f"[Photo Metadata: {os.path.basename(p)} at index {i}]"
+        })
+
+    return {
+        "case_id": case.case_id,
+        "documents": docs,
+        "processed_indices": [],
+        "case_facts": case.case_facts or {},
+        "policy_results": case.policy_verdict or {},
+        "liability_results": case.liability_verdict or {},
+        "damage_results": case.damage_result or {},
+        "fraud_results": case.fraud_assessment or {},
+        "payout_results": case.payout_recommendation or {},
+        "trace_log": [],
+        "active_challenge": None,
+        "status": case.status.value,
+        "current_agent": case.current_agent.value if case.current_agent else None,
+        "latest_user_message": None,
+        "human_audit_log": case.human_audit_log or [],
+        "force_approve": False,
+        "human_decision_reason": None,
+        "human_decision": None
+    }
+
+
 async def run_pipeline(case_id: str) -> None:
-    """Background entry point for the initial pipeline run."""
+    """Background entry point for the agentic workflow."""
     state = CaseStore.get(case_id)
     if state is None:
         return
 
-    async with CaseStore.lock():
+    async with CaseStore.lock(case_id):
         try:
             transition_status(state, CaseStatus.RUNNING)
         except InvalidStatusTransition:
@@ -530,47 +618,25 @@ async def run_pipeline(case_id: str) -> None:
         ),
     )
 
+    # UI: Start spinner for Intake immediately
+    await emit_agent_status(state, AgentId.INTAKE, AgentStatus.WORKING)
+
     try:
-        await _run_agent_stub(state, AgentId.INTAKE, BlackboardSection.CASE_FACTS)
+        # Assemble initial state for LangGraph
+        initial_workflow_state = _to_workflow_state(state)
+        
+        # Execute the Agentic Graph
+        await run_workflow_with_sse(case_id, initial_workflow_state)
 
-        # Fan out policy/liability/fraud
-        await asyncio.gather(
-            _run_agent_stub(state, AgentId.POLICY, BlackboardSection.POLICY_VERDICT),
-            _run_agent_stub(
-                state, AgentId.LIABILITY, BlackboardSection.LIABILITY_VERDICT
-            ),
-            _run_agent_stub(
-                state, AgentId.FRAUD, BlackboardSection.FRAUD_ASSESSMENT
-            ),
-        )
-
-        await _run_agent_stub(
-            state, AgentId.PAYOUT, BlackboardSection.PAYOUT_RECOMMENDATION
-        )
-        await _run_agent_stub(
-            state, AgentId.AUDITOR, BlackboardSection.AUDIT_RESULT
-        )
-
+        # Sync back final artifacts (SSE for this will be separate or handled by frontend refresh)
         await generate_artifacts(state)
 
-        async with CaseStore.lock():
-            transition_status(state, CaseStatus.AWAITING_APPROVAL)
+        async with CaseStore.lock(case_id):
+            if state.status == CaseStatus.RUNNING:
+                transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
-
-        await SseService.emit(
-            case_id,
-            SseWorkflowCompletedData(
-                case_id=case_id,
-                timestamp=now_iso(),
-                status=CaseStatus.AWAITING_APPROVAL,
-                pdf_ready=True,
-                auditor_loop_count=state.auditor_loop_count,
-                officer_challenge_count=state.officer_challenge_count,
-                chatbox_enabled=state.chatbox_enabled(),
-            ),
-        )
     except Exception:
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             try:
                 transition_status(state, CaseStatus.FAILED)
             except InvalidStatusTransition:
@@ -606,12 +672,9 @@ _RERUN_CHAINS: dict[AgentId, list[tuple[AgentId, BlackboardSection]]] = {
 async def run_partial_pipeline(
     case_id: str, target_agent: AgentId, message_id: str, officer_message: str
 ) -> None:
+    """Handles surgical reruns triggered by human feedback."""
     state = CaseStore.get(case_id)
     if state is None:
-        return
-
-    chain = _RERUN_CHAINS.get(target_agent)
-    if chain is None:
         return
 
     await SseService.emit(
@@ -624,44 +687,121 @@ async def run_partial_pipeline(
             message_id=message_id,
         ),
     )
-    await emit_message_to_agent(
-        state,
-        from_agent=AgentId.AUDITOR,
-        to_agent=target_agent,
-        message=(
-            f"Officer challenged the {target_agent.value} decision. "
-            "Re-evaluate and propagate changes downstream."
-        ),
-        reason=officer_message,
-        trigger=AuditorTrigger.OFFICER_MESSAGE,
-        loop_count=0,
-        message_id=message_id,
-    )
-
+    
+    # Map the human feedback into the active_challenge for the graph
+    workflow_state = _to_workflow_state(state)
+    workflow_state["latest_user_message"] = officer_message
+    
     try:
-        for agent, section in chain:
-            await _run_agent_stub(state, agent, section)
+        # Re-run the graph with the new challenge
+        await run_workflow_with_sse(case_id, workflow_state)
 
         await generate_artifacts(state)
 
-        async with CaseStore.lock():
-            transition_status(state, CaseStatus.AWAITING_APPROVAL)
+        async with CaseStore.lock(case_id):
+            if state.status == CaseStatus.RUNNING:
+                transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
-
-        await SseService.emit(
-            case_id,
-            SseWorkflowCompletedData(
-                case_id=case_id,
-                timestamp=now_iso(),
-                status=CaseStatus.AWAITING_APPROVAL,
-                pdf_ready=True,
-                auditor_loop_count=state.auditor_loop_count,
-                officer_challenge_count=state.officer_challenge_count,
-                chatbox_enabled=state.chatbox_enabled(),
-            ),
-        )
     except Exception:
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
+            try:
+                transition_status(state, CaseStatus.FAILED)
+            except InvalidStatusTransition:
+                pass
+        raise
+
+
+async def resume_workflow_with_sse(
+    case_id: str, 
+    *, 
+    operator_name: Optional[str] = None,
+    action: Optional[str] = None,
+    reason: Optional[str] = None,
+    force_approve: bool = False
+) -> None:
+    """Service-layer entry point for resuming the agentic workflow."""
+    state = CaseStore.get(case_id)
+    if state is None:
+        return
+
+    # 1. Safety Guard: Verify case is in a resumable status
+    if state.status not in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS):
+        return
+
+    # 2. Audit Logging & Final Decision Setup
+    async with CaseStore.lock(case_id):
+        if operator_name and action:
+            audit_entry = {
+                "timestamp": now_iso(),
+                "operator": operator_name,
+                "action": action,
+                "reason": reason
+            }
+            state.human_audit_log.append(audit_entry)
+            
+        if force_approve:
+            state.operator_decision = "approved"
+            state.approved_at = now_iso()
+            state.operator_decision_reason = reason or "Manual override"
+
+    # 3. Transition to RUNNING
+    async with CaseStore.lock(case_id):
+        try:
+            transition_status(state, CaseStatus.RUNNING)
+        except InvalidStatusTransition:
+            return
+
+    # 3. Emit Workflow Started (Resumption)
+    await SseService.emit(
+        case_id,
+        SseWorkflowStartedData(
+            case_id=case_id,
+            timestamp=now_iso(),
+            trigger="submit" if action == "upload_docs" else "officer_rerun",
+        ),
+    )
+
+    try:
+        from srcs.schemas.state import WorkflowAction
+
+        # 4. Prepare updates for the graph
+        updates = {
+            "human_audit_log": [
+                {
+                    "action": WorkflowAction.FORCE_APPROVE if action == "approve" else action,
+                    "reasoning": reason or "No reasoning provided.",
+                    "operator_id": operator_name or "System",
+                    "timestamp": now_iso()
+                }
+            ],
+            "force_approve": force_approve,
+            "human_decision": {
+                "action": WorkflowAction.FORCE_APPROVE,
+                "reasoning": reason or "Manual intervention",
+                "operator_id": operator_name or "System",
+                "timestamp": now_iso()
+            } if action == "approve" else None
+        }
+        
+        # If we are resuming for docs, we need to refresh the documents list
+        if action == "upload_docs":
+            workflow_state = _to_workflow_state(state)
+            updates["documents"] = workflow_state["documents"]
+            updates["status"] = "running" # Clear the awaiting_docs status in the graph
+
+        # 5. Execute Resumption
+        from srcs.services.workflow_engine import resume_workflow_with_sse as resume_workflow_with_sse_engine
+        await resume_workflow_with_sse_engine(case_id, updates)
+
+        # 6. Finalize
+        await generate_artifacts(state)
+
+        async with CaseStore.lock(case_id):
+            if state.status == CaseStatus.RUNNING:
+                transition_status(state, CaseStatus.AWAITING_APPROVAL)
+            state.current_agent = None
+    except Exception:
+        async with CaseStore.lock(case_id):
             try:
                 transition_status(state, CaseStatus.FAILED)
             except InvalidStatusTransition:

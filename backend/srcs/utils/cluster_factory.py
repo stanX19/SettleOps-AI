@@ -1,7 +1,15 @@
 from typing import List, Callable
+import asyncio
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
-from srcs.schemas.state import ClaimWorkflowState
+from srcs.schemas.state import ClusterState
+from srcs.services.sse_service import SseService
+from srcs.services.case_store import CaseStore, now_iso
+from srcs.schemas.case_dto import (
+    AgentId, 
+    AgentStatus, 
+    SseAgentStatusChangedData
+)
 
 def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> StateGraph:
     """
@@ -12,44 +20,128 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
         sub_tasks: A list of functions (nodes) to execute in parallel.
         
     Returns:
-        A compiled LangGraph StateGraph.
+        A LangGraph StateGraph builder (uncompiled).
     """
-    builder = StateGraph(ClaimWorkflowState)
+    builder = StateGraph(ClusterState)
 
-    def fan_out(state):
+    def fan_out(state: ClusterState):
         """Maps global state to parallel sub-tasks using the Send API."""
         if not sub_tasks:
             return END
         return [Send(f"task_{i}", state) for i in range(len(sub_tasks))]
 
     for i, task_fn in enumerate(sub_tasks):
-        def reflection_wrapper(state, task=task_fn):
+        async def reflection_wrapper(state: ClusterState, task=task_fn):
             """
             Wraps a task with reflection logic. 
             Injects feedback if an active challenge exists for this cluster.
             """
-            # 1. Extract feedback if this cluster is being challenged
-            feedback = None
+            # 1. Determine if we should skip
             active_challenge = state.get("active_challenge")
-            if active_challenge and active_challenge.get("target_cluster") == cluster_id:
-                feedback = active_challenge.get("feedback")
+            has_results = bool(state.get("results"))
             
-            # 2. Execute task
-            # The task is expected to return a dict with 'data' and 'reasoning'
-            result = task(state, feedback=feedback)
+            should_rerun = True
+            feedback = None
             
-            # 3. Format output for the global state reducers
-            # Each cluster has its own results key and appends to the trace_log
-            return {
-                f"{cluster_id}_results": result.get("data", {}),
-                "trace_log": [f"[{cluster_id}] {result.get('reasoning', 'No reasoning provided.')}"]
-            }
+            if active_challenge:
+                # If there's an active challenge, only rerun if THIS cluster is the target
+                should_rerun = active_challenge.get("target_cluster") == cluster_id
+                if should_rerun:
+                    feedback = active_challenge.get("feedback")
+            
+            if not should_rerun and has_results:
+                return {
+                    "trace_log": [f"[{cluster_id}] Skipping - previously calculated and not challenged."]
+                }
+
+            # 2. Emit WORKING status for sub-task
+            case_id = state.get("case_id")
+            if not case_id:
+                print("WARNING: [ClusterFactory] Missing case_id in state. Skipping SSE.", flush=True)
+                return result
+            
+            sub_task_name = task.__name__
+            parent_agent_id = AgentId(cluster_id)
+            
+            # Update CaseStore for sub-task
+            case = CaseStore.get(case_id)
+            if case:
+                async with CaseStore.lock(case_id):
+                    rs = case.agent_states[parent_agent_id]
+                    if sub_task_name not in rs.sub_tasks:
+                        from srcs.services.case_store import AgentRuntimeState
+                        rs.sub_tasks[sub_task_name] = AgentRuntimeState()
+                    
+                    sub_rs = rs.sub_tasks[sub_task_name]
+                    sub_rs.status = AgentStatus.WORKING
+                    sub_rs.started_at = now_iso()
+
+            print(f"DEBUG: [ClusterFactory] Emitting WORKING for {sub_task_name} in {cluster_id}", flush=True)
+            await SseService.emit(case_id, SseAgentStatusChangedData(
+                case_id=case_id,
+                timestamp=now_iso(),
+                agent=parent_agent_id,
+                status=AgentStatus.WORKING,
+                sub_task=sub_task_name,
+                parent_agent=parent_agent_id
+            ))
+
+            # 3. Execute task
+            try:
+                if asyncio.iscoroutinefunction(task):
+                    result = await task(state, feedback=feedback)
+                else:
+                    result = task(state, feedback=feedback)
+                
+                # 4. Emit COMPLETED status for sub-task
+                if case:
+                    async with CaseStore.lock(case_id):
+                        sub_rs = case.agent_states[parent_agent_id].sub_tasks[sub_task_name]
+                        sub_rs.status = AgentStatus.COMPLETED
+                        sub_rs.completed_at = now_iso()
+
+                await SseService.emit(case_id, SseAgentStatusChangedData(
+                    case_id=case_id,
+                    timestamp=now_iso(),
+                    agent=parent_agent_id,
+                    status=AgentStatus.COMPLETED,
+                    sub_task=sub_task_name,
+                    parent_agent=parent_agent_id
+                ))
+
+                # 5. Format output for the sub-graph state
+                return {
+                    "results": result.get("data", {}),
+                    "trace_log": [f"[{cluster_id}] {result.get('reasoning', 'No reasoning provided.')}"]
+                }
+            except Exception as e:
+                # 4. Emit ERROR status for sub-task
+                if case:
+                    async with CaseStore.lock(case_id):
+                        sub_rs = case.agent_states[parent_agent_id].sub_tasks[sub_task_name]
+                        sub_rs.status = AgentStatus.ERROR
+                        sub_rs.completed_at = now_iso()
+
+                await SseService.emit(case_id, SseAgentStatusChangedData(
+                    case_id=case_id,
+                    timestamp=now_iso(),
+                    agent=parent_agent_id,
+                    status=AgentStatus.ERROR,
+                    sub_task=sub_task_name,
+                    parent_agent=parent_agent_id
+                ))
+
+                # ERROR GRANULARITY: Catch and mark section as error
+                return {
+                    "results": {"status": "error", "error": str(e)},
+                    "trace_log": [f"[{cluster_id}] CRITICAL ERROR: {str(e)}"]
+                }
             
         builder.add_node(f"task_{i}", reflection_wrapper)
 
-    def aggregate(state):
+    async def aggregate(state: ClusterState):
         """Final aggregation node for the cluster."""
-        return {"status": f"{cluster_id}_complete"}
+        return {"trace_log": [f"[{cluster_id}] Cluster analysis complete."]}
 
     builder.add_node("aggregator", aggregate)
     

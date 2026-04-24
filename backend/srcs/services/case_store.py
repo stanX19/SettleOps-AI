@@ -35,11 +35,12 @@ def now_iso() -> str:
 # -- Status transitions -------------------------------------------------------
 
 _VALID_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
-    CaseStatus.DRAFT: {CaseStatus.SUBMITTED, CaseStatus.FAILED},
+    CaseStatus.DRAFT: {CaseStatus.SUBMITTED, CaseStatus.RUNNING, CaseStatus.FAILED},
     CaseStatus.SUBMITTED: {CaseStatus.RUNNING, CaseStatus.FAILED},
     CaseStatus.RUNNING: {
         CaseStatus.AWAITING_APPROVAL,
         CaseStatus.ESCALATED,
+        CaseStatus.AWAITING_DOCS,
         CaseStatus.FAILED,
     },
     CaseStatus.AWAITING_APPROVAL: {
@@ -51,6 +52,10 @@ _VALID_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
         CaseStatus.RUNNING,
         CaseStatus.APPROVED,
         CaseStatus.DECLINED,
+    },
+    CaseStatus.AWAITING_DOCS: {
+        CaseStatus.RUNNING,
+        CaseStatus.FAILED,
     },
     CaseStatus.APPROVED: set(),
     CaseStatus.DECLINED: set(),
@@ -73,6 +78,9 @@ def transition_status(state: "CaseState", target: CaseStatus) -> None:
 
     Raises `InvalidStatusTransition` if the move is not allowed.
     """
+    if target == state.status:
+        return
+
     if target not in _VALID_TRANSITIONS.get(state.status, set()):
         raise InvalidStatusTransition(
             f"Cannot transition {state.status.value} -> {target.value}"
@@ -110,6 +118,7 @@ class AgentRuntimeState:
     status: AgentStatus = AgentStatus.IDLE
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    sub_tasks: dict[str, AgentRuntimeState] = field(default_factory=dict)
 
 
 @dataclass
@@ -130,6 +139,7 @@ class CaseState:
     case_facts: Optional[dict[str, Any]] = None
     policy_verdict: Optional[dict[str, Any]] = None
     liability_verdict: Optional[dict[str, Any]] = None
+    damage_result: Optional[dict[str, Any]] = None
     fraud_assessment: Optional[dict[str, Any]] = None
     payout_recommendation: Optional[dict[str, Any]] = None
     audit_result: Optional[dict[str, Any]] = None
@@ -143,6 +153,7 @@ class CaseState:
     officer_messages: list[OfficerMessageRecord] = field(default_factory=list)
     current_agent: Optional[AgentId] = None
     awaiting_clarification: bool = False
+    human_audit_log: list[dict] = field(default_factory=list)
 
     # Artifacts
     artifacts: list[ArtifactRecord] = field(default_factory=list)
@@ -165,6 +176,7 @@ class CaseState:
             BlackboardSection.CASE_FACTS: self.case_facts,
             BlackboardSection.POLICY_VERDICT: self.policy_verdict,
             BlackboardSection.LIABILITY_VERDICT: self.liability_verdict,
+            BlackboardSection.DAMAGE_RESULT: self.damage_result,
             BlackboardSection.FRAUD_ASSESSMENT: self.fraud_assessment,
             BlackboardSection.PAYOUT_RECOMMENDATION: self.payout_recommendation,
             BlackboardSection.AUDIT_RESULT: self.audit_result,
@@ -179,6 +191,8 @@ class CaseState:
             self.policy_verdict = data
         elif section is BlackboardSection.LIABILITY_VERDICT:
             self.liability_verdict = data
+        elif section is BlackboardSection.DAMAGE_RESULT:
+            self.damage_result = data
         elif section is BlackboardSection.FRAUD_ASSESSMENT:
             self.fraud_assessment = data
         elif section is BlackboardSection.PAYOUT_RECOMMENDATION:
@@ -200,10 +214,15 @@ class CaseStore:
     _counter: int = 0
     _counter_lock = threading.Lock()
     _async_lock = asyncio.Lock()
+    _case_locks: dict[str, asyncio.Lock] = {}
 
     @classmethod
-    def lock(cls) -> asyncio.Lock:
-        return cls._async_lock
+    def lock(cls, case_id: Optional[str] = None) -> asyncio.Lock:
+        if case_id is None:
+            return cls._async_lock
+        if case_id not in cls._case_locks:
+            cls._case_locks[case_id] = asyncio.Lock()
+        return cls._case_locks[case_id]
 
     @classmethod
     def new_case_id(cls) -> str:
@@ -229,4 +248,5 @@ class CaseStore:
     @classmethod
     def _reset(cls) -> None:
         cls._cases.clear()
+        cls._case_locks.clear()
         cls._counter = 0

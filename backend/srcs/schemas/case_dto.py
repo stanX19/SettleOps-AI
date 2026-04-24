@@ -20,6 +20,7 @@ class CaseStatus(str, Enum):
     ESCALATED = "escalated"
     APPROVED = "approved"
     DECLINED = "declined"
+    AWAITING_DOCS = "awaiting_docs"
     FAILED = "failed"
 
 
@@ -27,6 +28,7 @@ class AgentId(str, Enum):
     INTAKE = "intake"
     POLICY = "policy"
     LIABILITY = "liability"
+    DAMAGE = "damage"
     FRAUD = "fraud"
     PAYOUT = "payout"
     AUDITOR = "auditor"
@@ -44,6 +46,7 @@ class BlackboardSection(str, Enum):
     CASE_FACTS = "CaseFacts"
     POLICY_VERDICT = "PolicyVerdict"
     LIABILITY_VERDICT = "LiabilityVerdict"
+    DAMAGE_RESULT = "DamageResult"
     FRAUD_ASSESSMENT = "FraudAssessment"
     PAYOUT_RECOMMENDATION = "PayoutRecommendation"
     AUDIT_RESULT = "AuditResult"
@@ -104,6 +107,7 @@ class AgentStateInfo(BaseModel):
     status: AgentStatus = AgentStatus.IDLE
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    sub_tasks: dict[str, AgentStateInfo] = Field(default_factory=dict)
 
 
 class OfficerMessageInfo(BaseModel):
@@ -143,6 +147,7 @@ class CaseSnapshot(BaseModel):
     awaiting_clarification: bool = False
     chatbox_enabled: bool = False
     current_agent: Optional[AgentId] = None
+    topology: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class ApproveResponse(BaseModel):
@@ -208,6 +213,8 @@ class SseWorkflowStartedData(_CaseSseBase):
 class SseAgentStatusChangedData(_CaseSseBase):
     agent: AgentId
     status: AgentStatus  # emitted values: working, waiting, completed, error
+    sub_task: Optional[str] = None
+    parent_agent: Optional[AgentId] = None
 
 
 class SseAgentOutputData(_CaseSseBase):
@@ -235,8 +242,9 @@ class SseArtifactCreatedData(_CaseSseBase):
 
 
 class SseWorkflowCompletedData(_CaseSseBase):
-    status: Literal[CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED]
+    status: CaseStatus  # typically: awaiting_approval, escalated, or awaiting_docs
     pdf_ready: bool
     auditor_loop_count: int
     officer_challenge_count: int
     chatbox_enabled: bool
+    topology: dict[str, list[str]] = Field(default_factory=dict)
