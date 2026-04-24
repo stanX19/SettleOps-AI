@@ -2,10 +2,10 @@
 
 Project: SettleOps-AI Claims Engine
 Date: 2026-04-21
-Status: Clean implementation contract
+Status: API and SSE skeleton contract
 Source reviewed: docs/api_sse_plan_v4.md
 
-This document replaces the long v4 draft as the working API and SSE contract. It keeps the required behavior, removes redundant events and hidden endpoints from the public plan, and separates contract decisions from implementation details.
+This document defines the public API and SSE skeleton for the claims workflow. It intentionally focuses on route shape, request/response payloads, statuses, and emitted events.
 
 ---
 
@@ -13,12 +13,12 @@ This document replaces the long v4 draft as the working API and SSE contract. It
 
 The backend must support a claims workflow where:
 
-- A case is created with required claim documents and photos.
-- The agent pipeline starts immediately after case creation.
-- The frontend receives live progress through one SSE stream per case.
+- A case ID is created first, then required claim documents and photos are uploaded to that case.
+- The agent pipeline starts immediately after required documents are submitted.
+- API clients receive live progress through one SSE stream per case.
 - The officer can approve, decline, or challenge the draft decision through a chatbox.
 - Officer challenges trigger a partial re-run, not a full pipeline restart.
-- The frontend can recover after an SSE disconnect by fetching a full case snapshot.
+- API clients can recover after an SSE disconnect by fetching a full case snapshot.
 
 Non-goals for this plan:
 
@@ -33,7 +33,7 @@ Non-goals for this plan:
 
 | Item in v4 | Decision | Reason |
 |---|---|---|
-| Historical "Changes from v2/v3" sections | Remove from implementation plan | Useful history, but it makes the contract noisy. Keep history in a changelog if needed. |
+| Historical "Changes from v2/v3" sections | Remove from this contract | Useful history, but it makes the contract noisy. Keep history in a changelog if needed. |
 | Full route implementation code blocks | Replace with concise endpoint contracts | The plan should define behavior, request and response shape, status rules, and emitted events. Full code belongs in source files. |
 | `POST /api/v1/cases/{case_id}/override` | Remove from public API | It duplicates the officer chatbox correction flow. If needed for demos, keep it as a local/debug-only route outside the public contract. |
 | `officer.message_received` SSE event | Remove | The client already sent the message and receives `POST /message` response with `message_id`. The case snapshot also contains `officer_messages`. |
@@ -59,7 +59,8 @@ All endpoints use:
 
 | Method | Path | Purpose |
 |---|---|---|
-| `POST` | `/api/v1/cases` | Create a case and trigger the initial pipeline. |
+| `POST` | `/api/v1/cases` | Create a draft case ID. |
+| `POST` | `/api/v1/cases/{case_id}/documents` | Submit required documents for a draft case and trigger the initial pipeline. |
 | `GET` | `/api/v1/cases` | List cases for the dashboard. |
 | `GET` | `/api/v1/cases/{case_id}` | Return the full case snapshot. |
 | `GET` | `/api/v1/cases/{case_id}/stream` | Open the SSE stream for live progress. |
@@ -131,6 +132,7 @@ Required error codes:
 ### 4.3 Workflow Statuses
 
 ```text
+draft
 submitted
 running
 awaiting_approval
@@ -144,6 +146,7 @@ Valid transitions:
 
 | From | To |
 |---|---|
+| `draft` | `submitted`, `failed` |
 | `submitted` | `running`, `failed` |
 | `running` | `awaiting_approval`, `escalated`, `failed` |
 | `awaiting_approval` | `running`, `approved`, `declined` |
@@ -211,12 +214,12 @@ Required internal fields:
 | Field | Purpose |
 |---|---|
 | `case_id` | Stable case identifier. |
-| `submitted_at` | Case creation timestamp. |
+| `submitted_at` | Case ID creation timestamp. |
 | `status` | Current workflow status. |
-| `police_report_path` | Internal path to required police report. |
-| `policy_pdf_path` | Internal path to required policy PDF. |
-| `repair_quotation_path` | Internal path to required quotation PDF. |
-| `photo_paths` | Internal paths to at least one crash photo. |
+| `police_report_path` | Internal path to required police report; empty while case is `draft`. |
+| `policy_pdf_path` | Internal path to required policy PDF; empty while case is `draft`. |
+| `repair_quotation_path` | Internal path to required quotation PDF; empty while case is `draft`. |
+| `photo_paths` | Internal paths to at least one crash photo; empty while case is `draft`. |
 | `adjuster_report_path` | Optional internal path. |
 | `chat_transcript` | Optional uploaded text. |
 | `case_facts` | Intake output. |
@@ -228,7 +231,7 @@ Required internal fields:
 | `agent_states` | Runtime state per agent. |
 | `auditor_loop_count` | Autonomous challenge count for the current run. |
 | `officer_challenge_count` | Officer-triggered rerun count for the case. |
-| `officer_messages` | Conversation history shown in the UI. |
+| `officer_messages` | Conversation history exposed to clients. |
 | `current_agent` | Active agent, or `null`. |
 | `awaiting_clarification` | Whether the last message needs category clarification. |
 | `artifacts` | Generated artifact metadata. |
@@ -281,10 +284,39 @@ status in ["awaiting_approval", "escalated"] and officer_challenge_count < 2
 
 ## 6. Endpoint Details
 
-### 6.1 Create Case
+### 6.1 Create Case ID
 
 ```text
 POST /api/v1/cases
+```
+
+Request:
+
+```text
+empty body
+```
+
+Response `201 Created`:
+
+```json
+{
+  "case_id": "CLM-2026-00001",
+  "status": "draft"
+}
+```
+
+Behavior:
+
+1. Generate a unique case ID.
+2. Create `CaseState` with status `draft`.
+3. Return the case ID before documents are uploaded.
+
+This endpoint does not start the pipeline.
+
+### 6.2 Submit Case Documents
+
+```text
+POST /api/v1/cases/{case_id}/documents
 ```
 
 Request:
@@ -302,7 +334,7 @@ multipart/form-data
 | `adjuster_report` | PDF file | no | 10 MB |
 | `chat_transcript` | text | no | reasonable form limit |
 
-Response `201 Created`:
+Response `200 OK`:
 
 ```json
 {
@@ -313,14 +345,15 @@ Response `201 Created`:
 
 Behavior:
 
-1. Validate required uploads and MIME types.
-2. Save files under the case directory.
-3. Create `CaseState` with status `submitted`.
-4. Start `run_pipeline(case_id)` as a background task.
+1. Validate that `case_id` exists and is currently `draft`.
+2. Validate required uploads and MIME types.
+3. Save files under the case directory.
+4. Transition `draft -> submitted`.
+5. Start `run_pipeline(case_id)` as a background task.
 
 The pipeline then transitions `submitted -> running` and emits `workflow.started`.
 
-### 6.2 List Cases
+### 6.3 List Cases
 
 ```text
 GET /api/v1/cases
@@ -339,9 +372,9 @@ Response `200 OK`:
 ]
 ```
 
-Use this for dashboard landing only. Full details come from `GET /cases/{case_id}`.
+Use this for dashboard landing only. Full details come from `GET /cases/{case_id}`. Draft cases are hidden from this list.
 
-### 6.3 Get Case Snapshot
+### 6.4 Get Case Snapshot
 
 ```text
 GET /api/v1/cases/{case_id}
@@ -355,7 +388,7 @@ Use cases:
 - Refresh after SSE disconnect.
 - Debugging current in-memory state.
 
-### 6.4 Open SSE Stream
+### 6.5 Open SSE Stream
 
 ```text
 GET /api/v1/cases/{case_id}/stream
@@ -385,12 +418,12 @@ Disconnect recovery:
 
 1. Client detects stream failure.
 2. Client calls `GET /cases/{case_id}`.
-3. Client rebuilds UI from the snapshot.
+3. Client rebuilds state from the snapshot.
 4. Client opens a new SSE stream.
 
 No event replay is required for this version.
 
-### 6.5 Download Uploaded Document
+### 6.6 Download Uploaded Document
 
 ```text
 GET /api/v1/cases/{case_id}/documents/{doc_type}
@@ -413,7 +446,7 @@ Response:
 - `404 INVALID_DOC_TYPE` if `doc_type` is not one of the allowed values.
 - `404 DOCUMENT_NOT_FOUND` if the requested document was not uploaded.
 
-### 6.6 Download Uploaded Photo
+### 6.7 Download Uploaded Photo
 
 ```text
 GET /api/v1/cases/{case_id}/documents/photo/{index}
@@ -427,7 +460,7 @@ Response:
 - `404 INVALID_DOC_TYPE` if the index is out of range.
 - `404 DOCUMENT_NOT_FOUND` if the file is missing on disk.
 
-### 6.7 Download Generated Artifact
+### 6.8 Download Generated Artifact
 
 ```text
 GET /api/v1/cases/{case_id}/artifacts/{artifact_type}
@@ -445,7 +478,7 @@ Response:
 - `200 OK` with the correct artifact content type.
 - `404 ARTIFACT_NOT_READY` if the requested artifact does not yet exist.
 
-### 6.8 Approve Case
+### 6.9 Approve Case
 
 ```text
 POST /api/v1/cases/{case_id}/approve
@@ -482,7 +515,7 @@ Behavior:
 
 No SSE event is required for the same browser that made the HTTP request. Other clients can refresh the case snapshot.
 
-### 6.9 Decline Case
+### 6.10 Decline Case
 
 ```text
 POST /api/v1/cases/{case_id}/decline
@@ -518,7 +551,7 @@ Behavior:
 - Save `operator_decision_reason`.
 - Transition to `declined`.
 
-### 6.10 Officer Message
+### 6.11 Officer Message
 
 ```text
 POST /api/v1/cases/{case_id}/message
@@ -699,7 +732,7 @@ Allowed emitted `status` values:
 working, waiting, completed, error
 ```
 
-`idle` is a UI initialization state and does not need to be emitted.
+`idle` is an initialization state and does not need to be emitted.
 
 ### 7.4 `agent.output`
 
@@ -757,7 +790,7 @@ Officer-triggered challenge payload:
 Rules:
 
 - Emit this event before the receiving agent reruns or wakes up.
-- Use it for Auditor-driven challenges and any other backend agent-to-agent coordination the UI should visualize.
+- Use it for Auditor-driven challenges and any other backend agent-to-agent coordination clients should visualize.
 - Do not overload `agent.status_changed` with reasoning or handoff context.
 
 ### 7.6 `artifact.created`
@@ -822,7 +855,8 @@ There is no `workflow.failed` SSE event in this lean contract. Failure is still 
 ### 8.1 Happy Path
 
 ```text
-POST /api/v1/cases -> 201
+POST /api/v1/cases -> 201 {status: "draft"}
+POST /api/v1/cases/{id}/documents -> 200 {status: "submitted"}
 GET /api/v1/cases/{id}/stream
 
 workflow.started {trigger: "submit"}
@@ -898,7 +932,7 @@ workflow.completed {status: "awaiting_approval", officer_challenge_count: 1}
 POST /api/v1/cases/{id}/message -> 200 {status: "clarification_needed", options: [...]}
 ```
 
-No SSE event is required. The frontend displays the clarification options from the HTTP response.
+No SSE event is required. The client displays the clarification options from the HTTP response.
 
 When the officer selects a category:
 
@@ -996,7 +1030,7 @@ In the direct partial rerun runner:
 
 ## 10. Blackboard Output Contract
 
-The frontend blackboard is updated from `agent.output`.
+Client blackboard state is updated from `agent.output`.
 
 Required sections:
 
@@ -1072,23 +1106,19 @@ CPU-bound work:
 
 CORS:
 
-- For hackathon use, allow frontend dev ports or `allow_origins = ["*"]`.
+- For hackathon use, allow local dev ports or `allow_origins = ["*"]`.
 - Restrict origins before production.
 
 ---
 
-## 14. Implementation Order
+## 14. Skeleton Implementation Order
 
 1. Define schemas and fixed string values.
 2. Build case store, status transition helper, SSE service, and case ID validation.
-3. Implement core endpoints: create, list, detail, stream, documents, artifacts.
+3. Implement core endpoints: create case ID, submit documents, list, detail, stream, documents, artifacts.
 4. Implement a stub pipeline that emits the final SSE contract.
-5. Build the frontend against the stub SSE stream.
-6. Implement approve, decline, and message endpoints.
-7. Implement real agents and pipeline runner.
-8. Implement partial rerun chains.
-9. Implement PDF generation, audit trail generation, and artifact superseding.
-10. Add failure handling and demo recovery checks.
+5. Implement approve, decline, and message endpoints.
+6. Add failure handling and demo recovery checks.
 
 ---
 
@@ -1097,6 +1127,7 @@ CORS:
 Required public APIs:
 
 - `POST /api/v1/cases`
+- `POST /api/v1/cases/{case_id}/documents`
 - `GET /api/v1/cases`
 - `GET /api/v1/cases/{case_id}`
 - `GET /api/v1/cases/{case_id}/stream`

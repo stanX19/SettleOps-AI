@@ -60,8 +60,8 @@ export const api = {
    * Send an officer message (challenge)
    */
   async sendMessage(
-    caseId: string, 
-    message: string, 
+    caseId: string,
+    message: string,
     type: OfficerMessageType = OfficerMessageType.FREEFORM
   ): Promise<any> {
     const res = await fetch(`${API_BASE}/api/v1/cases/${caseId}/message`, {
@@ -70,5 +70,32 @@ export const api = {
       body: JSON.stringify({ message, type }),
     });
     return handleResponse(res);
-  }
+  },
+
+  /**
+   * Submit a new case with required documents
+   */
+  async createCase(files: {
+    police_report: File;
+    policy_pdf: File;
+    repair_quotation: File;
+    photos: File[];
+    adjuster_report?: File;
+  }): Promise<{ case_id: string }> {
+    const form = new FormData();
+    form.append("police_report", files.police_report);
+    form.append("policy_pdf", files.policy_pdf);
+    form.append("repair_quotation", files.repair_quotation);
+    for (const photo of files.photos) {
+      form.append("photos", photo);
+    }
+    if (files.adjuster_report) {
+      form.append("adjuster_report", files.adjuster_report);
+    }
+    const res = await fetch(`${API_BASE}/api/v1/cases`, {
+      method: "POST",
+      body: form,
+    });
+    return handleResponse(res);
+  },
 };

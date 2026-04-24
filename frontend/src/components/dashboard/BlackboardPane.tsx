@@ -2,7 +2,24 @@
 
 import React from "react"
 import { Badge } from "@/components/primitives/Badge"
-import { CheckCircle2, AlertTriangle, ShieldCheck, FileKey, Scale, Landmark, Info, Loader2 } from "lucide-react"
+import {
+  CheckCircle2,
+  AlertTriangle,
+  ShieldCheck,
+  FileKey,
+  Scale,
+  Landmark,
+  Info,
+  Loader2,
+  MessageSquare,
+  LayoutList,
+  Send,
+  User,
+  Bot,
+  ArrowUp
+} from "lucide-react"
+import { useCaseStore } from "@/stores/case-store"
+import { BlackboardSection } from "@/lib/types"
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -26,9 +43,6 @@ function LiabilityBar({ claimant, thirdParty }: { claimant: number, thirdParty: 
     </div>
   )
 }
-
-import { useCaseStore } from "@/stores/case-store"
-import { BlackboardSection } from "@/lib/types"
 
 function OutputCard({ title, icon, children, status }: { title: string, icon: React.ReactNode, children: React.ReactNode, status?: 'success' | 'warning' | 'danger' }) {
   let headerColor = "text-neutral-text-primary";
@@ -95,6 +109,7 @@ export function BlackboardPane() {
   const blackboard = useCaseStore(state => state.blackboard);
   const status = useCaseStore(state => state.status);
   const isSyncing = status === "running";
+  const [mode, setMode] = React.useState<'blackboard' | 'chat'>('blackboard');
 
   const renderCaseFacts = (data: any) => (
     <OutputCard title="Case Facts" icon={<FileKey className="w-4 h-4" />} status="success">
@@ -166,34 +181,105 @@ export function BlackboardPane() {
   );
 
   return (
-    <div className="pl-6 pr-4 py-4 flex flex-col h-full overflow-y-auto bg-neutral-background custom-scrollbar">
-      <div className="flex flex-col mb-6 space-y-1">
+    <div className="flex flex-col h-full bg-neutral-background overflow-hidden border-l border-neutral-border">
+      {/* Mode Toggle Header */}
+      <div className="px-6 py-4 border-b border-neutral-border flex-shrink-0">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-neutral-text-primary">Blackboard State</h2>
-          <Badge variant={isSyncing ? "warning" : "success"} className="transition-all duration-500">
-            {isSyncing ? (
-              <span className="flex items-center">
-                <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-                Syncing
-              </span>
-            ) : "Synced"}
-          </Badge>
+          <h2 className="text-sm font-bold text-neutral-text-primary uppercase tracking-widest">
+            {mode === 'blackboard' ? 'Blackboard' : 'SettleOps AI'}
+          </h2>
+          <div className="relative flex bg-neutral-surface border border-neutral-border rounded-lg p-1">
+            {/* Sliding Background Pill */}
+            <div
+              className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-brand-primary rounded-md transition-all duration-300 ease-in-out ${mode === 'blackboard' ? 'translate-x-0' : 'translate-x-full'}`}
+              style={{ left: '4px' }}
+            />
+
+            <button
+              onClick={() => setMode('blackboard')}
+              className={`relative z-10 p-1.5 px-2.5 rounded-md transition-colors duration-300 ${mode === 'blackboard' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
+              title="Blackboard Mode"
+            >
+              <LayoutList className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setMode('chat')}
+              className={`relative z-10 p-1.5 px-2.5 rounded-md transition-colors duration-300 ${mode === 'chat' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
+              title="AI Chat Mode"
+            >
+              <MessageSquare className="w-4 h-4" />
+            </button>
+          </div>
         </div>
-        <p className="text-xs text-neutral-text-secondary">Live engine decision buffer</p>
       </div>
 
-      <div className="flex-1 flex flex-col">
-        {blackboard[BlackboardSection.CASE_FACTS] ? renderCaseFacts(blackboard[BlackboardSection.CASE_FACTS]) : (isSyncing && <BlackboardSkeleton />)}
-        {blackboard[BlackboardSection.POLICY_VERDICT] ? renderPolicyVerdict(blackboard[BlackboardSection.POLICY_VERDICT]) : (isSyncing && blackboard[BlackboardSection.CASE_FACTS] && <BlackboardSkeleton />)}
-        {blackboard[BlackboardSection.LIABILITY_VERDICT] && renderLiabilityVerdict(blackboard[BlackboardSection.LIABILITY_VERDICT])}
-        {blackboard[BlackboardSection.FRAUD_ASSESSMENT] && renderFraudAssessment(blackboard[BlackboardSection.FRAUD_ASSESSMENT])}
-        {blackboard[BlackboardSection.PAYOUT_RECOMMENDATION] && renderPayoutRecommendation(blackboard[BlackboardSection.PAYOUT_RECOMMENDATION])}
-        
-        {!Object.keys(blackboard).length && !isSyncing && (
-          <div className="flex-1 flex flex-col items-center justify-center text-neutral-text-tertiary opacity-40 py-20 text-center">
-            <Info className="w-12 h-12 mb-4" />
-            <p className="text-sm font-medium">Awaiting Agent Output</p>
-            <p className="text-[10px] uppercase tracking-widest mt-1">Real-time SSE Stream</p>
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+        {mode === 'blackboard' ? (
+          <div className="flex flex-col">
+            {blackboard[BlackboardSection.CASE_FACTS] ? renderCaseFacts(blackboard[BlackboardSection.CASE_FACTS]) : (isSyncing && <BlackboardSkeleton />)}
+            {blackboard[BlackboardSection.POLICY_VERDICT] ? renderPolicyVerdict(blackboard[BlackboardSection.POLICY_VERDICT]) : (isSyncing && blackboard[BlackboardSection.CASE_FACTS] && <BlackboardSkeleton />)}
+            {blackboard[BlackboardSection.LIABILITY_VERDICT] && renderLiabilityVerdict(blackboard[BlackboardSection.LIABILITY_VERDICT])}
+            {blackboard[BlackboardSection.FRAUD_ASSESSMENT] && renderFraudAssessment(blackboard[BlackboardSection.FRAUD_ASSESSMENT])}
+            {blackboard[BlackboardSection.PAYOUT_RECOMMENDATION] && renderPayoutRecommendation(blackboard[BlackboardSection.PAYOUT_RECOMMENDATION])}
+
+            {!Object.keys(blackboard).length && !isSyncing && (
+              <div className="flex-1 flex flex-col items-center justify-center text-neutral-text-tertiary opacity-40 py-20 text-center">
+                <Info className="w-12 h-12 mb-4" />
+                <p className="text-sm font-medium">Awaiting Agent Output</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col h-full">
+            {/* Chat Interface */}
+            <div className="flex-1 flex flex-col space-y-4 mb-4">
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-4 h-4 text-black" />
+                </div>
+                <div className="bg-neutral-surface border border-neutral-border p-3 rounded-tr-xl rounded-br-xl rounded-bl-xl max-w-[85%] shadow-sm">
+                  <p className="text-xs text-neutral-text-primary leading-relaxed">
+                    Hello! I am your AI Claims Strategist. How can I help you optimize this settlement workflow today?
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3 justify-end">
+                <div className="bg-brand-primary/10 p-3 rounded-tl-xl rounded-bl-xl rounded-br-xl max-w-[85%] shadow-sm">
+                  <p className="text-xs text-neutral-text-primary leading-relaxed">
+                    Can you check if there are any conflicting statements between the claimant and the police report?
+                  </p>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-neutral-surface border border-neutral-border flex items-center justify-center flex-shrink-0">
+                  <User className="w-4 h-4 text-neutral-text-primary" />
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-4 h-4 text-black" />
+                </div>
+                <div className="bg-neutral-surface border border-neutral-border p-3 rounded-tr-xl rounded-br-xl rounded-bl-xl max-w-[85%] shadow-sm">
+                  <p className="text-xs text-neutral-text-primary leading-relaxed">
+                    Based on my analysis of the uploaded evidence, the claimant mentions the intersection was clear, but the police report (Doc Ref: PR-923) indicates a traffic signal malfunction reported 10 minutes prior. This significantly impacts the liability split.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Chat Input */}
+            <div className="sticky bottom-0 bg-neutral-background pt-2">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Ask the settleOps AI..."
+                  className="w-full bg-neutral-surface border border-neutral-border rounded-lg pl-4 pr-10 py-3 text-xs text-neutral-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors"
+                />
+                <button className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 bg-brand-primary text-black rounded-md hover:bg-brand-primary/90 transition-colors shadow-sm">
+                  <ArrowUp className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

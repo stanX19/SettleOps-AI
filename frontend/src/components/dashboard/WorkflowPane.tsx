@@ -158,7 +158,7 @@ export function WorkflowPane() {
           <div className="text-sm font-mono text-neutral-text-secondary mt-1 flex items-center">
             Workflow:
             <span className={`ml-2 flex items-center ${caseStatus === CaseStatus.RUNNING ? 'text-brand-primary' :
-                caseStatus === CaseStatus.AWAITING_APPROVAL ? 'text-semantic-success' : 'text-neutral-text-tertiary'
+              caseStatus === CaseStatus.AWAITING_APPROVAL ? 'text-semantic-success' : 'text-neutral-text-tertiary'
               }`}>
               {caseStatus === CaseStatus.RUNNING && <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse mr-2"></span>}
               {caseStatus.toUpperCase()}
