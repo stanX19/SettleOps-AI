@@ -48,17 +48,23 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                 }
 
             # 2. Execute task
-            # The task is expected to return a dict with 'data' and 'reasoning'
-            if asyncio.iscoroutinefunction(task):
-                result = await task(state, feedback=feedback)
-            else:
-                result = task(state, feedback=feedback)
-            
-            # 3. Format output for the sub-graph state
-            return {
-                "results": result.get("data", {}),
-                "trace_log": [f"[{cluster_id}] {result.get('reasoning', 'No reasoning provided.')}"]
-            }
+            try:
+                if asyncio.iscoroutinefunction(task):
+                    result = await task(state, feedback=feedback)
+                else:
+                    result = task(state, feedback=feedback)
+                
+                # 3. Format output for the sub-graph state
+                return {
+                    "results": result.get("data", {}),
+                    "trace_log": [f"[{cluster_id}] {result.get('reasoning', 'No reasoning provided.')}"]
+                }
+            except Exception as e:
+                # ERROR GRANULARITY: Catch and mark section as error
+                return {
+                    "results": {"status": "error", "error": str(e)},
+                    "trace_log": [f"[{cluster_id}] CRITICAL ERROR: {str(e)}"]
+                }
             
         builder.add_node(f"task_{i}", reflection_wrapper)
 

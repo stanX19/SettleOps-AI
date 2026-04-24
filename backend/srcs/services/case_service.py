@@ -572,7 +572,7 @@ async def run_pipeline(case_id: str) -> None:
     if state is None:
         return
 
-    async with CaseStore.lock():
+    async with CaseStore.lock(case_id):
         try:
             transition_status(state, CaseStatus.RUNNING)
         except InvalidStatusTransition:
@@ -613,7 +613,7 @@ async def run_pipeline(case_id: str) -> None:
         # (SSE already handled updates, but we need final artifacts)
         await generate_artifacts(state)
 
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             # If the graph ended normally, it should be awaiting approval
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
@@ -632,7 +632,7 @@ async def run_pipeline(case_id: str) -> None:
             ),
         )
     except Exception:
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             try:
                 transition_status(state, CaseStatus.FAILED)
             except InvalidStatusTransition:
@@ -695,7 +695,7 @@ async def run_partial_pipeline(
 
         await generate_artifacts(state)
 
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
@@ -713,7 +713,7 @@ async def run_partial_pipeline(
             ),
         )
     except Exception:
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             try:
                 transition_status(state, CaseStatus.FAILED)
             except InvalidStatusTransition:
@@ -739,7 +739,7 @@ async def resume_workflow_with_sse(
         return
 
     # 2. Audit Logging & Final Decision Setup
-    async with CaseStore.lock():
+    async with CaseStore.lock(case_id):
         if operator_name and action:
             audit_entry = {
                 "timestamp": now_iso(),
@@ -755,7 +755,7 @@ async def resume_workflow_with_sse(
             state.operator_decision_reason = reason or "Manual override"
 
     # 3. Transition to RUNNING
-    async with CaseStore.lock():
+    async with CaseStore.lock(case_id):
         try:
             transition_status(state, CaseStatus.RUNNING)
         except InvalidStatusTransition:
@@ -791,7 +791,7 @@ async def resume_workflow_with_sse(
         # 6. Finalize (same as run_pipeline)
         await generate_artifacts(state)
 
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
@@ -809,7 +809,7 @@ async def resume_workflow_with_sse(
             ),
         )
     except Exception:
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             try:
                 transition_status(state, CaseStatus.FAILED)
             except InvalidStatusTransition:

@@ -44,10 +44,18 @@ async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
         audit_results = response.json_data if response.json_data else {}
         
-        is_consistent = audit_results.get("is_consistent", True)
-        findings = audit_results.get("findings", "No issues found.")
+        # Check for errors in clusters
+        has_errors = any(
+            isinstance(res, dict) and res.get("status") == "error"
+            for res in [policy, liability, damage, fraud, payout]
+        )
         
-        # If inconsistent, we flag it so the decision router can handle it
+        is_consistent = audit_results.get("is_consistent", True) and not has_errors
+        findings = audit_results.get("findings", "No issues found.")
+        if has_errors:
+            findings = "Audit failed due to technical error in one or more analysis clusters."
+        
+        # If inconsistent or errored, we flag it so the decision router can handle it
         status = "awaiting_approval" if is_consistent else "inconsistent"
         
         return {

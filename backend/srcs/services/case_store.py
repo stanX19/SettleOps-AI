@@ -210,10 +210,15 @@ class CaseStore:
     _counter: int = 0
     _counter_lock = threading.Lock()
     _async_lock = asyncio.Lock()
+    _case_locks: dict[str, asyncio.Lock] = {}
 
     @classmethod
-    def lock(cls) -> asyncio.Lock:
-        return cls._async_lock
+    def lock(cls, case_id: Optional[str] = None) -> asyncio.Lock:
+        if case_id is None:
+            return cls._async_lock
+        if case_id not in cls._case_locks:
+            cls._case_locks[case_id] = asyncio.Lock()
+        return cls._case_locks[case_id]
 
     @classmethod
     def new_case_id(cls) -> str:

@@ -200,7 +200,7 @@ async def _process_graph_stream(case_id: str, graph, config, initial_state=None)
             if section and data is not None:
                 case = CaseStore.get(case_id)
                 if case:
-                    async with CaseStore.lock():
+                    async with CaseStore.lock(case_id):
                         case.set_section_data(section, data)
 
                 await SseService.emit(case_id, SseAgentOutputData(
@@ -211,8 +211,12 @@ async def _process_graph_stream(case_id: str, graph, config, initial_state=None)
                     data=data
                 ))
             
-            # 3. Emit Status: COMPLETED
-            await _emit_agent_status(case_id, agent_id, AgentStatus.COMPLETED)
+            # 3. Emit Status: COMPLETED or ERROR
+            final_agent_status = AgentStatus.COMPLETED
+            if data and isinstance(data, dict) and data.get("status") == "error":
+                final_agent_status = AgentStatus.ERROR
+            
+            await _emit_agent_status(case_id, agent_id, final_agent_status)
 
     # Final status check
     final_state_wrapper = await graph.aget_state(config)
@@ -254,7 +258,7 @@ async def _emit_agent_status(case_id: str, agent: AgentId, status: AgentStatus):
     timestamp = now_iso()
     case = CaseStore.get(case_id)
     if case:
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             rs = case.agent_states.get(agent)
             if rs:
                 rs.status = status

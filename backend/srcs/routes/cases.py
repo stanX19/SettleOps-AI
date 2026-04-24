@@ -285,7 +285,7 @@ async def submit_case_documents(
         chat_transcript,
     )
 
-    async with CaseStore.lock():
+    async with CaseStore.lock(case_id):
         state = require_case(case_id)
         if state.status != CaseStatus.DRAFT:
             shutil.rmtree(case_upload_dir(case_id), ignore_errors=True)
@@ -459,7 +459,7 @@ async def get_artifact(case_id: str, artifact_type: str) -> FileResponse:
 async def approve_case(case_id: str) -> ApproveResponse:
     state = require_case(case_id)
 
-    async with CaseStore.lock():
+    async with CaseStore.lock(case_id):
         # Re-check inside the lock: a concurrent pipeline transition or
         # officer message could have moved `state.status` between the
         # initial read and acquiring the lock.
@@ -500,7 +500,7 @@ async def approve_case(case_id: str) -> ApproveResponse:
 async def decline_case(case_id: str, body: DeclineRequest) -> DeclineResponse:
     state = require_case(case_id)
 
-    async with CaseStore.lock():
+    async with CaseStore.lock(case_id):
         # Re-check inside the lock to close the TOCTOU window that
         # `approve_case` suffered from before.
         if state.status not in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED):
@@ -535,7 +535,7 @@ async def officer_message(
 ) -> MessageClarificationResponse | MessageRerunResponse:
     state = require_case(case_id)
 
-    async with CaseStore.lock():
+    async with CaseStore.lock(case_id):
         # Re-check preconditions inside the lock so a concurrent pipeline
         # transition (or another officer message) can't slip past the guard
         # between validation and mutation.
