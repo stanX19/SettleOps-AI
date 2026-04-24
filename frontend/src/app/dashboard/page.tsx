@@ -81,11 +81,15 @@ const mockClaims: Claim[] = [
 
 export default function DashboardPage() {
   const router = useRouter();
-  const handleNewClaim = () => {
-    const year = new Date().getFullYear();
-    const randomNum = Math.floor(Math.random() * 90000) + 10000;
-    const newCaseId = `CLM-${year}-${randomNum}`;
-    router.push(`/workflow/${newCaseId}/manage`);
+  const handleNewClaim = async () => {
+    try {
+      const { api } = await import("@/lib/api");
+      const { case_id } = await api.initiateDraftCase();
+      router.push(`/workflow/${case_id}/manage`);
+    } catch (err) {
+      console.error("Failed to create new claim:", err);
+      alert("Could not initialize a new claim. Please ensure the backend is running.");
+    }
   };
 
   return (

@@ -10,12 +10,13 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  ShieldCheck
+  ShieldCheck,
+  Loader2
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/primitives/Button";
 import { CaseStatus } from "@/lib/types";
-import { useCaseStore } from "@/stores/case-store";
 import { api } from "@/lib/api";
 
 interface PageProps {
@@ -27,35 +28,17 @@ interface UploadedFile {
   name: string;
   size: string;
   date: string;
+  file: File; // Added to store raw blob
 }
 
 export default function ManageCasePage({ params }: PageProps) {
   const { caseId } = use(params);
+  const router = useRouter();
   const [files, setFiles] = useState<UploadedFile[]>([]);
-  const status = useCaseStore(state => state.status);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [status, setStatus] = useState<CaseStatus>(CaseStatus.DRAFT);
+  const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleStartWorkflow = async () => {
-    setIsSubmitting(true);
-    try {
-      // Create mock documents to satisfy the backend's strict endpoint requirements
-      const mockDoc = new File(["dummy content"], "evidence.pdf", { type: "application/pdf" });
-      const mockPhoto = new File(["dummy content"], "photo.jpg", { type: "image/jpeg" });
-      
-      await api.submitDocuments(caseId, {
-        police_report: mockDoc,
-        policy_pdf: mockDoc,
-        repair_quotation: mockDoc,
-        photos: [mockPhoto]
-      });
-      // SSE will handle status updates automatically
-    } catch (e) {
-      console.error("Failed to start workflow:", e);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -69,15 +52,58 @@ export default function ManageCasePage({ params }: PageProps) {
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
       size: (file.size / 1024 / 1024).toFixed(2) + " MB",
-      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      file: file
     }));
 
     setFiles(prev => [...prev, ...newFiles]);
+    setError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const removeFile = (id: string) => {
     setFiles(prev => prev.filter(f => f.id !== id));
+  };
+
+  const handleStartWorkflow = async () => {
+    if (files.length === 0) {
+      setError("Please upload evidence documents first.");
+      return;
+    }
+
+    setIsStarting(true);
+    setError(null);
+
+    try {
+      // Heuristic mapping
+      const mapped: any = {
+        photos: []
+      };
+
+      files.forEach(f => {
+        const name = f.name.toLowerCase();
+        if (name.includes("police") && !mapped.police_report) {
+          mapped.police_report = f.file;
+        } else if ((name.includes("policy") || name.includes("cover")) && !mapped.policy_pdf) {
+          mapped.policy_pdf = f.file;
+        } else if ((name.includes("quote") || name.includes("quot") || name.includes("repair")) && !mapped.repair_quotation) {
+          mapped.repair_quotation = f.file;
+        } else if (name.includes("adjuster") && !mapped.adjuster_report) {
+          mapped.adjuster_report = f.file;
+        } else {
+          mapped.photos.push(f.file);
+        }
+      });
+
+      await api.submitDocuments(caseId, mapped);
+      
+      // Redirect to main workflow view
+      router.push(`/workflow/${caseId}`);
+    } catch (err: any) {
+      console.error("Failed to start workflow:", err);
+      setError(err.message || "An unexpected error occurred while starting the workflow.");
+      setIsStarting(false);
+    }
   };
 
   return (
@@ -88,7 +114,7 @@ export default function ManageCasePage({ params }: PageProps) {
         ref={fileInputRef}
         onChange={handleFileChange}
         className="hidden"
-        accept=".pdf"
+        accept=".pdf,image/*"
         multiple
       />
 
@@ -111,13 +137,17 @@ export default function ManageCasePage({ params }: PageProps) {
 
         <div className="flex items-center space-x-3">
           <Button 
-            variant="outline" 
             onClick={handleStartWorkflow}
-            disabled={isSubmitting || status !== CaseStatus.DRAFT && status !== CaseStatus.AWAITING_DOCS}
-            className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all"
+            disabled={isStarting || files.length === 0}
+            variant="outline" 
+            className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all disabled:opacity-50"
           >
-            <Play className="w-4 h-4 fill-current" />
-            <span>{isSubmitting ? "Starting..." : "Start Workflow"}</span>
+            {isStarting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4 fill-current" />
+            )}
+            <span>{isStarting ? "Initializing..." : "Start Workflow"}</span>
           </Button>
           <Button onClick={handleUploadClick} className="flex items-center space-x-2">
             <Upload className="w-4 h-4" />
@@ -125,6 +155,14 @@ export default function ManageCasePage({ params }: PageProps) {
           </Button>
         </div>
       </div>
+
+      {/* Error Message Display */}
+      {error && (
+        <div className="mb-6 p-4 bg-semantic-danger/10 border border-semantic-danger/20 rounded-lg flex items-center space-x-3 text-semantic-danger animate-in fade-in slide-in-from-top-2">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <p className="text-sm font-medium">{error}</p>
+        </div>
+      )}
 
       {/* Grid Layout - Filling remaining height */}
       <div className="grid grid-cols-12 gap-8 flex-1 min-h-0">
@@ -174,7 +212,7 @@ export default function ManageCasePage({ params }: PageProps) {
                   </div>
                   <h4 className="text-neutral-text-primary font-medium mb-1">No evidence uploaded yet</h4>
                   <p className="text-xs text-neutral-text-tertiary max-w-[240px]">
-                    Upload relevant PDF documents to begin the settlement orchestration.
+                    Upload relevant PDF documents (Police Report, Policy, Quote) to begin the settlement orchestration.
                   </p>
                   <Button variant="ghost" onClick={handleUploadClick} className="mt-4 text-brand-primary">
                     Select Files

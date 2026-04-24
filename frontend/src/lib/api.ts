@@ -102,19 +102,21 @@ export const api = {
   async submitDocuments(
     caseId: string,
     files: {
-      police_report: File;
-      policy_pdf: File;
-      repair_quotation: File;
-      photos: File[];
+      police_report?: File;
+      policy_pdf?: File;
+      repair_quotation?: File;
+      photos?: File[];
       adjuster_report?: File;
     }
   ): Promise<{ case_id: string; status: CaseStatus }> {
     const form = new FormData();
-    form.append("police_report", files.police_report);
-    form.append("policy_pdf", files.policy_pdf);
-    form.append("repair_quotation", files.repair_quotation);
-    for (const photo of files.photos) {
-      form.append("photos", photo);
+    if (files.police_report) form.append("police_report", files.police_report);
+    if (files.policy_pdf) form.append("policy_pdf", files.policy_pdf);
+    if (files.repair_quotation) form.append("repair_quotation", files.repair_quotation);
+    if (files.photos) {
+      for (const photo of files.photos) {
+        form.append("photos", photo);
+      }
     }
     if (files.adjuster_report) {
       form.append("adjuster_report", files.adjuster_report);

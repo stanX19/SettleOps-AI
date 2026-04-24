@@ -149,50 +149,63 @@ def _require_mime(upload: UploadFile, allowed: set[str]) -> None:
 
 
 def _validate_case_uploads(
-    police_report: UploadFile,
-    policy_pdf: UploadFile,
-    repair_quotation: UploadFile,
+    police_report: Optional[UploadFile],
+    policy_pdf: Optional[UploadFile],
+    repair_quotation: Optional[UploadFile],
     photos: list[UploadFile],
     adjuster_report: Optional[UploadFile],
 ) -> None:
     if not photos:
-        raise api_error(
-            400, ErrorCode.MISSING_REQUIRED_FILES, "At least one photo is required"
-        )
+        # We still want at least something to be uploaded to start, 
+        # but let's see if we should even allow 0 photos.
+        # The prompt says "the workflow can self identify if something is missing".
+        pass
 
-    _require_mime(police_report, _PDF_MIMES)
-    _require_mime(policy_pdf, _PDF_MIMES)
-    _require_mime(repair_quotation, _PDF_MIMES)
+    if police_report:
+        _require_mime(police_report, _PDF_MIMES)
+    if policy_pdf:
+        _require_mime(policy_pdf, _PDF_MIMES)
+    if repair_quotation:
+        _require_mime(repair_quotation, _PDF_MIMES)
+    
     for p in photos:
-        _require_mime(p, _PHOTO_MIMES)
+        _require_mime(p, _PHOTO_MIMES | _PDF_MIMES)
     if adjuster_report is not None:
         _require_mime(adjuster_report, _PDF_MIMES)
 
 
 async def _save_case_uploads(
     case_id: str,
-    police_report: UploadFile,
-    policy_pdf: UploadFile,
-    repair_quotation: UploadFile,
+    police_report: Optional[UploadFile],
+    policy_pdf: Optional[UploadFile],
+    repair_quotation: Optional[UploadFile],
     photos: list[UploadFile],
     adjuster_report: Optional[UploadFile],
     chat_transcript: Optional[str],
-) -> tuple[str, str, str, Optional[str], list[str], Optional[str]]:
+) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str], list[str], Optional[str]]:
     upload_dir = case_upload_dir(case_id)
 
     try:
-        police_path = os.path.join(
-            upload_dir, f"police_report_{_safe_name(police_report.filename)}"
-        )
-        policy_path = os.path.join(
-            upload_dir, f"policy_pdf_{_safe_name(policy_pdf.filename)}"
-        )
-        quote_path = os.path.join(
-            upload_dir, f"repair_quotation_{_safe_name(repair_quotation.filename)}"
-        )
-        await _save_upload(police_report, police_path, _PDF_MAX)
-        await _save_upload(policy_pdf, policy_path, _PDF_MAX)
-        await _save_upload(repair_quotation, quote_path, _PDF_MAX)
+        police_path = None
+        if police_report:
+            police_path = os.path.join(
+                upload_dir, f"police_report_{_safe_name(police_report.filename)}"
+            )
+            await _save_upload(police_report, police_path, _PDF_MAX)
+
+        policy_path = None
+        if policy_pdf:
+            policy_path = os.path.join(
+                upload_dir, f"policy_pdf_{_safe_name(policy_pdf.filename)}"
+            )
+            await _save_upload(policy_pdf, policy_path, _PDF_MAX)
+
+        quote_path = None
+        if repair_quotation:
+            quote_path = os.path.join(
+                upload_dir, f"repair_quotation_{_safe_name(repair_quotation.filename)}"
+            )
+            await _save_upload(repair_quotation, quote_path, _PDF_MAX)
 
         photo_paths: list[str] = []
         for i, p in enumerate(photos):
@@ -213,8 +226,6 @@ async def _save_case_uploads(
             transcript_path = os.path.join(upload_dir, "chat_transcript.txt")
             await asyncio.to_thread(_write_text_file, transcript_path, chat_transcript)
     except BaseException:
-        # Any upload failure wipes the per-case directory so no orphaned
-        # files linger on disk.
         shutil.rmtree(upload_dir, ignore_errors=True)
         raise
 
@@ -246,10 +257,10 @@ async def create_case_draft() -> CaseCreateResponse:
 async def submit_case_documents(
     case_id: str,
     background: BackgroundTasks,
-    police_report: UploadFile = File(...),
-    policy_pdf: UploadFile = File(...),
-    repair_quotation: UploadFile = File(...),
-    photos: list[UploadFile] = File(...),
+    police_report: Optional[UploadFile] = File(None),
+    policy_pdf: Optional[UploadFile] = File(None),
+    repair_quotation: Optional[UploadFile] = File(None),
+    photos: list[UploadFile] = File([]),
     adjuster_report: Optional[UploadFile] = File(None),
     chat_transcript: Optional[str] = Form(None),
 ) -> CaseCreateResponse:
@@ -287,12 +298,12 @@ async def submit_case_documents(
 
     async with CaseStore.lock(case_id):
         state = require_case(case_id)
-        if state.status not in (CaseStatus.DRAFT, CaseStatus.AWAITING_DOCS):
+        if state.status != CaseStatus.DRAFT:
             shutil.rmtree(case_upload_dir(case_id), ignore_errors=True)
             raise api_error(
                 409,
                 ErrorCode.INVALID_STATUS,
-                "Documents can only be submitted for a draft or awaiting_docs case",
+                "Documents can only be submitted for a draft case",
             )
 
         state.police_report_path = police_path

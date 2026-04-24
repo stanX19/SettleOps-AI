@@ -141,13 +141,14 @@ export function WorkflowPane() {
       clusterIds.forEach((clusterId, i) => {
         const xPos = xStart + (i * CLUSTER_SPACING);
         const subTasks = topology[clusterId];
+        const aggregatorId = `${clusterId}-aggregator`;
         
         // Add Cluster Container
         nodes.push({
           id: `cluster-${clusterId}`,
           type: 'cluster',
           position: { x: xPos - 100, y: Y_CLUSTER - 10 },
-          style: { width: 200, height: 40 + (subTasks.length * 70) },
+          style: { width: 200, height: 100 + (subTasks.length * 70) }, // Taller to fit aggregator
           data: { label: clusterId.charAt(0).toUpperCase() + clusterId.slice(1) },
           selectable: false,
           draggable: true,
@@ -164,21 +165,40 @@ export function WorkflowPane() {
             extent: 'parent',
             data: { label: taskLabel, status: AgentStatus.IDLE, detail: 'Pending' }
           });
+
+          // Edges from Intake to each Sub-task (Fan-out)
+          edges.push({
+            id: `e-intake-${taskName}`,
+            source: AgentId.INTAKE,
+            target: taskName,
+            style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)', strokeDasharray: '5,5' },
+            markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
+          });
+
+          // Edges from Sub-task to Aggregator (Fan-in)
+          edges.push({
+            id: `e-${taskName}-aggregator`,
+            source: taskName,
+            target: aggregatorId,
+            style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' },
+            markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
+          });
         });
 
-        // Edges from Intake to Cluster
-        edges.push({
-          id: `e-intake-${clusterId}`,
-          source: AgentId.INTAKE,
-          target: `cluster-${clusterId}`,
-          style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)', strokeDasharray: '5,5' },
-          markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
+        // Add Aggregator Node
+        nodes.push({
+          id: aggregatorId,
+          parentId: `cluster-${clusterId}`,
+          type: 'agent',
+          position: { x: 20, y: 30 + (subTasks.length * 70) },
+          extent: 'parent',
+          data: { label: 'Aggregator', status: AgentStatus.IDLE, detail: 'Finalizing Cluster' }
         });
 
-        // Edges from Cluster to Payout
+        // Edges from Aggregator to Payout
         edges.push({
-          id: `e-${clusterId}-payout`,
-          source: `cluster-${clusterId}`,
+          id: `e-${aggregatorId}-payout`,
+          source: aggregatorId,
           target: AgentId.PAYOUT,
           style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)', strokeDasharray: '5,5' },
           markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
@@ -239,8 +259,9 @@ export function WorkflowPane() {
         };
       }
 
-      // 3. Handle Sub-tasks
+      // 3. Handle Sub-tasks and Aggregators
       for (const [parentId, parentState] of Object.entries(agents)) {
+        // Handle Sub-tasks
         if (parentState.sub_tasks && parentState.sub_tasks[node.id]) {
           const subTaskState = parentState.sub_tasks[node.id];
           return {
@@ -250,6 +271,23 @@ export function WorkflowPane() {
               status: subTaskState.status,
               detail: subTaskState.status === AgentStatus.WORKING ? 'Analyzing...' : 'Done',
               isStale: parentState.status === AgentStatus.IDLE && subTaskState.status === AgentStatus.COMPLETED
+            }
+          };
+        }
+
+        // Handle Aggregators (Heuristic: Working if parent is working and all subtasks done)
+        if (node.id === `${parentId}-aggregator`) {
+          const allSubTasksDone = parentState.sub_tasks && 
+            Object.values(parentState.sub_tasks).every(st => st.status === AgentStatus.COMPLETED);
+          const isWorking = parentState.status === AgentStatus.WORKING && allSubTasksDone;
+          const isDone = parentState.status === AgentStatus.COMPLETED;
+
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: isWorking ? AgentStatus.WORKING : isDone ? AgentStatus.COMPLETED : AgentStatus.IDLE,
+              detail: isWorking ? 'Aggregating Results...' : isDone ? 'Cluster Complete' : 'Awaiting tasks'
             }
           };
         }
