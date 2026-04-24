@@ -24,6 +24,6 @@
 - **Color**: JET GREY
 - **Fuel Type**: PETROL
 - **Sitting Capacity**: 5
-- **Owner Name**: AHMAD BIN ALI
-- **Owner ID**: 900101-14-5678
-- **Address**: NO. 12, JALAN KIARA 3, MONT KIARA, 50480 KUALA LUMPUR
+- **Owner Name**: MOCK USER
+- **Owner ID**: XXXXXX-XX-XXXX
+- **Address**: BLOCK X, MOCK STREET, MOCK CITY, 00000 MOCK STATE, MALAYSIA

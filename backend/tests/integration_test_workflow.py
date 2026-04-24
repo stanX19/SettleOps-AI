@@ -9,7 +9,9 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8')
 
 # Load env before imports that might use it
-load_dotenv(dotenv_path="project/backend/.env")
+from pathlib import Path
+BACKEND_ROOT = Path(__file__).parent.parent
+load_dotenv(dotenv_path=BACKEND_ROOT / ".env")
 
 from srcs.services.workflow_engine import build_workflow
 from srcs.schemas.state import ClaimWorkflowState
@@ -19,7 +21,7 @@ async def run_integration_test():
     print("=== Starting Integration Test ===")
     
     # 1. Prepare Documents from uploads
-    uploads_dir = "project/backend/tests/uploads"
+    uploads_dir = Path(__file__).parent / "uploads"
     documents = []
     
     files = sorted(os.listdir(uploads_dir))

@@ -2,7 +2,7 @@ from typing import List, Callable
 import asyncio
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
-from srcs.schemas.state import ClaimWorkflowState, ClusterState
+from srcs.schemas.state import ClusterState
 
 def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> StateGraph:
     """

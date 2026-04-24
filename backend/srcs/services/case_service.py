@@ -501,18 +501,47 @@ async def _run_agent_stub(
 
 # -- Workflow State Mapper ---------------------------------------------------
 
+def _read_doc_content(path: Optional[str]) -> str:
+    """Helper to read document content from disk for agent consumption."""
+    if not path or not os.path.exists(path):
+        return "[No content available]"
+    try:
+        # We assume transcripts/markdown for now as per the PR overview
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return "[Error reading content]"
+
+
 def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
     """Maps internal CaseState to LangGraph ClaimWorkflowState."""
     docs = []
     if case.police_report_path:
-        docs.append({"filename": os.path.basename(case.police_report_path), "doc_type": "police_report"})
+        docs.append({
+            "filename": os.path.basename(case.police_report_path),
+            "doc_type": "police_report",
+            "content": _read_doc_content(case.police_report_path)
+        })
     if case.policy_pdf_path:
-        docs.append({"filename": os.path.basename(case.policy_pdf_path), "doc_type": "policy_covernote"})
+        docs.append({
+            "filename": os.path.basename(case.policy_pdf_path),
+            "doc_type": "policy_covernote",
+            "content": _read_doc_content(case.policy_pdf_path)
+        })
     if case.repair_quotation_path:
-        docs.append({"filename": os.path.basename(case.repair_quotation_path), "doc_type": "workshop_quote"})
+        docs.append({
+            "filename": os.path.basename(case.repair_quotation_path),
+            "doc_type": "workshop_quote",
+            "content": _read_doc_content(case.repair_quotation_path)
+        })
     
-    for p in case.photo_paths:
-        docs.append({"filename": os.path.basename(p), "doc_type": "photo"})
+    for i, p in enumerate(case.photo_paths):
+        # Without direct Vision support in this node, we pass a hint to the tagger
+        docs.append({
+            "filename": os.path.basename(p),
+            "doc_type": "photo",
+            "content": f"[Photo Metadata: {os.path.basename(p)} at index {i}]"
+        })
 
     return ClaimWorkflowState(
         case_id=case.case_id,

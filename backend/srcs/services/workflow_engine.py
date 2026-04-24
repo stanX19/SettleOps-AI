@@ -130,7 +130,8 @@ def build_workflow() -> StateGraph:
         WorkflowNodes.DAMAGE_CLUSTER: WorkflowNodes.DAMAGE_CLUSTER,
         WorkflowNodes.FRAUD_CLUSTER: WorkflowNodes.FRAUD_CLUSTER,
         WorkflowNodes.REFINER: WorkflowNodes.REFINER,
-        WorkflowNodes.REPORT_GENERATOR: WorkflowNodes.REPORT_GENERATOR
+        WorkflowNodes.REPORT_GENERATOR: WorkflowNodes.REPORT_GENERATOR,
+        WorkflowNodes.DECISION_GATE: WorkflowNodes.DECISION_GATE
     })
     
     builder.add_edge(WorkflowNodes.REFINER, WorkflowNodes.DECISION_GATE) # Loop back for another check or surgical rerun
@@ -171,11 +172,10 @@ async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState)
     async for event in graph.astream(initial_state, config, stream_mode="updates"):
         for node_name, update in event.items():
             # 1. Emit Status: WORKING
-            # Special case: If we just finished ingest, we know clusters are starting
             if node_name == "ingest_tagging":
-                 # Ingest is done, but validation gate is next. 
-                 # We'll emit COMPLETED for intake here.
-                 await _emit_agent_status(case_id, AgentId.INTAKE, AgentStatus.COMPLETED)
+                # Ingest is done, but validation gate is next.
+                # We'll allow the standard loop to emit COMPLETED later to avoid duplication.
+                pass
             
             if node_name == "parallel_analysis_start":
                 # Parallel clusters are about to start. Emit WORKING for all of them.
@@ -196,7 +196,7 @@ async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState)
                     data = val
                     break
             
-            if section and data:
+            if section and data is not None:
                 # PERSISTENCE: Update the central CaseStore
                 case = CaseStore.get(case_id)
                 if case:

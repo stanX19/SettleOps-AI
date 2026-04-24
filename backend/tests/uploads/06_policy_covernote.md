@@ -10,9 +10,9 @@
 ---
 
 **INSURED DETAILS:**
-- **Name**: AHMAD BIN ALI
-- **ID NO**: 900101-14-5678
-- **Address**: NO. 12, JALAN KIARA 3, MONT KIARA, 50480 KUALA LUMPUR
+- **Name**: MOCK USER
+- **ID NO**: XXXXXX-XX-XXXX
+- **Address**: BLOCK X, MOCK STREET, MOCK CITY, 00000 MOCK STATE, MALAYSIA
 
 **VEHICLE DETAILS:**
 - **Registration No**: VAB 1234
@@ -21,7 +21,7 @@
 - **No Claim Discount (NCD)**: 55%
 
 **NAMED DRIVERS:**
-- **Ahmad bin Ali** (Main Driver)
+- **MOCK USER** (Main Driver)
 - **Siti binti Aminah** (Spouse)
 
 **BENEFITS / ADD-ONS:**

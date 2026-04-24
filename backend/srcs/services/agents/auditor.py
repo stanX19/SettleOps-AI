@@ -102,7 +102,8 @@ def decision_router(state: ClaimWorkflowState) -> str:
     if state.get("status") == "inconsistent":
         # In a real system, we might route to an autonomous refiner here,
         # but for now we wait for human latest_user_message.
-        return WorkflowNodes.REPORT_GENERATOR # Or a dedicated 'rejected' node
+        # Routing back to the gate preserves the HITL pause.
+        return WorkflowNodes.DECISION_GATE
         
     # 4. Completion: All checks passed or approved
     return WorkflowNodes.REPORT_GENERATOR
