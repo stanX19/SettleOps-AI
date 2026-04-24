@@ -6,6 +6,8 @@ pydantic
 pydantic-settings
 langchain
 langchain-openai
+langchain-google-genai
+google-api-core
 langgraph
 sse-starlette
 python-multipart
