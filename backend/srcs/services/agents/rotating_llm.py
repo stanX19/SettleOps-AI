@@ -644,8 +644,14 @@ class RotatingLLM:
                 base_url=settings.ILMU_BASE_URL,
             ))
 
-        # Load Gemini keys
-        for key in settings.GEMINI_API_KEY_LIST:
+        # Load Gemini keys. Prefer GEMINI_API_KEY when present, then rotate
+        # through the configured list without duplicates.
+        gemini_keys = []
+        if settings.GEMINI_API_KEY and settings.GEMINI_API_KEY.strip():
+            gemini_keys.append(settings.GEMINI_API_KEY)
+        gemini_keys.extend(settings.GEMINI_API_KEY_LIST)
+
+        for key in dict.fromkeys(k.strip() for k in gemini_keys if k and k.strip()):
             if key and key.strip():
                 llm_configs.append(LLMConfig(
                     provider="gemini",
