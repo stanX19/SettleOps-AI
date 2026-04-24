@@ -14,31 +14,33 @@ REQUIRED_DOCS = [
 ]
 
 async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
-    """Categorize uploaded documents into required slots using LLM."""
+    """Categorize NEW uploaded documents into required slots using LLM."""
     docs = state.get("documents", [])
-    if not docs:
+    processed_indices = set(state.get("processed_indices", []))
+    
+    # Identify documents that haven't been tagged yet
+    new_docs_to_process = []
+    for i, doc in enumerate(docs):
+        if i not in processed_indices:
+            new_docs_to_process.append({
+                "index": i,
+                "filename": doc.get("filename", "unknown"),
+                "doc_type_hint": doc.get("doc_type", "unknown"),
+                "snippet": doc.get("content", "")[:500]
+            })
+
+    if not new_docs_to_process:
         return {
-            "case_facts": {"tagged_documents": {}},
-            "trace_log": ["[Intake] No documents found to tag."]
+            "trace_log": ["[Intake] No new documents found to tag."]
         }
 
-    # Prepare document info for LLM
-    doc_summaries = []
-    for i, doc in enumerate(docs):
-        doc_summaries.append({
-            "index": i,
-            "filename": doc.get("filename", "unknown"),
-            "doc_type_hint": doc.get("doc_type", "unknown"),
-            "snippet": doc.get("content", "")[:500] # Provide context for better tagging
-        })
-
     prompt = f"""
-    You are an insurance intake specialist. Categorize the following documents into these 8 required slots:
+    You are an insurance intake specialist. Categorize the following NEW documents into these 8 required slots:
     {", ".join(REQUIRED_DOCS)}
     If a document does not fit or is ambiguous, use "unknown".
 
     Documents:
-    {doc_summaries}
+    {new_docs_to_process}
 
     Return a JSON object mapping the document index (as string) to the category.
     Example: {{"0": "police_report", "1": "car_photo_plate"}}
@@ -50,10 +52,12 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
         
         # Validation: Ensure only allowed categories are used
         sanitized_tags = {k: v for k, v in tagged.items() if v in REQUIRED_DOCS or v == "unknown"}
+        new_indices = [int(k) for k in sanitized_tags.keys()]
         
         return {
             "case_facts": {"tagged_documents": sanitized_tags},
-            "trace_log": [f"[Intake] Tagged {len(sanitized_tags)} documents."]
+            "processed_indices": new_indices,
+            "trace_log": [f"[Intake] Tagged {len(sanitized_tags)} new documents."]
         }
     except Exception as e:
         return {
@@ -77,4 +81,13 @@ def validation_gate(state: ClaimWorkflowState) -> dict[str, Any]:
         "status": "awaiting_docs",
         "case_facts": {"missing_documents": missing},
         "trace_log": [f"[Intake] Validation Gate: Missing {len(missing)} required documents: {', '.join(missing)}"]
+    }
+
+def wait_for_docs_node(state: ClaimWorkflowState) -> dict[str, Any]:
+    """Node that preserves the awaiting_docs status and provides an interrupt point.
+    When the graph is resumed, it will transition back to ingest_tagging.
+    """
+    return {
+        "status": "awaiting_docs",
+        "trace_log": ["[Intake] Workflow resumed. Re-triggering document tagging."]
     }

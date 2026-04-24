@@ -10,8 +10,27 @@ def payout_node(state: ClaimWorkflowState) -> dict[str, Any]:
     liability = state.get("liability_results", {})
     policy = state.get("policy_results", {})
 
+    # 0. Escalation Protocol: Check for missing critical data
+    # In a production system, these would be required fields from the previous nodes.
+    if policy.get("excess_myr") is None or damage.get("verified_total") is None:
+        missing_fields = []
+        if not policy.get("excess_myr"): missing_fields.append("excess_myr")
+        if not damage.get("verified_total"): missing_fields.append("verified_total")
+
+        return {
+            "status": "escalated",
+            "payout_results": {
+                "recommended_action": "escalate",
+                "status": "escalated",
+                "rationale": f"Missing critical financial data: {', '.join(missing_fields)}.",
+                "payout_breakdown": None,
+                "confidence": 1.0
+            },
+            "trace_log": [f"[Payout] ESCALATION: Missing {', '.join(missing_fields)}. Pausing for human intervention."]
+        }
+
     # 1. Extraction with Guard Clauses
-    verified_total = float(damage.get("verified_total", 0.0))
+    verified_total = float(damage.get("verified_total") or 0.0)
     
     # Determine liability rate based on claim type or fault split
     claim_type = policy.get("claim_type", "own_damage")
@@ -23,13 +42,13 @@ def payout_node(state: ClaimWorkflowState) -> dict[str, Any]:
             liability_rate = float(liability["liability_percent"]) / 100.0
         elif "fault_split" in liability:
             # Payout inversely proportional to insured's fault
-            insured_fault = float(liability["fault_split"].get("insured", 0.0))
+            insured_fault = float(liability["fault_split"].get("insured") or 0.0)
             liability_rate = (100.0 - insured_fault) / 100.0
 
     # Policy parameters
-    excess = float(policy.get("excess_myr", 0.0))
-    depr_rate = float(policy.get("depreciation_percent", 0.0)) / 100.0
-    policy_cap = float(policy.get("max_payout_myr", float('inf')))
+    excess = float(policy.get("excess_myr") or 0.0)
+    depr_rate = float(policy.get("depreciation_percent") or 0.0) / 100.0
+    policy_cap = float(policy.get("max_payout_myr") or float('inf'))
 
     # 2. Calculation Sequence
     depreciation_deducted = verified_total * depr_rate

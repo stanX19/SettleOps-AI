@@ -66,7 +66,10 @@ from srcs.services.case_store import (
 )
 from srcs.services.sse_service import SseService
 from srcs.schemas.state import ClaimWorkflowState
-from srcs.services.workflow_engine import run_workflow_with_sse
+from srcs.services.workflow_engine import (
+    run_workflow_with_sse,
+    resume_workflow_with_sse as resume_workflow_with_sse_engine
+)
 
 
 # -- Error helper -------------------------------------------------------------
@@ -555,8 +558,11 @@ def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
         trace_log=[],
         active_challenge=None,
         status=case.status.value,
-        current_agent=case.current_agent,
-        latest_user_message=None
+        current_agent=case.current_agent.value if case.current_agent else None,
+        latest_user_message=None,
+        human_audit_log=case.human_audit_log or [],
+        force_approve=False,
+        human_decision_reason=None
     )
 
 
@@ -566,7 +572,7 @@ async def run_pipeline(case_id: str) -> None:
     if state is None:
         return
 
-    async with CaseStore.lock():
+    async with CaseStore.lock(case_id):
         try:
             transition_status(state, CaseStatus.RUNNING)
         except InvalidStatusTransition:
@@ -607,7 +613,7 @@ async def run_pipeline(case_id: str) -> None:
         # (SSE already handled updates, but we need final artifacts)
         await generate_artifacts(state)
 
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             # If the graph ended normally, it should be awaiting approval
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
@@ -626,7 +632,7 @@ async def run_pipeline(case_id: str) -> None:
             ),
         )
     except Exception:
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             try:
                 transition_status(state, CaseStatus.FAILED)
             except InvalidStatusTransition:
@@ -689,7 +695,7 @@ async def run_partial_pipeline(
 
         await generate_artifacts(state)
 
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
@@ -707,7 +713,117 @@ async def run_partial_pipeline(
             ),
         )
     except Exception:
-        async with CaseStore.lock():
+        async with CaseStore.lock(case_id):
+            try:
+                transition_status(state, CaseStatus.FAILED)
+            except InvalidStatusTransition:
+                pass
+        raise
+
+
+async def resume_workflow_with_sse(
+    case_id: str, 
+    *, 
+    operator_name: Optional[str] = None,
+    action: Optional[str] = None,
+    reason: Optional[str] = None,
+    force_approve: bool = False
+) -> None:
+    """Service-layer entry point for resuming the agentic workflow."""
+    state = CaseStore.get(case_id)
+    if state is None:
+        return
+
+    # 1. Safety Guard: Verify case is in a resumable status
+    if state.status not in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS):
+        return
+
+    # 2. Audit Logging & Final Decision Setup
+    async with CaseStore.lock(case_id):
+        if operator_name and action:
+            audit_entry = {
+                "timestamp": now_iso(),
+                "operator": operator_name,
+                "action": action,
+                "reason": reason
+            }
+            state.human_audit_log.append(audit_entry)
+            
+        if force_approve:
+            state.operator_decision = "approved"
+            state.approved_at = now_iso()
+            state.operator_decision_reason = reason or "Manual override"
+
+    # 3. Transition to RUNNING
+    async with CaseStore.lock(case_id):
+        try:
+            transition_status(state, CaseStatus.RUNNING)
+        except InvalidStatusTransition:
+            return
+
+    # 3. Emit Workflow Started (Resumption)
+    await SseService.emit(
+        case_id,
+        SseWorkflowStartedData(
+            case_id=case_id,
+            timestamp=now_iso(),
+            trigger="submit" if action == "upload_docs" else "officer_rerun",
+        ),
+    )
+
+    try:
+        from srcs.schemas.state import WorkflowAction
+
+        # 4. Prepare updates for the graph
+        updates = {
+            "human_audit_log": [
+                {
+                    "action": WorkflowAction.FORCE_APPROVE if action == "approve" else action,
+                    "reasoning": reason or "No reasoning provided.",
+                    "operator_id": operator_name or "System",
+                    "timestamp": now_iso()
+                }
+            ],
+            "force_approve": force_approve,
+            "human_decision": {
+                "action": WorkflowAction.FORCE_APPROVE,
+                "reasoning": reason or "Manual intervention",
+                "operator_id": operator_name or "System",
+                "timestamp": now_iso()
+            } if action == "approve" else None
+        }
+        
+        # If we are resuming for docs, we need to refresh the documents list
+        if action == "upload_docs":
+            workflow_state = _to_workflow_state(state)
+            updates["documents"] = workflow_state["documents"]
+            updates["status"] = "running" # Clear the awaiting_docs status in the graph
+
+        # 5. Execute Resumption
+        await resume_workflow_with_sse_engine(case_id, updates)
+
+        # 6. Finalize (same as run_pipeline)
+        await generate_artifacts(state)
+
+        async with CaseStore.lock(case_id):
+            if state.status == CaseStatus.RUNNING:
+                transition_status(state, CaseStatus.AWAITING_APPROVAL)
+            state.current_agent = None
+
+        await SseService.emit(
+            case_id,
+            SseWorkflowCompletedData(
+                case_id=case_id,
+                timestamp=now_iso(),
+                status=state.status,
+                pdf_ready=True,
+                auditor_loop_count=state.auditor_loop_count,
+                officer_challenge_count=state.officer_challenge_count,
+                chatbox_enabled=state.chatbox_enabled(),
+            ),
+        )
+    except Exception:
+        async with CaseStore.lock(case_id):
             try:
                 transition_status(state, CaseStatus.FAILED)
             except InvalidStatusTransition:

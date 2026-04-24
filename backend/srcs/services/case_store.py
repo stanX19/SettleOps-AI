@@ -40,6 +40,7 @@ _VALID_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
     CaseStatus.RUNNING: {
         CaseStatus.AWAITING_APPROVAL,
         CaseStatus.ESCALATED,
+        CaseStatus.AWAITING_DOCS,
         CaseStatus.FAILED,
     },
     CaseStatus.AWAITING_APPROVAL: {
@@ -51,6 +52,10 @@ _VALID_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
         CaseStatus.RUNNING,
         CaseStatus.APPROVED,
         CaseStatus.DECLINED,
+    },
+    CaseStatus.AWAITING_DOCS: {
+        CaseStatus.RUNNING,
+        CaseStatus.FAILED,
     },
     CaseStatus.APPROVED: set(),
     CaseStatus.DECLINED: set(),
@@ -144,6 +149,7 @@ class CaseState:
     officer_messages: list[OfficerMessageRecord] = field(default_factory=list)
     current_agent: Optional[AgentId] = None
     awaiting_clarification: bool = False
+    human_audit_log: list[dict] = field(default_factory=list)
 
     # Artifacts
     artifacts: list[ArtifactRecord] = field(default_factory=list)
@@ -204,10 +210,15 @@ class CaseStore:
     _counter: int = 0
     _counter_lock = threading.Lock()
     _async_lock = asyncio.Lock()
+    _case_locks: dict[str, asyncio.Lock] = {}
 
     @classmethod
-    def lock(cls) -> asyncio.Lock:
-        return cls._async_lock
+    def lock(cls, case_id: Optional[str] = None) -> asyncio.Lock:
+        if case_id is None:
+            return cls._async_lock
+        if case_id not in cls._case_locks:
+            cls._case_locks[case_id] = asyncio.Lock()
+        return cls._case_locks[case_id]
 
     @classmethod
     def new_case_id(cls) -> str:
@@ -233,4 +244,5 @@ class CaseStore:
     @classmethod
     def _reset(cls) -> None:
         cls._cases.clear()
+        cls._case_locks.clear()
         cls._counter = 0
