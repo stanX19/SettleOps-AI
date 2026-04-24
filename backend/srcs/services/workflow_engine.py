@@ -170,18 +170,24 @@ async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState)
     
     async for event in graph.astream(initial_state, config, stream_mode="updates"):
         for node_name, update in event.items():
+            # 1. Emit Status: WORKING
+            # Special case: If we just finished ingest, we know clusters are starting
+            if node_name == "ingest_tagging":
+                 # Ingest is done, but validation gate is next. 
+                 # We'll emit COMPLETED for intake here.
+                 await _emit_agent_status(case_id, AgentId.INTAKE, AgentStatus.COMPLETED)
+            
+            if node_name == "parallel_analysis_start":
+                # Parallel clusters are about to start. Emit WORKING for all of them.
+                for cluster_agent in [AgentId.POLICY, AgentId.LIABILITY, AgentId.DAMAGE, AgentId.FRAUD]:
+                    await _emit_agent_status(case_id, cluster_agent, AgentStatus.WORKING)
+                continue
+
+            # Standard node mapping
             agent_id = _NODE_TO_AGENT.get(node_name)
             if not agent_id:
                 continue
                 
-            # 1. Emit Status: WORKING
-            await SseService.emit(case_id, SseAgentStatusChangedData(
-                case_id=case_id,
-                timestamp=now_iso(),
-                agent=agent_id,
-                status=AgentStatus.WORKING
-            ))
-            
             # 2. Extract Data & Update CaseStore
             section = _NODE_TO_SECTION.get(node_name)
             data = None
@@ -207,15 +213,51 @@ async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState)
                 ))
             
             # 3. Emit Status: COMPLETED
-            await SseService.emit(case_id, SseAgentStatusChangedData(
-                case_id=case_id,
-                timestamp=now_iso(),
-                agent=agent_id,
-                status=AgentStatus.COMPLETED
-            ))
+            await _emit_agent_status(case_id, agent_id, AgentStatus.COMPLETED)
 
     # Check final status
-    final_state = await graph.aget_state(config)
-    if final_state.next:
-        # We hit an interrupt (e.g. Decision Gate)
-        pass 
+    final_state_wrapper = await graph.aget_state(config)
+    final_status = final_state_wrapper.values.get("status")
+    
+    # Map backend 'inconsistent' to 'escalated' for frontend
+    display_status = CaseStatus.RUNNING
+    if final_status == "inconsistent":
+        display_status = CaseStatus.ESCALATED
+    elif final_status == "completed":
+        display_status = CaseStatus.AWAITING_APPROVAL 
+    elif final_status == "awaiting_docs":
+        display_status = CaseStatus.AWAITING_APPROVAL # Needs more docs
+    
+    # If we hit an interrupt, we are essentially 'waiting' for human
+    if final_state_wrapper.next:
+         await SseService.emit(case_id, SseWorkflowCompletedData(
+            case_id=case_id,
+            timestamp=now_iso(),
+            status=display_status,
+            pdf_ready=False,
+            auditor_loop_count=final_state_wrapper.values.get("auditor_loop_count", 0),
+            officer_challenge_count=final_state_wrapper.values.get("officer_challenge_count", 0),
+            chatbox_enabled=True
+        ))
+
+async def _emit_agent_status(case_id: str, agent: AgentId, status: AgentStatus):
+    """Sync status to CaseStore and emit SSE."""
+    timestamp = now_iso()
+    case = CaseStore.get(case_id)
+    if case:
+        async with CaseStore.lock():
+            rs = case.agent_states.get(agent)
+            if rs:
+                rs.status = status
+                if status == AgentStatus.WORKING:
+                    rs.started_at = timestamp
+                    case.current_agent = agent
+                elif status == AgentStatus.COMPLETED:
+                    rs.completed_at = timestamp
+                    
+    await SseService.emit(case_id, SseAgentStatusChangedData(
+        case_id=case_id,
+        timestamp=timestamp,
+        agent=agent,
+        status=status
+    ))

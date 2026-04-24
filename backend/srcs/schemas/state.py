@@ -63,7 +63,7 @@ class ClaimWorkflowState(TypedDict):
     
     # Routing & Loop Controls
     active_challenge: Optional[ChallengeState]
-    status: Annotated[str, first_value] # Use reducer to prevent collision on status
+    status: str 
     
     # Metadata
     current_agent: Optional[str]

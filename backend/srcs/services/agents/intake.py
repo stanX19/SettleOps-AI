@@ -28,7 +28,8 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
         doc_summaries.append({
             "index": i,
             "filename": doc.get("filename", "unknown"),
-            "doc_type_hint": doc.get("doc_type", "unknown")
+            "doc_type_hint": doc.get("doc_type", "unknown"),
+            "snippet": doc.get("content", "")[:500] # Provide context for better tagging
         })
 
     prompt = f"""

@@ -53,6 +53,7 @@ async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
         
         return {
             "status": status,
+            "active_challenge": None, # Clear challenge after it has been reran and audited
             "trace_log": [f"[Auditor] Audit complete. Consistent: {is_consistent}. Findings: {findings}"]
         }
     except Exception as e:
@@ -92,9 +93,16 @@ def decision_router(state: ClaimWorkflowState) -> str:
         }
         return mapping.get(target, WorkflowNodes.REFINER)
     
-    # 3. Refinement Loop: If Auditor found an autonomous issue OR human provided feedback
-    if state.get("status") == "inconsistent" or state.get("latest_user_message"):
+    # 3. Refinement Loop: If human provided NEW feedback via Chat Agent
+    if state.get("latest_user_message"):
         return WorkflowNodes.REFINER
+        
+    # 4. If Auditor found an autonomous issue but we haven't challenged it yet,
+    # we stop at the Decision Gate (this router runs after the interrupt).
+    if state.get("status") == "inconsistent":
+        # In a real system, we might route to an autonomous refiner here,
+        # but for now we wait for human latest_user_message.
+        return WorkflowNodes.REPORT_GENERATOR # Or a dedicated 'rejected' node
         
     # 4. Completion: All checks passed or approved
     return WorkflowNodes.REPORT_GENERATOR

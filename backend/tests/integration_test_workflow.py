@@ -93,15 +93,29 @@ async def run_integration_test():
             print("[HITL] Feedback injected. Resuming workflow...")
             
             # 6. Resume Graph (Phase 2: Surgical Rerun)
-            async for event in graph.astream(None, config, stream_mode="updates"):
-                for node, update in event.items():
-                    print(f"\n[Node: {node}]")
-                    if update is None: continue
-                    if "trace_log" in update:
-                        for log in update["trace_log"]: print(f"  > {log}")
-                    
-                    if "active_challenge" in update:
-                        print(f"  ! ACTIVE CHALLENGE: {json.dumps(update['active_challenge'], indent=2)}")
+            # We use a loop because the graph interrupts before every Decision Gate.
+            # 1st resume: Runs Refiner -> Interrupts before Decision Gate
+            # 2nd resume: Runs Decision Gate -> Routes to Cluster -> Payout -> Auditor -> Interrupts before Decision Gate
+            # 3rd resume: Runs Decision Gate -> Finishes
+            while True:
+                async for event in graph.astream(None, config, stream_mode="updates"):
+                    for node, update in event.items():
+                        print(f"\n[Node: {node}]")
+                        if update is None: continue
+                        if "trace_log" in update:
+                            for log in update["trace_log"]: print(f"  > {log}")
+                        
+                        if "active_challenge" in update:
+                            print(f"  ! ACTIVE CHALLENGE: {json.dumps(update['active_challenge'], indent=2)}")
+
+                # Check if we are done or just interrupted again
+                state = await graph.aget_state(config)
+                if not state.next:
+                    break
+                
+                # If we are at Decision Gate and have an active challenge or it's just been refined, 
+                # we need to resume to proceed through the router.
+                print(f"\n[HITL] Graph paused at {state.next}. Resuming to continue workflow...")
 
         # 7. Final State Check
         final_state = await graph.aget_state(config)

@@ -1,6 +1,9 @@
 from typing import Any
 from srcs.schemas.state import ClaimWorkflowState, ChallengeState
 from srcs.services.agents.rotating_llm import rotating_llm
+from srcs.services.sse_service import SseService
+from srcs.schemas.case_dto import SseAgentMessageToAgentData, AgentId, AuditorTrigger
+from srcs.services.case_store import now_iso
 
 async def refiner_node(state: ClaimWorkflowState) -> dict[str, Any]:
     """Refiner node: Translates freeform human feedback into a structured ChallengeState.
@@ -8,6 +11,7 @@ async def refiner_node(state: ClaimWorkflowState) -> dict[str, Any]:
     This node acts as a bridge between the Chat UI and the Agentic clusters.
     """
     user_input = state.get("latest_user_message")
+    case_id = state.get("case_id")
     
     # Guard: No input
     if not user_input:
@@ -50,8 +54,31 @@ async def refiner_node(state: ClaimWorkflowState) -> dict[str, Any]:
             "iteration": iteration
         }
         
+        # UI: Emit the challenge event so the UI can animate it
+        # We map target string to AgentId enum
+        target_agent_map = {
+            "policy": AgentId.POLICY,
+            "liability": AgentId.LIABILITY,
+            "damage": AgentId.DAMAGE,
+            "fraud": AgentId.FRAUD
+        }
+        
+        if case_id:
+            await SseService.emit(case_id, SseAgentMessageToAgentData(
+                case_id=case_id,
+                timestamp=now_iso(),
+                from_agent=AgentId.AUDITOR, # Refiner acts on behalf of the Auditor/Orchestrator
+                to_agent=target_agent_map.get(target, AgentId.LIABILITY),
+                message_type="challenge",
+                message=feedback,
+                reason="Officer Feedback",
+                loop_count=iteration,
+                trigger=AuditorTrigger.OFFICER_MESSAGE
+            ))
+        
         return {
             "active_challenge": challenge,
+            "latest_user_message": None,
             "trace_log": [f"[Refiner] Feedback mapped to {target} (Iteration {iteration}). Instruction: {feedback}"]
         }
     except Exception as e:

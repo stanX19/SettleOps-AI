@@ -140,6 +140,7 @@ class SseService:
         event_type = _EVENT_MAP.get(type(payload))
         if event_type is None:
             raise ValueError(f"Unknown SSE payload type: {type(payload).__name__}")
+        
         await cls._broadcast(
             session_id,
             event_type.value,

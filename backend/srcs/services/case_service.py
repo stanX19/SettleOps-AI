@@ -564,6 +564,9 @@ async def run_pipeline(case_id: str) -> None:
         ),
     )
 
+    # UI: Start spinner for Intake immediately
+    await emit_agent_status(state, AgentId.INTAKE, AgentStatus.WORKING)
+
     try:
         # Assemble initial state for LangGraph
         initial_workflow_state = _to_workflow_state(state)
