@@ -287,12 +287,12 @@ async def submit_case_documents(
 
     async with CaseStore.lock(case_id):
         state = require_case(case_id)
-        if state.status != CaseStatus.DRAFT:
+        if state.status not in (CaseStatus.DRAFT, CaseStatus.AWAITING_DOCS):
             shutil.rmtree(case_upload_dir(case_id), ignore_errors=True)
             raise api_error(
                 409,
                 ErrorCode.INVALID_STATUS,
-                "Documents can only be submitted for a draft case",
+                "Documents can only be submitted for a draft or awaiting_docs case",
             )
 
         state.police_report_path = police_path

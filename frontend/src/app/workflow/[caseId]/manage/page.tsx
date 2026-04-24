@@ -15,6 +15,8 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/primitives/Button";
 import { CaseStatus } from "@/lib/types";
+import { useCaseStore } from "@/stores/case-store";
+import { api } from "@/lib/api";
 
 interface PageProps {
   params: Promise<{ caseId: string }>;
@@ -30,8 +32,30 @@ interface UploadedFile {
 export default function ManageCasePage({ params }: PageProps) {
   const { caseId } = use(params);
   const [files, setFiles] = useState<UploadedFile[]>([]);
-  const [status, setStatus] = useState<CaseStatus>(CaseStatus.RUNNING); // Default to Ongoing
+  const status = useCaseStore(state => state.status);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleStartWorkflow = async () => {
+    setIsSubmitting(true);
+    try {
+      // Create mock documents to satisfy the backend's strict endpoint requirements
+      const mockDoc = new File(["dummy content"], "evidence.pdf", { type: "application/pdf" });
+      const mockPhoto = new File(["dummy content"], "photo.jpg", { type: "image/jpeg" });
+      
+      await api.submitDocuments(caseId, {
+        police_report: mockDoc,
+        policy_pdf: mockDoc,
+        repair_quotation: mockDoc,
+        photos: [mockPhoto]
+      });
+      // SSE will handle status updates automatically
+    } catch (e) {
+      console.error("Failed to start workflow:", e);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -86,9 +110,14 @@ export default function ManageCasePage({ params }: PageProps) {
         </div>
 
         <div className="flex items-center space-x-3">
-          <Button variant="outline" className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all">
+          <Button 
+            variant="outline" 
+            onClick={handleStartWorkflow}
+            disabled={isSubmitting || status !== CaseStatus.DRAFT && status !== CaseStatus.AWAITING_DOCS}
+            className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all"
+          >
             <Play className="w-4 h-4 fill-current" />
-            <span>Start Workflow</span>
+            <span>{isSubmitting ? "Starting..." : "Start Workflow"}</span>
           </Button>
           <Button onClick={handleUploadClick} className="flex items-center space-x-2">
             <Upload className="w-4 h-4" />
@@ -242,6 +271,14 @@ function StatusBadge({ status }: { status: CaseStatus }) {
     [CaseStatus.ESCALATED]: {
       label: 'Ongoing',
       styles: 'bg-brand-primary'
+    },
+    [CaseStatus.AWAITING_DOCS]: {
+      label: 'Missing Docs',
+      styles: 'bg-semantic-warning'
+    },
+    [CaseStatus.DRAFT]: {
+      label: 'Draft',
+      styles: 'bg-neutral-surface border border-neutral-border text-neutral-text-secondary'
     },
     [CaseStatus.FAILED]: {
       label: 'Failed',

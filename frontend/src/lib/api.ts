@@ -2,15 +2,23 @@ import {
   CaseSnapshot,
   CaseStatus,
   OfficerMessageType,
-  AgentId
+  AgentId,
+  CaseListItem
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(error.detail || `HTTP error! status: ${response.status}`);
+    let errorDetail = "Unknown error";
+    try {
+      const error = await response.json();
+      errorDetail = error.detail || JSON.stringify(error);
+    } catch (e) {
+      errorDetail = await response.text() || response.statusText;
+    }
+    console.error(`[API Error] ${response.status} ${response.url}:`, errorDetail);
+    throw new Error(errorDetail);
   }
   return response.json();
 }
@@ -19,7 +27,7 @@ export const api = {
   /**
    * List all cases for the dashboard queue
    */
-  async listCases(): Promise<any[]> {
+  async listCases(): Promise<CaseListItem[]> {
     const res = await fetch(`${API_BASE}/api/v1/cases`);
     return handleResponse(res);
   },
@@ -28,7 +36,11 @@ export const api = {
    * Fetch a full snapshot of a specific case
    */
   async getCaseSnapshot(caseId: string): Promise<CaseSnapshot> {
-    const res = await fetch(`${API_BASE}/api/v1/cases/${caseId}`);
+    if (!caseId) {
+      throw new Error("caseId is required for getCaseSnapshot");
+    }
+    const baseUrl = API_BASE.replace(/\/$/, "");
+    const res = await fetch(`${baseUrl}/api/v1/cases/${caseId}`);
     return handleResponse(res);
   },
 

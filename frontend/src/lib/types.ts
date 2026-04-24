@@ -11,6 +11,7 @@ export enum CaseStatus {
   ESCALATED = "escalated",
   APPROVED = "approved",
   DECLINED = "declined",
+  AWAITING_DOCS = "awaiting_docs",
   FAILED = "failed",
 }
 
@@ -18,6 +19,7 @@ export enum AgentId {
   INTAKE = "intake",
   POLICY = "policy",
   LIABILITY = "liability",
+  DAMAGE = "damage",
   FRAUD = "fraud",
   PAYOUT = "payout",
   AUDITOR = "auditor",
@@ -35,6 +37,7 @@ export enum BlackboardSection {
   CASE_FACTS = "CaseFacts",
   POLICY_VERDICT = "PolicyVerdict",
   LIABILITY_VERDICT = "LiabilityVerdict",
+  DAMAGE_RESULT = "DamageResult",
   FRAUD_ASSESSMENT = "FraudAssessment",
   PAYOUT_RECOMMENDATION = "PayoutRecommendation",
   AUDIT_RESULT = "AuditResult",
@@ -85,6 +88,13 @@ export interface OfficerMessageInfo {
   type?: string;
   target_agent?: AgentId;
   timestamp: string;
+}
+
+export interface CaseListItem {
+  case_id: string;
+  status: CaseStatus;
+  submitted_at: string;
+  current_agent?: AgentId;
 }
 
 export interface CaseSnapshot {
@@ -158,7 +168,7 @@ export interface SseArtifactCreated extends SseBasePayload {
 }
 
 export interface SseWorkflowCompleted extends SseBasePayload {
-  status: CaseStatus.AWAITING_APPROVAL | CaseStatus.ESCALATED;
+  status: CaseStatus;
   pdf_ready: boolean;
   auditor_loop_count: number;
   officer_challenge_count: number;

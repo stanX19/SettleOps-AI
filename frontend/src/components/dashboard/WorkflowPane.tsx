@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/primitives/Button';
-import { Settings } from 'lucide-react';
+import { Settings, Wrench } from 'lucide-react';
 import { useCaseStore } from '@/stores/case-store';
 import { AgentId, AgentStatus, CaseStatus } from '@/lib/types';
 import { useParams } from 'next/navigation';
@@ -68,13 +68,23 @@ function AgentNode({ data }: NodeProps) {
 
 // ---- Cluster Container Node ----
 function ClusterNode({ data }: NodeProps) {
+  const { label, isWorking } = data as { label: string, isWorking?: boolean };
+  
   return (
-    <div className="bg-neutral-surface/5 border border-dashed border-neutral-border/50 rounded-xl w-full h-full relative group">
+    <div className={`bg-neutral-surface/5 border border-dashed rounded-xl w-full h-full relative group transition-all duration-500 ${
+      isWorking ? 'border-brand-primary/50 shadow-[0_0_20px_rgba(var(--color-brand-primary-rgb),0.15)] bg-brand-primary/5' : 'border-neutral-border/50'
+    }`}>
       <Handle type="target" position={Position.Top} className="opacity-0" />
-      <div className="absolute -top-5 left-1 font-mono text-[9px] font-bold uppercase tracking-widest text-neutral-text-tertiary group-hover:text-brand-primary transition-colors">
-        {data.label as string} Cluster
+      <div className={`absolute -top-5 left-1 font-mono text-[9px] font-bold uppercase tracking-widest transition-colors ${
+        isWorking ? 'text-brand-primary animate-pulse' : 'text-neutral-text-tertiary group-hover:text-brand-primary'
+      }`}>
+        {label} Cluster
       </div>
       <Handle type="source" position={Position.Bottom} className="opacity-0" />
+      
+      {isWorking && (
+        <div className="absolute inset-0 rounded-xl bg-brand-primary/5 animate-pulse -z-10" />
+      )}
     </div>
   );
 }
@@ -84,17 +94,13 @@ const nodeTypes = {
   cluster: ClusterNode,
 };
 
-// Default layout offsets
-const CLUSTER_WIDTH = 200;
-const CLUSTER_HEIGHT = 180;
-const POSITIONS: Record<string, { x: number, y: number }> = {
-  [AgentId.INTAKE]: { x: 300, y: 50 },
-  [AgentId.POLICY]: { x: 50, y: 220 },
-  [AgentId.LIABILITY]: { x: 300, y: 220 },
-  [AgentId.FRAUD]: { x: 550, y: 220 },
-  [AgentId.PAYOUT]: { x: 300, y: 500 },
-  [AgentId.AUDITOR]: { x: 300, y: 680 },
-};
+// Layout engine constants
+const CANVAS_CENTER_X = 400;
+const CLUSTER_SPACING = 240;
+const Y_START = 50;
+const Y_CLUSTER = 220;
+const Y_PAYOUT = 520;
+const Y_AUDITOR = 700;
 
 export function WorkflowPane() {
   const params = useParams();
@@ -105,33 +111,43 @@ export function WorkflowPane() {
   const agents = useCaseStore(state => state.agents);
   const topology = useCaseStore(state => state.topology);
 
-  // Initial nodes/edges derived from topology
+  // 1. Calculate the initial layout (nodes and edges)
   const { initialNodes, initialEdges } = useMemo(() => {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
 
-    // 1. Static Nodes
-    const staticAgents = [AgentId.INTAKE, AgentId.PAYOUT, AgentId.AUDITOR];
-    staticAgents.forEach(id => {
+    // Static Agents
+    const staticPositions = {
+      [AgentId.INTAKE]: { x: CANVAS_CENTER_X - 80, y: Y_START },
+      [AgentId.PAYOUT]: { x: CANVAS_CENTER_X - 80, y: Y_PAYOUT },
+      [AgentId.AUDITOR]: { x: CANVAS_CENTER_X - 80, y: Y_AUDITOR },
+    };
+
+    Object.entries(staticPositions).forEach(([id, pos]) => {
       nodes.push({
         id,
         type: 'agent',
-        position: POSITIONS[id],
+        position: pos,
         data: { label: id.charAt(0).toUpperCase() + id.slice(1) + ' Agent', status: AgentStatus.IDLE, detail: 'Awaiting Run' }
       });
     });
 
-    // 2. Dynamic Clusters from Topology
+    // Dynamic Clusters
     if (topology) {
-      Object.entries(topology).forEach(([clusterId, subTasks]) => {
-        const clusterPos = POSITIONS[clusterId] || { x: 0, y: 0 };
+      const clusterIds = Object.keys(topology);
+      const totalWidth = (clusterIds.length - 1) * CLUSTER_SPACING;
+      const xStart = CANVAS_CENTER_X - (totalWidth / 2);
+
+      clusterIds.forEach((clusterId, i) => {
+        const xPos = xStart + (i * CLUSTER_SPACING);
+        const subTasks = topology[clusterId];
         
         // Add Cluster Container
         nodes.push({
           id: `cluster-${clusterId}`,
           type: 'cluster',
-          position: { x: clusterPos.x - 20, y: clusterPos.y - 10 },
-          style: { width: CLUSTER_WIDTH, height: CLUSTER_HEIGHT },
+          position: { x: xPos - 100, y: Y_CLUSTER - 10 },
+          style: { width: 200, height: 40 + (subTasks.length * 70) },
           data: { label: clusterId.charAt(0).toUpperCase() + clusterId.slice(1) },
           selectable: false,
           draggable: true,
@@ -150,7 +166,7 @@ export function WorkflowPane() {
           });
         });
 
-        // Add Edges from Intake to Cluster Sub-tasks
+        // Edges from Intake to Cluster
         edges.push({
           id: `e-intake-${clusterId}`,
           source: AgentId.INTAKE,
@@ -159,7 +175,7 @@ export function WorkflowPane() {
           markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
         });
 
-        // Add Edges from Cluster Sub-tasks to Payout
+        // Edges from Cluster to Payout
         edges.push({
           id: `e-${clusterId}-payout`,
           source: `cluster-${clusterId}`,
@@ -185,16 +201,31 @@ export function WorkflowPane() {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-  // Sync ReactFlow state when initial layout is recalculated (e.g. topology arrives)
+  // Update ReactFlow nodes/edges whenever the derived initial layout changes
   useEffect(() => {
-    setNodes(initialNodes);
-    setEdges(initialEdges);
+    if (initialNodes.length > 0) {
+      setNodes(initialNodes);
+      setEdges(initialEdges);
+    }
   }, [initialNodes, initialEdges, setNodes, setEdges]);
 
-  // Update nodes and edges based on dynamic agent state
+  // Update node DATA (status, processing) based on live agent state
   useEffect(() => {
     setNodes((nds) => nds.map((node) => {
-      // Handle static agents
+      // 1. Handle Clusters (Glow)
+      if (node.id.startsWith('cluster-')) {
+        const clusterId = node.id.replace('cluster-', '');
+        const clusterState = agents[clusterId];
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            isWorking: clusterState?.status === AgentStatus.WORKING
+          }
+        };
+      }
+
+      // 2. Handle Top-level Agents
       if (agents[node.id]) {
         const agentState = agents[node.id];
         return {
@@ -208,7 +239,7 @@ export function WorkflowPane() {
         };
       }
 
-      // Handle sub-tasks nested in agents
+      // 3. Handle Sub-tasks
       for (const [parentId, parentState] of Object.entries(agents)) {
         if (parentState.sub_tasks && parentState.sub_tasks[node.id]) {
           const subTaskState = parentState.sub_tasks[node.id];
@@ -228,7 +259,6 @@ export function WorkflowPane() {
     }));
 
     setEdges((eds) => eds.map((edge) => {
-      // Find source status
       const sourceId = edge.source.startsWith('cluster-') ? edge.source.replace('cluster-', '') : edge.source;
       const agentState = agents[sourceId];
       
@@ -250,6 +280,24 @@ export function WorkflowPane() {
 
   return (
     <div className="flex-1 w-full h-full relative border-r border-neutral-border">
+      {/* Error Overlay for failed fetches */}
+      {!topology && caseStatus === CaseStatus.SUBMITTED && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-neutral-background/80 backdrop-blur-sm p-4">
+          <div className="bg-neutral-surface p-6 rounded-xl border border-neutral-border shadow-card min-w-[300px] max-w-md text-center">
+            <div className="w-12 h-12 bg-semantic-danger/10 text-semantic-danger rounded-full flex items-center justify-center mx-auto mb-4">
+              <Settings className="w-6 h-6 animate-spin" />
+            </div>
+            <h3 className="text-lg font-semibold text-neutral-text-primary mb-2">Syncing with Backend...</h3>
+            <p className="text-sm text-neutral-text-secondary mb-4">
+              We're having trouble fetching the case topology. Please ensure the backend is running at <code className="bg-neutral-background px-1 py-0.5 rounded">localhost:8000</code>.
+            </p>
+            <Button onClick={() => window.location.reload()} variant="primary" size="sm">
+              Retry Connection
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="absolute top-4 left-6 right-6 z-10 flex items-center justify-between pointer-events-none">
         <div>
           <h2 className="text-lg font-semibold text-neutral-text-primary">Live Orchestration</h2>
@@ -259,7 +307,7 @@ export function WorkflowPane() {
               caseStatus === CaseStatus.AWAITING_APPROVAL ? 'text-semantic-success' : 'text-neutral-text-tertiary'
               }`}>
               {caseStatus === CaseStatus.RUNNING && <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse mr-2"></span>}
-              {caseStatus.toUpperCase()}
+              {(caseStatus || '').toUpperCase()}
             </span>
           </div>
         </div>
