@@ -60,16 +60,38 @@ export const useCaseStore = create<CaseState>((set) => ({
     // but the backend will send status_changed events anyway.
   })),
 
-  handleAgentStatusChanged: (data) => set((state) => ({
-    agents: {
-      ...state.agents,
-      [data.agent]: {
-        ...state.agents[data.agent],
+  handleAgentStatusChanged: (data) => set((state) => {
+    const agentId = data.agent;
+    const subTaskName = data.sub_task;
+    
+    const newAgents = { ...state.agents };
+    
+    if (subTaskName) {
+      // Update sub-task status
+      const parentState = newAgents[agentId] || { status: AgentStatus.IDLE, sub_tasks: {} };
+      newAgents[agentId] = {
+        ...parentState,
+        sub_tasks: {
+          ...(parentState.sub_tasks || {}),
+          [subTaskName]: {
+            ...(parentState.sub_tasks?.[subTaskName] || { status: AgentStatus.IDLE }),
+            status: data.status,
+          }
+        }
+      };
+    } else {
+      // Update parent agent status
+      newAgents[agentId] = {
+        ...newAgents[agentId],
         status: data.status,
-      }
-    },
-    current_agent: data.status === AgentStatus.WORKING ? data.agent : state.current_agent
-  })),
+      };
+    }
+
+    return {
+      agents: newAgents,
+      current_agent: data.status === AgentStatus.WORKING ? data.agent : state.current_agent
+    };
+  }),
 
   handleAgentOutput: (data) => set((state) => ({
     blackboard: {
@@ -101,10 +123,11 @@ export const useCaseStore = create<CaseState>((set) => ({
 
   handleWorkflowCompleted: (data) => set((state) => ({
     status: data.status,
-    pdf_ready: data.pdf_ready, // Note: pdf_ready isn't in CaseSnapshot but is in WorkflowCompleted
+    pdf_ready: data.pdf_ready,
     auditor_loop_count: data.auditor_loop_count,
     officer_challenge_count: data.officer_challenge_count,
     chatbox_enabled: data.chatbox_enabled,
+    topology: data.topology || state.topology,
     current_agent: null
   })),
 }));

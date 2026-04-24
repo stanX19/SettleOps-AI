@@ -68,7 +68,8 @@ from srcs.services.sse_service import SseService
 from srcs.schemas.state import ClaimWorkflowState
 from srcs.services.workflow_engine import (
     run_workflow_with_sse,
-    resume_workflow_with_sse as resume_workflow_with_sse_engine
+    resume_workflow_with_sse as resume_workflow_with_sse_engine,
+    TOPOLOGY
 )
 
 
@@ -205,6 +206,14 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
                 status=rs.status,
                 started_at=rs.started_at,
                 completed_at=rs.completed_at,
+                sub_tasks={
+                    name: AgentStateInfo(
+                        status=sub_rs.status,
+                        started_at=sub_rs.started_at,
+                        completed_at=sub_rs.completed_at
+                    )
+                    for name, sub_rs in rs.sub_tasks.items()
+                }
             )
             for agent, rs in state.agent_states.items()
         },
@@ -226,6 +235,7 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
         awaiting_clarification=state.awaiting_clarification,
         chatbox_enabled=state.chatbox_enabled(),
         current_agent=state.current_agent,
+        topology=TOPOLOGY
     )
 
 
@@ -408,6 +418,12 @@ async def generate_artifacts(state: CaseState) -> None:
     json_version = _next_artifact_version(state, ArtifactType.AUDIT_TRAIL_JSON)
     json_name = f"audit_trail_{state.case_id}_v{json_version}.json"
     json_path = os.path.join(adir, json_name)
+    # Check for technical errors in clusters to apply watermark
+    has_errors = any(
+        rs.status == AgentStatus.ERROR or any(sub.status == AgentStatus.ERROR for sub in rs.sub_tasks.values())
+        for rs in state.agent_states.values()
+    )
+
     payload = {
         "case_id": state.case_id,
         "generated_at": now_iso(),
@@ -415,6 +431,7 @@ async def generate_artifacts(state: CaseState) -> None:
         "blackboard": _blackboard_for(state),
         "auditor_loop_count": state.auditor_loop_count,
         "officer_challenge_count": state.officer_challenge_count,
+        "manual_override_disclaimer": "TECHNICAL OVERRIDE: One or more autonomous checks failed or were bypassed." if has_errors else None
     }
     await asyncio.to_thread(_write_json_artifact, json_path, payload)
 
@@ -546,24 +563,26 @@ def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
             "content": f"[Photo Metadata: {os.path.basename(p)} at index {i}]"
         })
 
-    return ClaimWorkflowState(
-        case_id=case.case_id,
-        documents=docs,
-        case_facts=case.case_facts or {},
-        policy_results=case.policy_verdict or {},
-        liability_results=case.liability_verdict or {},
-        damage_results=case.damage_result or {},
-        fraud_results=case.fraud_assessment or {},
-        payout_results=case.payout_recommendation or {},
-        trace_log=[],
-        active_challenge=None,
-        status=case.status.value,
-        current_agent=case.current_agent.value if case.current_agent else None,
-        latest_user_message=None,
-        human_audit_log=case.human_audit_log or [],
-        force_approve=False,
-        human_decision_reason=None
-    )
+    return {
+        "case_id": case.case_id,
+        "documents": docs,
+        "processed_indices": [],
+        "case_facts": case.case_facts or {},
+        "policy_results": case.policy_verdict or {},
+        "liability_results": case.liability_verdict or {},
+        "damage_results": case.damage_result or {},
+        "fraud_results": case.fraud_assessment or {},
+        "payout_results": case.payout_recommendation or {},
+        "trace_log": [],
+        "active_challenge": None,
+        "status": case.status.value,
+        "current_agent": case.current_agent.value if case.current_agent else None,
+        "latest_user_message": None,
+        "human_audit_log": case.human_audit_log or [],
+        "force_approve": False,
+        "human_decision_reason": None,
+        "human_decision": None
+    }
 
 
 async def run_pipeline(case_id: str) -> None:
@@ -609,28 +628,13 @@ async def run_pipeline(case_id: str) -> None:
         # Execute the Agentic Graph
         await run_workflow_with_sse(case_id, initial_workflow_state)
 
-        # After graph completion/interrupt, sync back to CaseState if needed
-        # (SSE already handled updates, but we need final artifacts)
+        # Sync back final artifacts (SSE for this will be separate or handled by frontend refresh)
         await generate_artifacts(state)
 
         async with CaseStore.lock(case_id):
-            # If the graph ended normally, it should be awaiting approval
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
-
-        await SseService.emit(
-            case_id,
-            SseWorkflowCompletedData(
-                case_id=case_id,
-                timestamp=now_iso(),
-                status=state.status,
-                pdf_ready=True,
-                auditor_loop_count=state.auditor_loop_count,
-                officer_challenge_count=state.officer_challenge_count,
-                chatbox_enabled=state.chatbox_enabled(),
-            ),
-        )
     except Exception:
         async with CaseStore.lock(case_id):
             try:
@@ -690,7 +694,6 @@ async def run_partial_pipeline(
     
     try:
         # Re-run the graph with the new challenge
-        # The refiner node will translate the latest_user_message into a ChallengeState
         await run_workflow_with_sse(case_id, workflow_state)
 
         await generate_artifacts(state)
@@ -699,19 +702,6 @@ async def run_partial_pipeline(
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
-
-        await SseService.emit(
-            case_id,
-            SseWorkflowCompletedData(
-                case_id=case_id,
-                timestamp=now_iso(),
-                status=state.status,
-                pdf_ready=True,
-                auditor_loop_count=state.auditor_loop_count,
-                officer_challenge_count=state.officer_challenge_count,
-                chatbox_enabled=state.chatbox_enabled(),
-            ),
-        )
     except Exception:
         async with CaseStore.lock(case_id):
             try:
@@ -800,28 +790,16 @@ async def resume_workflow_with_sse(
             updates["status"] = "running" # Clear the awaiting_docs status in the graph
 
         # 5. Execute Resumption
+        from srcs.services.workflow_engine import resume_workflow_with_sse as resume_workflow_with_sse_engine
         await resume_workflow_with_sse_engine(case_id, updates)
 
-        # 6. Finalize (same as run_pipeline)
+        # 6. Finalize
         await generate_artifacts(state)
 
         async with CaseStore.lock(case_id):
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
-
-        await SseService.emit(
-            case_id,
-            SseWorkflowCompletedData(
-                case_id=case_id,
-                timestamp=now_iso(),
-                status=state.status,
-                pdf_ready=True,
-                auditor_loop_count=state.auditor_loop_count,
-                officer_challenge_count=state.officer_challenge_count,
-                chatbox_enabled=state.chatbox_enabled(),
-            ),
-        )
     except Exception:
         async with CaseStore.lock(case_id):
             try:

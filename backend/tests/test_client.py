@@ -5,6 +5,9 @@ from requests import Response
 import threading
 import json
 import time
+import socket
+import subprocess
+import re
 
 # Thread-safe printing
 print_lock = threading.Lock()
@@ -27,14 +30,21 @@ class ThreadFilter:
     _log_path = "backend.log"
 
     def write(self, msg):
-        if ThreadFilter._main_threads and threading.current_thread() in ThreadFilter._main_threads:
+        try:
+            curr = threading.current_thread()
+        except (AttributeError, OSError):
+            return
+        if ThreadFilter._main_threads and curr in ThreadFilter._main_threads:
             sys.__stdout__.write(msg)
-        else:
+        elif ThreadFilter._log_file:
             ThreadFilter._log_file.write(msg)
             ThreadFilter._log_file.flush()
 
     def flush(self):
-        sys.__stdout__.flush()
+        try:
+            sys.__stdout__.flush()
+        except Exception:
+            pass
 
     def isatty(self):
         return sys.__stdout__.isatty()
@@ -48,7 +58,11 @@ class ThreadFilter:
         except Exception:
             pass
 
-        current_thread = threading.current_thread()
+        try:
+            current_thread = threading.current_thread()
+        except (AttributeError, OSError):
+            return
+
         if current_thread in ThreadFilter._main_threads:
             return
         ThreadFilter._main_threads.append(current_thread)
@@ -126,7 +140,78 @@ class TestClient:
             return False
         return True
 
-    def request(self, method: str, path: str, description: str = "", **kwargs) -> dict:
+    @staticmethod
+    def preflight_check(port: int, interactive: bool = True, auto_kill: bool = False):
+        """Check if port is ready for a new server instance.
+
+        Args:
+            port: The port to check.
+            interactive: Whether to prompt for action if port is busy.
+            auto_kill: If true, automatically kill the process on the port.
+        """
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            if s.connect_ex(('127.0.0.1', port)) != 0:
+                # Port is free
+                return True
+
+        # Port is busy
+        print(f"{Colors.YELLOW}{Colors.BOLD}[!] PORT COLLISION:{Colors.END} Port {port} is already in use.")
+        
+        # Try to find PID
+        pid = None
+        try:
+            output = subprocess.check_output(f'netstat -ano | findstr LISTENING | findstr :{port}', shell=True).decode()
+            match = re.search(r'\s+(\d+)\s*$', output.strip())
+            if match:
+                pid = match.group(1)
+        except Exception:
+            pass
+
+        pid_info = f" (PID: {pid})" if pid else ""
+        if auto_kill and pid:
+            print(f"{Colors.YELLOW}Auto-killing process{pid_info} on port {port}...{Colors.END}")
+            subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+            time.sleep(1)
+            return True
+
+        if not interactive:
+            print(f"{Colors.RED}ERROR: Cannot start server on port {port}{pid_info}.{Colors.END}")
+            sys.exit(1)
+
+        choice = input(f"{Colors.CYAN}A process{pid_info} is occupying the port. Kill it? [Y/n]: {Colors.END}")
+        if choice.lower() in ['', 'y', 'yes']:
+            if pid:
+                print(f"Killing process {pid}...")
+                subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+                time.sleep(1)
+                return True
+            else:
+                print(f"{Colors.RED}Could not identify PID. Please kill the process manually.{Colors.END}")
+                sys.exit(1)
+        else:
+            print(f"{Colors.RED}Aborting. Port {port} must be free to run tests.{Colors.END}")
+            sys.exit(1)
+
+    @staticmethod
+    def wait_for_server(base_url: str, timeout: int = 30):
+        """Poll the health endpoint until server is ready."""
+        print(f"{Colors.BLUE}Waiting for server at {base_url}...{Colors.END}")
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                res = requests.get(f"{base_url.rstrip('/')}/health", timeout=1)
+                if res.status_code == 200:
+                    print(f"{Colors.GREEN}Server is healthy!{Colors.END}")
+                    return True
+            except requests.exceptions.ConnectionError:
+                pass
+            time.sleep(0.5)
+        
+        print(f"{Colors.RED}ERROR: Server at {base_url} never became healthy after {timeout}s.{Colors.END}")
+        sys.exit(1)
+
+    def request(self, method: str, path: str, description: str = "", expected_status: int = 200, **kwargs) -> dict:
         url = f"{self.base_url}{path}"
         
         # Merge default headers
@@ -151,16 +236,15 @@ class TestClient:
                     # Not JSON
                     pass
             
-            status_msg = "OK" if self.check_status(res) else "FAILED"
+            status_msg = "OK" if self.check_status(res, expected_status=expected_status) else "FAILED"
             
             # Log RECEIVE
-            # Use data if available, otherwise res.text if short, else status code
             log_payload = data if data else (res.text[:100] if res.text else res.status_code)
             
             TestClient.log(self.actor_name, method, "RECEIVE", f"{description}", status_msg, log_payload)
             
             if status_msg == "FAILED":
-                 print(f"{Colors.RED}FAILED DETAIL:\n{res.text}{Colors.END}")
+                 print(f"{Colors.RED}FAILED DETAIL (Status {res.status_code} != {expected_status}):\n{res.text}{Colors.END}")
 
             return data
         except requests.exceptions.ConnectionError:
@@ -173,9 +257,10 @@ class TestClient:
         return self.request("GET", path, description=description, **kwargs)
 
 class TestSocket:
-    def __init__(self, url: str, actor_name: str):
+    def __init__(self, url: str, actor_name: str, headers: dict | None = None):
         self.url = url
         self.actor_name = actor_name
+        self.headers = headers or {}
         self.response = None
         self.events_received: list[dict] = []
         self.thread: threading.Thread | None = None
@@ -183,7 +268,7 @@ class TestSocket:
     def connect(self):
         TestClient.log(self.actor_name, "SSE", "SEND", "Connecting to stream", "CONNECTING")
         try:
-            self.response = requests.get(self.url, stream=True, timeout=120)
+            self.response = requests.get(self.url, stream=True, timeout=120, headers=self.headers)
             if self.response.status_code == 200:
                  TestClient.log(self.actor_name, "SSE", "RECEIVE", "Stream connected", "CONNECTED")
             else:
@@ -202,6 +287,7 @@ class TestSocket:
                 if not line:
                     continue
                 decoded = line.decode('utf-8')
+                print(f"DEBUG: [SSE RAW] {decoded}", flush=True)
                 if decoded.startswith("event:"):
                     event_type = decoded.replace("event:", "").strip()
                     continue

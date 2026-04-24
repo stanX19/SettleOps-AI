@@ -35,7 +35,7 @@ def now_iso() -> str:
 # -- Status transitions -------------------------------------------------------
 
 _VALID_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
-    CaseStatus.DRAFT: {CaseStatus.SUBMITTED, CaseStatus.FAILED},
+    CaseStatus.DRAFT: {CaseStatus.SUBMITTED, CaseStatus.RUNNING, CaseStatus.FAILED},
     CaseStatus.SUBMITTED: {CaseStatus.RUNNING, CaseStatus.FAILED},
     CaseStatus.RUNNING: {
         CaseStatus.AWAITING_APPROVAL,
@@ -78,6 +78,9 @@ def transition_status(state: "CaseState", target: CaseStatus) -> None:
 
     Raises `InvalidStatusTransition` if the move is not allowed.
     """
+    if target == state.status:
+        return
+
     if target not in _VALID_TRANSITIONS.get(state.status, set()):
         raise InvalidStatusTransition(
             f"Cannot transition {state.status.value} -> {target.value}"
@@ -115,6 +118,7 @@ class AgentRuntimeState:
     status: AgentStatus = AgentStatus.IDLE
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
+    sub_tasks: dict[str, AgentRuntimeState] = field(default_factory=dict)
 
 
 @dataclass

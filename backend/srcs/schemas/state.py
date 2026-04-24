@@ -44,12 +44,14 @@ def dict_merge(x: dict[str, Any], y: dict[str, Any]) -> dict[str, Any]:
     return {**x, **y}
 
 def first_value(x: Any, y: Any) -> Any:
-    """Reducer that keeps the first value (useful for immutable fields like case_id)."""
-    return x if x is not None else y
+    """Reducer that keeps the first non-empty value."""
+    if x is not None and x != "":
+        return x
+    return y
 
 class ClusterState(TypedDict):
     """Isolated state for a single parallel analysis cluster."""
-    case_id: str
+    case_id: Annotated[str, first_value]
     documents: List[dict]
     case_facts: dict[str, Any]
     active_challenge: Optional[ChallengeState]
