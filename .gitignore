@@ -51,4 +51,5 @@ run_frontend.bat
 *.pdf
 
 /.claude
-/backend/scratch
+backend/scratch
+backend/uploads/*

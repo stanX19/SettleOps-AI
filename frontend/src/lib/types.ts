@@ -75,6 +75,7 @@ export interface AgentStateInfo {
   status: AgentStatus;
   started_at?: string;
   completed_at?: string;
+  sub_tasks?: Record<string, AgentStateInfo>;
 }
 
 export interface OfficerMessageInfo {
@@ -100,6 +101,7 @@ export interface CaseSnapshot {
   awaiting_clarification: boolean;
   chatbox_enabled: boolean;
   current_agent: AgentId | null;
+  topology?: Record<string, string[]>;
 }
 
 // -- SSE Event Payloads -------------------------------------------------------
@@ -127,6 +129,8 @@ export interface SseWorkflowStarted extends SseBasePayload {
 export interface SseAgentStatusChanged extends SseBasePayload {
   agent: AgentId;
   status: AgentStatus;
+  sub_task?: string;
+  parent_agent?: AgentId;
 }
 
 export interface SseAgentOutput extends SseBasePayload {
@@ -159,4 +163,5 @@ export interface SseWorkflowCompleted extends SseBasePayload {
   auditor_loop_count: number;
   officer_challenge_count: number;
   chatbox_enabled: boolean;
+  topology?: Record<string, string[]>;
 }
