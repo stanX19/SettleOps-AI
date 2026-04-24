@@ -9,7 +9,7 @@ workflow_checkpointer = MemorySaver()
 
 from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes
 from srcs.schemas.case_dto import AgentId, AgentStatus, BlackboardSection
-from srcs.services.agents.intake import ingest_tagging, validation_gate
+from srcs.services.agents.intake import ingest_tagging, validation_gate, wait_for_docs_node
 from srcs.services.agents.payout import payout_node
 from srcs.services.agents.auditor import auditor_node, decision_router, decision_gate_logic
 from srcs.services.agents.refiner import refiner_node
@@ -62,6 +62,7 @@ def build_workflow() -> StateGraph:
     # 1. Intake Phase
     builder.add_node("ingest_tagging", ingest_tagging)
     builder.add_node("validation_gate", validation_gate)
+    builder.add_node("wait_for_docs", wait_for_docs_node)
     
     # 2. Analysis Phase (Clusters)
     policy_graph = create_cluster_subgraph("policy", [policy_analysis_task]).compile()
@@ -99,13 +100,15 @@ def build_workflow() -> StateGraph:
     # Validation Gate Routing
     def intake_router(state: ClaimWorkflowState):
         if state.get("status") == "awaiting_docs":
-            return END
+            return "wait_for_docs"
         return "parallel_analysis_start"
 
     builder.add_conditional_edges("validation_gate", intake_router, {
         "parallel_analysis_start": "parallel_analysis_start",
-        END: END
+        "wait_for_docs": "wait_for_docs"
     })
+    
+    builder.add_edge("wait_for_docs", "ingest_tagging")
     
     # Fan out to all clusters concurrently
     builder.add_edge("parallel_analysis_start", WorkflowNodes.POLICY_CLUSTER)
@@ -166,24 +169,22 @@ async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState)
     """Executes the LangGraph and pipes updates to SSE and CaseStore in real-time."""
     builder = build_workflow()
     graph = builder.compile(checkpointer=workflow_checkpointer, interrupt_before=[WorkflowNodes.DECISION_GATE])
-    
     config = {"configurable": {"thread_id": case_id}}
     
-    async for event in graph.astream(initial_state, config, stream_mode="updates"):
+    await _process_graph_stream(case_id, graph, config, initial_state)
+
+async def _process_graph_stream(case_id: str, graph, config, initial_state=None):
+    """Shared logic for streaming graph updates and piping to SSE/CaseStore."""
+    stream = graph.astream(initial_state, config, stream_mode="updates")
+    
+    async for event in stream:
         for node_name, update in event.items():
             # 1. Emit Status: WORKING
-            if node_name == "ingest_tagging":
-                # Ingest is done, but validation gate is next.
-                # We'll allow the standard loop to emit COMPLETED later to avoid duplication.
-                pass
-            
             if node_name == "parallel_analysis_start":
-                # Parallel clusters are about to start. Emit WORKING for all of them.
                 for cluster_agent in [AgentId.POLICY, AgentId.LIABILITY, AgentId.DAMAGE, AgentId.FRAUD]:
                     await _emit_agent_status(case_id, cluster_agent, AgentStatus.WORKING)
                 continue
 
-            # Standard node mapping
             agent_id = _NODE_TO_AGENT.get(node_name)
             if not agent_id:
                 continue
@@ -197,13 +198,11 @@ async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState)
                     break
             
             if section and data is not None:
-                # PERSISTENCE: Update the central CaseStore
                 case = CaseStore.get(case_id)
                 if case:
                     async with CaseStore.lock():
                         case.set_section_data(section, data)
 
-                # EMIT: Real-time update to UI
                 await SseService.emit(case_id, SseAgentOutputData(
                     case_id=case_id,
                     timestamp=now_iso(),
@@ -215,20 +214,18 @@ async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState)
             # 3. Emit Status: COMPLETED
             await _emit_agent_status(case_id, agent_id, AgentStatus.COMPLETED)
 
-    # Check final status
+    # Final status check
     final_state_wrapper = await graph.aget_state(config)
     final_status = final_state_wrapper.values.get("status")
     
-    # Map backend 'inconsistent' to 'escalated' for frontend
     display_status = CaseStatus.RUNNING
     if final_status == "inconsistent":
         display_status = CaseStatus.ESCALATED
     elif final_status == "completed":
-        display_status = CaseStatus.AWAITING_APPROVAL 
+        display_status = CaseStatus.AWAITING_APPROVAL
     elif final_status == "awaiting_docs":
-        display_status = CaseStatus.AWAITING_APPROVAL # Needs more docs
+        display_status = CaseStatus.AWAITING_DOCS
     
-    # If we hit an interrupt, we are essentially 'waiting' for human
     if final_state_wrapper.next:
          await SseService.emit(case_id, SseWorkflowCompletedData(
             case_id=case_id,
@@ -239,6 +236,18 @@ async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState)
             officer_challenge_count=final_state_wrapper.values.get("officer_challenge_count", 0),
             chatbox_enabled=True
         ))
+
+async def resume_workflow_with_sse(case_id: str, updates: dict):
+    """Resumes a suspended graph thread with new state updates."""
+    builder = build_workflow()
+    graph = builder.compile(checkpointer=workflow_checkpointer, interrupt_before=[WorkflowNodes.DECISION_GATE])
+    config = {"configurable": {"thread_id": case_id}}
+    
+    # Apply updates to the thread state
+    await graph.aupdate_state(config, updates)
+    
+    # Resume execution (passing None to signal resumption of existing thread)
+    await _process_graph_stream(case_id, graph, config, None)
 
 async def _emit_agent_status(case_id: str, agent: AgentId, status: AgentStatus):
     """Sync status to CaseStore and emit SSE."""

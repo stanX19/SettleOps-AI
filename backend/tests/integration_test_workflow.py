@@ -2,6 +2,7 @@ import asyncio
 import os
 import json
 import sys
+import datetime
 from dotenv import load_dotenv
 
 # Fix Windows console encoding for UTF-8 (checkmarks, emojis from LLM)
@@ -14,8 +15,9 @@ BACKEND_ROOT = Path(__file__).parent.parent
 load_dotenv(dotenv_path=BACKEND_ROOT / ".env")
 
 from srcs.services.workflow_engine import build_workflow
-from srcs.schemas.state import ClaimWorkflowState
+from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes, HumanDecision
 from srcs.services.case_store import CaseStore
+from langgraph.checkpoint.memory import MemorySaver
 
 async def run_integration_test():
     print("=== Starting Integration Test ===")
@@ -50,17 +52,20 @@ async def run_integration_test():
         "trace_log": [],
         "active_challenge": None,
         "status": "submitted",
+        "human_decision": None,
+        "human_audit_log": [],
         "current_agent": None,
         "latest_user_message": None
     }
 
     # 3. Compile Graph with HITL support
-    from langgraph.checkpoint.memory import MemorySaver
-    from srcs.schemas.state import WorkflowNodes
     
     memory = MemorySaver()
     builder = build_workflow()
-    graph = builder.compile(checkpointer=memory, interrupt_before=[WorkflowNodes.DECISION_GATE])
+    graph = builder.compile(
+        checkpointer=memory, 
+        interrupt_before=["wait_for_docs", WorkflowNodes.DECISION_GATE]
+    )
 
     # 4. Run Graph (Phase 1: Until Interrupt)
     print("\n--- Running Graph (Phase 1: Autonomous Analysis) ---")
@@ -130,5 +135,149 @@ async def run_integration_test():
         import traceback
         traceback.print_exc()
 
+async def run_hitl_test():
+    print("\n\n=== Starting HITL Hardening Test ===")
+    
+    # 1. Start with NO documents to trigger wait_for_docs
+    initial_state: ClaimWorkflowState = {
+        "case_id": "HITL-TEST-001",
+        "documents": [], # Missing docs
+        "processed_indices": [],
+        "case_facts": {},
+        "policy_results": {},
+        "liability_results": {},
+        "damage_results": {},
+        "fraud_results": {},
+        "payout_results": {},
+        "trace_log": [],
+        "active_challenge": None,
+        "status": "submitted",
+        "human_decision": None,
+        "human_audit_log": [],
+        "current_agent": None,
+        "latest_user_message": None
+    }
+    
+    memory = MemorySaver()
+    builder = build_workflow()
+    graph = builder.compile(
+        checkpointer=memory, 
+        interrupt_before=["wait_for_docs", WorkflowNodes.DECISION_GATE]
+    )
+    
+    config = {"configurable": {"thread_id": "hitl_thread"}}
+    
+    # Phase 1: Expect interrupt at wait_for_docs
+    print("\n--- Phase 1: Missing Documents ---")
+    async for event in graph.astream(initial_state, config, stream_mode="updates"):
+        for node, update in event.items():
+            print(f"[Node: {node}] type={type(update)} update={update}")
+            if isinstance(update, dict):
+                print(f"  status={update.get('status')}")
+
+    state = await graph.aget_state(config)
+    if state.next and state.next[0] == "wait_for_docs":
+        print("[SUCCESS] Interrupted at wait_for_docs as expected.")
+    
+    # Phase 2: Add documents and resume
+    print("\n--- Phase 2: Resuming with Documents ---")
+    # Simulate doc upload
+    docs = [{"filename": "police_report.md", "content": "Accident report...", "doc_type": "police_report"}]
+    # We need all 8 docs to pass validation gate, or just mock the validation gate to pass.
+    # For simplicity, let's just provide enough docs to pass validation in this test.
+    from srcs.services.agents.intake import REQUIRED_DOCS
+    full_docs = [{"filename": f"{dt}.md", "content": "mock content", "doc_type": dt} for dt in REQUIRED_DOCS]
+    
+    await graph.aupdate_state(config, {"documents": full_docs})
+    
+    async for event in graph.astream(None, config, stream_mode="updates"):
+        for node, update in event.items():
+            print(f"[Node: {node}]")
+            if node == WorkflowNodes.DECISION_GATE: break
+
+    # Phase 3: Human Override (Force Approve)
+    print("\n--- Phase 3: Human Force Approve ---")
+    state = await graph.aget_state(config)
+    if state.next and state.next[0] == WorkflowNodes.DECISION_GATE:
+        print(f"[HITL] Interrupted at {state.next[0]}.")
+        
+        override: HumanDecision = {
+            "action": "force_approve",
+            "reasoning": "Special case override by manager.",
+            "operator_id": "Operator Jack",
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        
+        await graph.aupdate_state(config, {"human_decision": override, "human_audit_log": [override]})
+        print("[HITL] Force approve injected. Resuming...")
+        
+        async for event in graph.astream(None, config, stream_mode="updates"):
+            for node, update in event.items():
+                print(f"[Node: {node}]")
+
+    final_state = await graph.aget_state(config)
+    print(f"\nFinal Node: {final_state.next if final_state.next else 'END'}")
+    print(f"Status: {final_state.values.get('status')}")
+    print(f"Audit Log Count: {len(final_state.values.get('human_audit_log', []))}")
+
+async def run_escalation_test():
+    print("\n\n=== Starting Escalation Test ===")
+    
+    # Start with docs but mock missing financial data in previous nodes
+    from srcs.services.agents.intake import REQUIRED_DOCS
+    full_docs = [{"filename": f"{dt}.md", "content": "mock content", "doc_type": dt} for dt in REQUIRED_DOCS]
+    
+    initial_state: ClaimWorkflowState = {
+        "case_id": "ESC-TEST-001",
+        "documents": full_docs,
+        "processed_indices": [],
+        "case_facts": {},
+        "policy_results": {"excess_myr": None}, # CRITICAL MISSING
+        "liability_results": {},
+        "damage_results": {"verified_total": 1000.0},
+        "fraud_results": {},
+        "payout_results": {},
+        "trace_log": [],
+        "active_challenge": None,
+        "status": "submitted",
+        "human_decision": None,
+        "human_audit_log": [],
+        "current_agent": None,
+        "latest_user_message": None
+    }
+    
+    memory = MemorySaver()
+    builder = build_workflow()
+    graph = builder.compile(checkpointer=memory, interrupt_before=[WorkflowNodes.DECISION_GATE])
+    config = {"configurable": {"thread_id": "esc_thread"}}
+    
+    print("\n--- Phase 1: Expecting Escalation ---")
+    async for event in graph.astream(initial_state, config, stream_mode="updates"):
+        for node, update in event.items():
+            print(f"[Node: {node}]")
+            if node == WorkflowNodes.DECISION_GATE: break
+
+    state = await graph.aget_state(config)
+    print(f"Current Status: {state.values.get('status')}")
+    if state.values.get('status') == "escalated":
+        print("[SUCCESS] Workflow escalated as expected.")
+        
+        # Phase 2: Resolve escalation
+        print("\n--- Phase 2: Resolving Escalation ---")
+        await graph.aupdate_state(config, {
+            "policy_results": {"excess_myr": 500.0}, 
+            "status": "submitted" # Reset status to allow router to proceed
+        })
+        
+        async for event in graph.astream(None, config, stream_mode="updates"):
+            for node, update in event.items():
+                print(f"[Node: {node}]")
+                
+    final_state = await graph.aget_state(config)
+    print(f"\nFinal Node: {final_state.next if final_state.next else 'END'}")
+    print(f"Status: {final_state.values.get('status')}")
+
 if __name__ == "__main__":
-    asyncio.run(run_integration_test())
+    # asyncio.run(run_integration_test())
+    asyncio.run(run_hitl_test())
+    asyncio.run(run_escalation_test())

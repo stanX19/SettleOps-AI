@@ -40,6 +40,7 @@ _VALID_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
     CaseStatus.RUNNING: {
         CaseStatus.AWAITING_APPROVAL,
         CaseStatus.ESCALATED,
+        CaseStatus.AWAITING_DOCS,
         CaseStatus.FAILED,
     },
     CaseStatus.AWAITING_APPROVAL: {
@@ -51,6 +52,10 @@ _VALID_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
         CaseStatus.RUNNING,
         CaseStatus.APPROVED,
         CaseStatus.DECLINED,
+    },
+    CaseStatus.AWAITING_DOCS: {
+        CaseStatus.RUNNING,
+        CaseStatus.FAILED,
     },
     CaseStatus.APPROVED: set(),
     CaseStatus.DECLINED: set(),
@@ -144,6 +149,7 @@ class CaseState:
     officer_messages: list[OfficerMessageRecord] = field(default_factory=list)
     current_agent: Optional[AgentId] = None
     awaiting_clarification: bool = False
+    human_audit_log: list[dict] = field(default_factory=list)
 
     # Artifacts
     artifacts: list[ArtifactRecord] = field(default_factory=list)

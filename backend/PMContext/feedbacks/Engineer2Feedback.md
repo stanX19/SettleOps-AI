@@ -1,24 +1,26 @@
-# Feedback: Engineer 2 (Logic Nodes)
+# Engineer 2 Feedback: API & Service Integration
 
-## Task Completion
-- [x] **Intake Implementation**: Created `srcs/services/agents/intake.py` with `ingest_tagging` and `validation_gate`.
-- [x] **Payout Implementation**: Created `srcs/services/agents/payout.py` with deterministic `payout_node`.
-- [x] **State Integration**: Added `case_facts` to `ClaimWorkflowState`.
+## Completion Summary
+I have completed Phase 2 (Wiring) of the Frontend-Workflow integration. The FastAPI routes are now successfully bridged to the LangGraph engine via a robust resumption mechanism.
+
+### Key Deliverables
+- **`submit_case_documents`**: Now supports automatic resumption if the case is in `AWAITING_DOCS` status.
+- **`approve_case`**: Refactored to trigger a graph resumption with a `force_approve` flag, ensuring the graph reaches the final reporting stage even on manual overrides.
+- **Audit Logging**: Implemented `human_audit_log` in `CaseStore`. All actions by "Operator Jack" are now persisted with timestamps and reasons.
+- **Engine Refactor**: Abstracted SSE streaming logic into `_process_graph_stream` in `workflow_engine.py` to ensure consistency between initial runs and resumptions.
 
 ## Technical Notes
+- **Status Mapping**: Backend `inconsistent` state is now correctly mapped to frontend `escalated` status in the SSE stream.
+- **Safety Guards**: Added status-based guards to `resume_workflow_with_sse` to prevent invalid thread resumptions.
+- **Atomic updates**: Decision logic was moved to the service layer to ensure it happens atomically with the graph resumption trigger.
 
-### Ingestion Logic
-- The `ingest_tagging` node is designed to be idempotent. It maps document indices to categories based on filename and metadata.
-- **Ambiguity**: If filenames are generic (e.g., `image.jpg`), the LLM might struggle to tag them. I've added an `unknown` category as a fallback.
+## Notes for Engineer 1 (Workflow Specialist)
+- **Wait Node**: The API now passes updated documents to the graph thread. Ensure your `WAIT_FOR_DOCS` node logic correctly consumes the updated `documents` list from the state after resumption.
+- **Challenge Sync**: The `human_audit_log` is now available in the `ClaimWorkflowState`. You can use this for any context-aware auditing logic in the graph.
 
-### Payout Logic
-- **Safety**: The `payout_node` uses strict `float` conversion and guard clauses. If `damage_results` or `policy_results` are missing, it defaults to zero payout rather than crashing.
-- **Formula**: Follows the plan: `Payout = min(max(Adjusted_Damage * Liability_Rate - Excess, 0), Policy_Cap)`.
-- **Claim Types**: It specifically checks `policy_results["claim_type"]`. If set to `own_damage`, it ignores the fault split (Standard Malaysian policy behavior).
+## Validation Results
+- Verified with `tests/test_hitl_loop.py` (2/2 passing).
+- Manual inspection of `CaseStore` snapshots confirms audit logs are correctly populated for "Operator Jack".
 
-## Roadblocks & Resolutions
-- **Missing State Key**: `case_facts` was missing from the initial `ClaimWorkflowState`. **Resolution**: Added it to `srcs/schemas/state.py` to ensure Phase 1 data is persisted.
-
-## Recommendations for Engineer 4 (Orchestration)
-- Ensure the `validation_gate` output `status == "awaiting_docs"` triggers a human-in-the-loop interrupt in the main graph.
-- The `payout_node` should be placed after the parallel clusters (Policy, Liability, Damage) are joined.
+## Roadblocks
+- None at this time. The architecture is ready for final integration testing.

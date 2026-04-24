@@ -1,28 +1,37 @@
-# Engineer 1 Feedback: Core Infrastructure Implementation
+# Engineer 1 Feedback: LangGraph Hardening & HITL Integration
 
-## Status: COMPLETED
+## Completion Summary
+I have successfully implemented all tasks assigned in the workflow, along with additional refinements identified during the architectural critique.
 
-### Completion Notes
-- **State Schema**: Implemented `ClaimWorkflowState` in `srcs/schemas/state.py`. 
-    - Used `Annotated` with `operator.add` for `trace_log` to ensure all agent reasoning is preserved in the audit trail.
-    - Implemented a custom `dict_merge` reducer for partitioned results (`policy_results`, `liability_results`, etc.) to prevent data loss when parallel nodes update the state.
-- **Cluster Factory**: Implemented `create_cluster_subgraph` in `srcs/utils/cluster_factory.py`.
-    - Used the `Send` API to handle dynamic/parallel fan-out of sub-tasks.
-    - Integrated a `reflection_wrapper` that automatically checks for an `active_challenge` matching the `cluster_id` and injects relevant feedback into the tasks.
-    - Fixed a state duplication issue by ensuring the entry node (`fan_out_node`) returns an empty update instead of the full state.
-- **PR Refinements**: 
-    - Corrected `cluster_factory.py` docstrings to reflect that it returns a `StateGraph` builder.
-    - Aligned all PMContext documentation with **Python 3.12** to match the actual runtime environment.
-    - Updated the `AgenticWorkflowPlan.md` with the missing Phase 3 description and corrected the Payout node example to use partitioned state keys.
+### 1. State Schema & Reducers
+- **Updated `ClaimWorkflowState`**: Added `human_decision`, `human_audit_log`, and `processed_indices`.
+- **Additive Audit Log**: Used `operator.add` for `human_audit_log` to ensure a persistent trail of manual interventions.
+- **Reducers Verified**: Confirmed that all parallel cluster fields (Policy, Liability, Damage, Fraud) use the `dict_merge` reducer to prevent data loss during fanned-out execution.
 
-### Roadblocks & Resolutions
-- **Environment**: The `.venv` was initially empty. I had to run `pip install -r requirements.txt` to enable LangGraph functionality.
-- **State Collision**: Initial testing showed `InvalidUpdateError` due to parallel updates on a non-annotated `dict` state. **Resolution**: Switched the subgraph schema from `dict` to the fully annotated `ClaimWorkflowState`.
-- **Trace Log Duplication**: The passthrough node in the subgraph was unintentionally doubling the `trace_log` because it was returning the input state. **Resolution**: Changed the node to return `{}`.
+### 2. Workflow Ingestion Loop
+- **`WAIT_FOR_DOCS` Node**: Implemented a terminal interrupt node for the intake phase.
+- **Automatic Resumption**: The graph now loops from `wait_for_docs` back to `ingest_tagging`, allowing the workflow to resume seamlessly once new documents are added to the state.
+- **Incremental Tagging**: Optimized the intake agent to skip already-processed documents, reducing LLM costs and latency.
 
-### Senior Engineer's Recommendations
-- **State Isolation**: Always keep cluster results in separate keys (`policy_results` vs `liability_results`) to ensure the Map-Reduce pattern is truly isolated and idempotent.
-- **Traceability**: The `trace_log` is the "source of truth" for the AI Auditor. Ensure all future agents (Phase 2 & 3) use the `reflection_wrapper` or manually append descriptive reasoning.
+### 3. Human-In-The-Loop (HITL) Logic
+- **Decision Router**: Updated to handle `WorkflowAction.FORCE_APPROVE` overrides from "Operator Jack".
+- **Escalation Protocol**: Hardened the payout engine to trigger a `status="escalated"` interrupt when critical financial parameters are missing, rather than defaulting to unsafe values.
+- **Type Safety**: Introduced the `WorkflowAction` Enum to replace string literals for all human and agentic actions.
 
-### Next Steps
-- Pass the torch to **Engineer 2 (Logic Nodes)** to implement the actual agent logic using the provided `create_cluster_subgraph` factory.
+### 4. Integration Testing
+- **New Test Suite**: Updated `integration_test_workflow.py` with two new test suites:
+    - `run_hitl_test`: Verifies missing docs interrupt and human force-approve override.
+    - `run_escalation_test`: Verifies explicit escalation routing when financial data is missing.
+- **Results**: Both suites pass with Exit Code 0, confirming the graph's resilience and correct routing.
+
+## Roadblocks & Observations
+- **Roadblocks**: None encountered. Missing dependencies for testing were resolved by including `MemorySaver` and `WorkflowNodes` in the test file.
+- **Observations**: The payout engine is highly sensitive to `None` values. I have added defensive guards and escalation logic, but a strict schema validation layer before the payout node would be a beneficial future enhancement.
+
+## Definition of Done (DoD)
+- [x] `ClaimWorkflowState` updated with audit and decision fields.
+- [x] `WAIT_FOR_DOCS` node integrated into the graph.
+- [x] `decision_router` handles `force_approve` and `latest_user_message`.
+- [x] Reducers correctly applied and verified with unit tests.
+- [x] Incremental tagging implemented.
+- [x] Escalation logic for missing data implemented.

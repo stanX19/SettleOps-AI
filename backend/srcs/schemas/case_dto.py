@@ -20,6 +20,7 @@ class CaseStatus(str, Enum):
     ESCALATED = "escalated"
     APPROVED = "approved"
     DECLINED = "declined"
+    AWAITING_DOCS = "awaiting_docs"
     FAILED = "failed"
 
 

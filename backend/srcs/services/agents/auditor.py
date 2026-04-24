@@ -3,11 +3,10 @@ from srcs.schemas.state import ClaimWorkflowState
 from srcs.services.agents.rotating_llm import rotating_llm
 
 async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
-    """AI Auditor node: Cross-consistency check between results.
-    
-    This node looks for discrepancies between partitioned analysis clusters
-    (Policy, Liability, Damage) to ensure the final payout is justified.
-    """
+    """AI Auditor node: Cross-consistency check between results."""
+    if state.get("status") == "escalated":
+        return {"trace_log": ["[Auditor] Workflow is ESCALATED. Skipping audit until critical data is provided."]}
+
     case_facts = state.get("case_facts", {})
     policy = state.get("policy_results", {})
     liability = state.get("liability_results", {})
@@ -68,13 +67,18 @@ def decision_gate_logic(state: ClaimWorkflowState) -> dict[str, Any]:
     return {"status": "awaiting_approval"}
 
 def decision_router(state: ClaimWorkflowState) -> str:
-    """Decision Router: Logic to route based on active_challenge or auditor findings.
+    """Decision Router: Logic to route based on active_challenge or auditor findings."""
+    from srcs.schemas.state import WorkflowNodes, MAX_ITERATIONS, WorkflowAction
     
-    Implements Circuit Breakers to prevent infinite loops and uses WorkflowNodes 
-    for loose coupling.
-    """
-    from srcs.schemas.state import WorkflowNodes, MAX_ITERATIONS
-    
+    # 0. Human Authority: If operator forced approval, bypass all logic
+    human_decision = state.get("human_decision")
+    if human_decision and human_decision.get("action") == WorkflowAction.FORCE_APPROVE:
+        return WorkflowNodes.REPORT_GENERATOR
+
+    # 1. Escalation: If critical data is missing, stay at decision gate for human input
+    if state.get("status") == "escalated":
+        return WorkflowNodes.DECISION_GATE
+
     active_challenge = state.get("active_challenge")
     iteration = active_challenge.get("iteration", 0) if active_challenge else 0
 

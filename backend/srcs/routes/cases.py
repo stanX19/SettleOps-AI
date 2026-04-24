@@ -47,6 +47,7 @@ from srcs.services.case_service import (
     require_case,
     run_partial_pipeline,
     run_pipeline,
+    resume_workflow_with_sse,
 )
 from srcs.services.case_store import (
     CaseState,
@@ -253,11 +254,11 @@ async def submit_case_documents(
     chat_transcript: Optional[str] = Form(None),
 ) -> CaseCreateResponse:
     state = require_case(case_id)
-    if state.status != CaseStatus.DRAFT:
+    if state.status not in (CaseStatus.DRAFT, CaseStatus.AWAITING_DOCS):
         raise api_error(
             409,
             ErrorCode.INVALID_STATUS,
-            "Documents can only be submitted for a draft case",
+            "Documents can only be submitted for a draft or awaiting_docs case",
         )
 
     _validate_case_uploads(
@@ -300,9 +301,21 @@ async def submit_case_documents(
         state.adjuster_report_path = adjuster_path
         state.photo_paths = photo_paths
         state.chat_transcript = transcript_path
+        
+        # If we are resuming from AWAITING_DOCS, we move to SUBMITTED (to trigger transition logic)
+        # but the actual trigger will be resume_workflow_with_sse.
+        old_status = state.status
         transition_status(state, CaseStatus.SUBMITTED)
 
-    background.add_task(run_pipeline, case_id)
+    if old_status == CaseStatus.AWAITING_DOCS:
+        background.add_task(
+            resume_workflow_with_sse, 
+            case_id, 
+            operator_name="Operator Jack", 
+            action="upload_docs"
+        )
+    else:
+        background.add_task(run_pipeline, case_id)
 
     return CaseCreateResponse(case_id=case_id, status=state.status)
 
@@ -465,16 +478,20 @@ async def approve_case(case_id: str) -> ApproveResponse:
             await generate_artifacts(state)
 
         # Transition first; if it fails, decision fields stay untouched.
-        try:
-            transition_status(state, CaseStatus.APPROVED)
-        except InvalidStatusTransition as exc:
-            raise api_error(409, ErrorCode.INVALID_STATUS, str(exc))
+        # We don't transition directly to APPROVED here anymore, we let the graph reach END.
+        # However, we must ensure we are in a valid state to resume.
+        pass
 
-        state.operator_decision = "approved"
-        state.approved_at = now_iso()
-        pdf_ready = current_artifacts_ready(state)
+    background.add_task(
+        resume_workflow_with_sse, 
+        case_id, 
+        operator_name="Operator Jack", 
+        action="approve",
+        reason="Manual override by Operator Jack",
+        force_approve=True
+    )
 
-    return ApproveResponse(status=state.status, pdf_ready=pdf_ready)
+    return ApproveResponse(status=state.status, pdf_ready=current_artifacts_ready(state))
 
 
 # -- Officer: decline --------------------------------------------------------

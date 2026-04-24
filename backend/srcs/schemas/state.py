@@ -11,6 +11,14 @@ class WorkflowNodes(str, Enum):
     REFINER = "refiner"
     REPORT_GENERATOR = "report_generator"
     DECISION_GATE = "decision_gate"
+    WAIT_FOR_DOCS = "wait_for_docs"
+
+class WorkflowAction(str, Enum):
+    """Centralized action identifiers for human and agentic decisions."""
+    APPROVE = "approve"
+    REJECT = "reject"
+    CHALLENGE = "challenge"
+    FORCE_APPROVE = "force_approve"
 
 MAX_ITERATIONS = 3
 
@@ -19,6 +27,13 @@ class ChallengeState(TypedDict):
     target_cluster: str  # "policy", "liability", "damage", "fraud"
     feedback: str       # The specific instruction or correction
     iteration: int      # Counter to prevent infinite loops during surgical reruns
+
+class HumanDecision(TypedDict):
+    """Represents a manual intervention by a human operator."""
+    action: WorkflowAction 
+    reasoning: str
+    operator_id: str # e.g., "Operator Jack"
+    timestamp: str
 
 def dict_merge(x: dict[str, Any], y: dict[str, Any]) -> dict[str, Any]:
     """Reducer for merging dictionaries in parallel LangGraph nodes."""
@@ -49,6 +64,7 @@ class ClaimWorkflowState(TypedDict):
     # Base Data
     case_id: Annotated[str, first_value]
     documents: List[dict]
+    processed_indices: Annotated[List[int], operator.add]
     
     # Partitioned Blackboard
     case_facts: Annotated[dict[str, Any], dict_merge]
@@ -58,6 +74,9 @@ class ClaimWorkflowState(TypedDict):
     fraud_results: Annotated[dict[str, Any], dict_merge]
     payout_results: Annotated[dict[str, Any], dict_merge]
     
+    # Audit Trail (Human & AI)
+    human_audit_log: Annotated[List[dict], operator.add]
+    
     # Trace Log
     trace_log: Annotated[List[str], operator.add]
     
@@ -65,6 +84,14 @@ class ClaimWorkflowState(TypedDict):
     active_challenge: Optional[ChallengeState]
     status: str 
     
+    # HITL & Auditing
+    human_decision: Optional[HumanDecision]
+    human_audit_log: Annotated[List[HumanDecision], operator.add]
+    
     # Metadata
     current_agent: Optional[str]
     latest_user_message: Optional[str]
+    
+    # Human Override Controls
+    force_approve: bool = False
+    human_decision_reason: Optional[str] = None
