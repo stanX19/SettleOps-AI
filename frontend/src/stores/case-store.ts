@@ -82,7 +82,7 @@ export const useCaseStore = create<CaseState>((set) => ({
     } else {
       // Update parent agent status
       newAgents[agentId] = {
-        ...newAgents[agentId],
+        ...(newAgents[agentId] || { status: AgentStatus.IDLE, sub_tasks: {} }),
         status: data.status,
       };
     }

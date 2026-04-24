@@ -70,9 +70,11 @@ function AgentNode({ data }: NodeProps) {
 function ClusterNode({ data }: NodeProps) {
   return (
     <div className="bg-neutral-surface/5 border border-dashed border-neutral-border/50 rounded-xl w-full h-full relative group">
+      <Handle type="target" position={Position.Top} className="opacity-0" />
       <div className="absolute -top-5 left-1 font-mono text-[9px] font-bold uppercase tracking-widest text-neutral-text-tertiary group-hover:text-brand-primary transition-colors">
         {data.label as string} Cluster
       </div>
+      <Handle type="source" position={Position.Bottom} className="opacity-0" />
     </div>
   );
 }
@@ -182,6 +184,12 @@ export function WorkflowPane() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+  // Sync ReactFlow state when initial layout is recalculated (e.g. topology arrives)
+  useEffect(() => {
+    setNodes(initialNodes);
+    setEdges(initialEdges);
+  }, [initialNodes, initialEdges, setNodes, setEdges]);
 
   // Update nodes and edges based on dynamic agent state
   useEffect(() => {

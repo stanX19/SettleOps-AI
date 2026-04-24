@@ -158,6 +158,10 @@ class TestClient:
         # Port is busy
         print(f"{Colors.YELLOW}{Colors.BOLD}[!] PORT COLLISION:{Colors.END} Port {port} is already in use.")
         
+        # Guard: Only run netstat/taskkill on Windows
+        if sys.platform != "win32":
+            return True
+
         # Try to find PID
         pid = None
         try:
@@ -287,7 +291,7 @@ class TestSocket:
                 if not line:
                     continue
                 decoded = line.decode('utf-8')
-                print(f"DEBUG: [SSE RAW] {decoded}", flush=True)
+                # print(f"DEBUG: [SSE RAW] {decoded}", flush=True)
                 if decoded.startswith("event:"):
                     event_type = decoded.replace("event:", "").strip()
                     continue

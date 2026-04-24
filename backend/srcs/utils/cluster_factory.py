@@ -56,7 +56,10 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
 
             # 2. Emit WORKING status for sub-task
             case_id = state.get("case_id")
-            print(f"DEBUG: [ClusterFactory] state keys: {list(state.keys())}, case_id: {case_id}", flush=True)
+            if not case_id:
+                print("WARNING: [ClusterFactory] Missing case_id in state. Skipping SSE.", flush=True)
+                return result
+            
             sub_task_name = task.__name__
             parent_agent_id = AgentId(cluster_id)
             

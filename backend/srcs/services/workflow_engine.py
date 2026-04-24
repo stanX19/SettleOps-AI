@@ -175,20 +175,36 @@ _NODE_TO_SECTION = {
     "auditor_node": BlackboardSection.AUDIT_RESULT,
 }
 
-async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState):
-    """Executes the LangGraph and pipes updates to SSE and CaseStore in real-time."""
+def get_graph():
+    """Compiles the graph with standardized interrupt points."""
     builder = build_workflow()
-    # We interrupt before DECISION_GATE for HITL and before WAIT_FOR_DOCS for intake resume.
-    graph = builder.compile(checkpointer=workflow_checkpointer, interrupt_before=[WorkflowNodes.DECISION_GATE, WorkflowNodes.WAIT_FOR_DOCS])
+    return builder.compile(
+        checkpointer=workflow_checkpointer, 
+        interrupt_before=[WorkflowNodes.DECISION_GATE, WorkflowNodes.WAIT_FOR_DOCS]
+    )
+
+async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkflowState]):
+    """Executes the LangGraph and pipes updates to SSE and CaseStore in real-time."""
+    graph = get_graph()
     config = {"configurable": {"thread_id": case_id}}
     
     # 1. Start execution
-    # Using ainvoke instead of astream for more reliable termination at interrupts.
-    # Telemetry is handled by node_sse_wrapper.
     try:
         await graph.ainvoke(initial_state, config)
     except Exception as e:
         print(f"ERROR: [WorkflowEngine] Graph execution failed for {case_id}: {str(e)}", flush=True)
+        # Emit explicit failure event so frontend can stop spinners
+        await SseService.emit(case_id, SseWorkflowCompletedData(
+            case_id=case_id,
+            timestamp=now_iso(),
+            status=CaseStatus.FAILED,
+            pdf_ready=False,
+            auditor_loop_count=0,
+            officer_challenge_count=0,
+            chatbox_enabled=False,
+            topology=TOPOLOGY
+        ))
+        raise # Re-raise to let the background task handler know it failed
 
     # 2. Final status resolution & Completion Event
     final_state_wrapper = await graph.aget_state(config)
@@ -226,8 +242,7 @@ async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState)
 
 async def resume_workflow_with_sse(case_id: str, updates: dict):
     """Resumes a suspended graph thread with new state updates."""
-    builder = build_workflow()
-    graph = builder.compile(checkpointer=workflow_checkpointer, interrupt_before=[WorkflowNodes.DECISION_GATE, WorkflowNodes.WAIT_FOR_DOCS])
+    graph = get_graph()
     config = {"configurable": {"thread_id": case_id}}
     
     # Apply updates to the thread state
