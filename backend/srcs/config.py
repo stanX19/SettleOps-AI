@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     ILMU_API_KEY: str = ""
     ILMU_BASE_URL: str = "https://api.ilmu.ai/v1"
     ILMU_MODEL_NAME: str = "ilmu-glm-5.1"
+    
+    # Gemini Configuration
+    GEMINI_API_KEY_LIST: list[str] = []
+    GEMINI_MODEL_NAME: str = "gemini-2.0-flash"
 
     # ElevenLabs (Speech) Configuration
     ELEVENLABS_API_KEY: str = ""

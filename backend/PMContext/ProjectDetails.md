@@ -10,7 +10,7 @@ The goal of this project is to replace the current stub-based claims pipeline wi
 - Maintain a comprehensive audit trail (Trace Log) for every step of the process.
 
 ## Tech Stack
-- **Core**: Python 3.14.3
+- **Core**: Python 3.12
 - **Orchestration**: LangGraph, LangChain-Core
 - **LLM**: RotatingLLM (custom provider-rotating wrapper)
 - **State Management**: TypedDict with Annotated reducers

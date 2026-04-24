@@ -20,6 +20,8 @@ from langchain_core.runnables import Runnable
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from google.api_core.exceptions import ResourceExhausted
 from pydantic import BaseModel, ConfigDict, Field
 
 from srcs.config import get_settings
@@ -89,6 +91,13 @@ class LLMConfig:
                 api_key=self.api_key,
                 temperature=temperature,
                 max_retries=0,
+                **kwargs
+            )
+        if self.provider == "gemini":
+            return ChatGoogleGenerativeAI(
+                model=use_model,
+                google_api_key=self.api_key,
+                temperature=temperature,
                 **kwargs
             )
         raise ValueError(f"Unknown provider: {self.provider}")
@@ -430,6 +439,9 @@ class RotatingLLM:
         Returns:
             The classified outcome.
         """
+        if isinstance(exc, ResourceExhausted):
+            return _Outcome.RATE_LIMIT
+
         status: int = getattr(getattr(exc, 'response', None), 'status_code', 0)
         if status == 429 or "429" in str(exc):
             return _Outcome.RATE_LIMIT
@@ -631,6 +643,15 @@ class RotatingLLM:
                 model=settings.ILMU_MODEL_NAME,
                 base_url=settings.ILMU_BASE_URL,
             ))
+
+        # Load Gemini keys
+        for key in settings.GEMINI_API_KEY_LIST:
+            if key and key.strip():
+                llm_configs.append(LLMConfig(
+                    provider="gemini",
+                    api_key=key,
+                    model=settings.GEMINI_MODEL_NAME
+                ))
 
         return RotatingLLM(llm_configs)
 
