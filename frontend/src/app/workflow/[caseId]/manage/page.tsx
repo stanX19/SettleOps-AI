@@ -218,7 +218,11 @@ function DocumentRow({ name, size, onDelete }: { name: string, size: string, onD
 }
 
 function StatusBadge({ status }: { status: CaseStatus }) {
-  const configs = {
+  const configs: Record<CaseStatus, { label: string; styles: string }> = {
+    [CaseStatus.DRAFT]: {
+      label: 'Draft',
+      styles: 'bg-neutral-text-tertiary'
+    },
     [CaseStatus.RUNNING]: {
       label: 'Ongoing',
       styles: 'bg-brand-primary'
@@ -249,10 +253,10 @@ function StatusBadge({ status }: { status: CaseStatus }) {
     }
   };
 
-  const config = configs[status] || configs[CaseStatus.RUNNING];
+  const config = configs[status];
 
   return (
-    <div 
+    <div
       className={`relative flex items-center pl-3 pr-6 py-1 text-[11px] font-medium text-black shadow-sm ${config.styles}`}
       style={{
         clipPath: 'polygon(0% 0%, 85% 0%, 100% 50%, 85% 100%, 0% 100%)'
