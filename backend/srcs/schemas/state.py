@@ -74,9 +74,6 @@ class ClaimWorkflowState(TypedDict):
     fraud_results: Annotated[dict[str, Any], dict_merge]
     payout_results: Annotated[dict[str, Any], dict_merge]
     
-    # Audit Trail (Human & AI)
-    human_audit_log: Annotated[List[dict], operator.add]
-    
     # Trace Log
     trace_log: Annotated[List[str], operator.add]
     
@@ -93,5 +90,5 @@ class ClaimWorkflowState(TypedDict):
     latest_user_message: Optional[str]
     
     # Human Override Controls
-    force_approve: bool = False
-    human_decision_reason: Optional[str] = None
+    force_approve: bool
+    human_decision_reason: Optional[str]

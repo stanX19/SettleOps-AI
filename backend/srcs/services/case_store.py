@@ -244,4 +244,5 @@ class CaseStore:
     @classmethod
     def _reset(cls) -> None:
         cls._cases.clear()
+        cls._case_locks.clear()
         cls._counter = 0

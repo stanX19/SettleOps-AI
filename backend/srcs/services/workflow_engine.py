@@ -168,7 +168,7 @@ _NODE_TO_SECTION = {
 async def run_workflow_with_sse(case_id: str, initial_state: ClaimWorkflowState):
     """Executes the LangGraph and pipes updates to SSE and CaseStore in real-time."""
     builder = build_workflow()
-    graph = builder.compile(checkpointer=workflow_checkpointer, interrupt_before=[WorkflowNodes.DECISION_GATE])
+    graph = builder.compile(checkpointer=workflow_checkpointer, interrupt_before=[WorkflowNodes.DECISION_GATE, WorkflowNodes.WAIT_FOR_DOCS])
     config = {"configurable": {"thread_id": case_id}}
     
     await _process_graph_stream(case_id, graph, config, initial_state)
@@ -223,7 +223,7 @@ async def _process_graph_stream(case_id: str, graph, config, initial_state=None)
     final_status = final_state_wrapper.values.get("status")
     
     display_status = CaseStatus.RUNNING
-    if final_status == "inconsistent":
+    if final_status in ("inconsistent", "escalated"):
         display_status = CaseStatus.ESCALATED
     elif final_status == "completed":
         display_status = CaseStatus.AWAITING_APPROVAL

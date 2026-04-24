@@ -1,11 +1,14 @@
 import asyncio
 import unittest
 from unittest.mock import MagicMock, patch
-import sys
 import os
+import sys
+from pathlib import Path
 
 # Add the project backend to sys.path
-sys.path.append(os.path.join(os.getcwd(), "project", "backend"))
+backend_root = str(Path(__file__).resolve().parents[1] / "project" / "backend")
+if backend_root not in sys.path:
+    sys.path.append(backend_root)
 
 from srcs.schemas.case_dto import CaseStatus, AgentId, AgentStatus
 from srcs.services.case_store import CaseStore, CaseState, now_iso

@@ -69,8 +69,9 @@ async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
         }
 
 def decision_gate_logic(state: ClaimWorkflowState) -> dict[str, Any]:
-    """No-op node that ensures the status is 'awaiting_approval' unless already marked 'inconsistent'."""
-    if state.get("status") == "inconsistent":
+    """No-op node that ensures the status is 'awaiting_approval' unless already in a wait state."""
+    current_status = state.get("status")
+    if current_status in ("inconsistent", "escalated", "awaiting_docs"):
         return {}
     return {"status": "awaiting_approval"}
 

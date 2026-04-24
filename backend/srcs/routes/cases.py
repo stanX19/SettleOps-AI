@@ -302,10 +302,9 @@ async def submit_case_documents(
         state.photo_paths = photo_paths
         state.chat_transcript = transcript_path
         
-        # If we are resuming from AWAITING_DOCS, we move to SUBMITTED (to trigger transition logic)
-        # but the actual trigger will be resume_workflow_with_sse.
+        # If we are resuming from AWAITING_DOCS, we move directly to RUNNING
         old_status = state.status
-        transition_status(state, CaseStatus.SUBMITTED)
+        transition_status(state, CaseStatus.RUNNING)
 
     if old_status == CaseStatus.AWAITING_DOCS:
         background.add_task(
@@ -456,7 +455,7 @@ async def get_artifact(case_id: str, artifact_type: str) -> FileResponse:
 # -- Officer: approve --------------------------------------------------------
 
 @router.post("/{case_id}/approve", response_model=ApproveResponse)
-async def approve_case(case_id: str) -> ApproveResponse:
+async def approve_case(case_id: str, background: BackgroundTasks) -> ApproveResponse:
     state = require_case(case_id)
 
     async with CaseStore.lock(case_id):

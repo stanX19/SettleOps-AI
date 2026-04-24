@@ -772,11 +772,25 @@ async def resume_workflow_with_sse(
     )
 
     try:
+        from srcs.schemas.state import WorkflowAction
+
         # 4. Prepare updates for the graph
         updates = {
-            "human_audit_log": state.human_audit_log,
+            "human_audit_log": [
+                {
+                    "action": WorkflowAction.FORCE_APPROVE if action == "approve" else action,
+                    "reasoning": reason or "No reasoning provided.",
+                    "operator_id": operator_name or "System",
+                    "timestamp": now_iso()
+                }
+            ],
             "force_approve": force_approve,
-            "human_decision_reason": reason
+            "human_decision": {
+                "action": WorkflowAction.FORCE_APPROVE,
+                "reasoning": reason or "Manual intervention",
+                "operator_id": operator_name or "System",
+                "timestamp": now_iso()
+            } if action == "approve" else None
         }
         
         # If we are resuming for docs, we need to refresh the documents list
