@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     PORT: int = 8000
     LLM_LOCALHOST: bool = True
     LLM_LOCALHOST_URL: str = "http://127.0.0.1:1234/v1"
+    USE_LLM_CACHE: bool = True
 
     @field_validator("DEBUG", mode="before")
     @classmethod

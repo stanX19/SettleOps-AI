@@ -180,16 +180,19 @@ class RotatingLLM:
     def __init__(
             self,
             llm_configs: list[LLMConfig],
-            cooldown_seconds: int = 60
+            cooldown_seconds: int = 60,
+            use_cache: bool = True
     ) -> None:
         """Initialize RotatingLLM with a pool of configurations.
 
         Args:
             llm_configs: List of LLM configurations to rotate.
             cooldown_seconds: Wait time (seconds) after rate limit (not used in current logic).
+            use_cache: Whether to use response caching by default.
         """
         self.llm_configs: list[LLMConfig] = llm_configs
         self.cooldown_seconds: int = cooldown_seconds
+        self.use_cache: bool = use_cache
         self._lock: asyncio.Lock = asyncio.Lock()
         self._call_counts: dict[str, int] = {c.api_key: 0 for c in llm_configs}
         self._cache_lock: asyncio.Lock = asyncio.Lock()
@@ -380,7 +383,7 @@ class RotatingLLM:
         """
         last_exc: Exception | None = None
         self._log_request(messages)
-        use_cache = bool(kwargs.pop("use_cache", True))
+        use_cache = bool(kwargs.pop("use_cache", self.use_cache))
         cache_key: str | None = None
         if use_cache:
             cache_key = self._make_cache_key(messages, temperature, model, kwargs)
@@ -703,7 +706,7 @@ class RotatingLLM:
                     model=settings.GEMINI_MODEL_NAME
                 ))
 
-        return RotatingLLM(llm_configs)
+        return RotatingLLM(llm_configs, use_cache=settings.USE_LLM_CACHE)
 
 
     def __str__(self):
