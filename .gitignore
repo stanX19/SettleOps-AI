@@ -48,7 +48,6 @@ run_frontend.bat
 .github
 *.mp3
 *.m4a
-*.pdf
 
 /.claude
 backend/scratch

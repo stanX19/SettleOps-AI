@@ -1,12 +1,10 @@
-# Claims Engine Product Requirements Document
+# SettleOps AI
 
 ## 1. Executive Summary
 
-Claims Engine is an AI decision-support product for Malaysian motor insurance claims officers. It helps insurers reduce the 30-60 minute manual review step in a motor claim by reading the same claim materials a claims officer reviews today, drafting a defensible claim decision in under 90 seconds, and presenting the decision for human approval, decline, or challenge.
+SettleOps AI is an AI-powered automation platform designed specifically for insurance claims officers to accelerate and improve the accuracy of claim decision-making. By leveraging a sophisticated multi-agent AI architecture featuring 9-13 specialized agents—including a dedicated Vision AI Agent for precise damage photo analysis—the platform reads and reconciles complex claim documents (police reports, adjuster reports, policy terms, and crash photos) to generate a structured decision report in under 90 seconds.
 
-The product is designed to sit beside Merimen eClaims, the industry workflow platform used by Malaysian insurers, loss adjusters, and panel workshops. Claims Engine does not compete with Merimen and does not replace regulated loss adjusters. It adds an AI reasoning layer at the insurer decision step, where claims officers currently spend significant time reconciling police reports, adjuster reports, policy terms, repair quotations, crash photos, and fraud signals.
-
-For UMHackathon 2026, the goal is to demonstrate a focused, credible claims-officer workflow: upload claim documents, watch the AI review progress in a live dashboard, inspect the structured reasoning, and finalize a Claim Decision PDF through a human-in-the-loop action.
+The product centralizes the entire review process into a high-efficiency "cockpit," allowing officers to monitor parallel AI agents as they reason through evidence. It features a human-in-the-loop feedback system where officers can challenge agent outputs or request re-evaluation from a high-level "Auditor" agent. SettleOps AI transforms the traditionally manual, 30-60 minute review process into a streamlined, supervised workflow, ensuring consistency and surfacing fraud risks that might otherwise be missed.
 
 ## 2. Problem & Market Context
 
@@ -23,7 +21,7 @@ A Malaysian motor insurance claim involves multiple regulated and operational pa
 7. **Repairs commence.** Approved repairs proceed at the panel workshop.
 8. **Payment and closure.** The insurer pays the workshop after required documentation is completed, and the claim is closed.
 
-Claims Engine focuses on **Step 6**, the claims officer's review and decision-drafting step.
+SettleOps AI focuses on **Step 6**, the claims officer's review and decision-drafting step.
 
 ### 2.2 Manual Review Bottleneck and Business Pain
 
@@ -52,9 +50,9 @@ The pain is not only the time spent. It is the accumulated risk:
 - **Customer and fleet downtime:** Every delayed decision means a driver or fleet vehicle stays in the workshop longer.
 - **Operational cost:** With roughly **900,000 motor claims per year in Malaysia**, even conservative assumptions imply a large industry-wide labour cost and a significant settlement bottleneck.
 
-This is the specific pain Claims Engine targets: not accident reporting, not workshop repair, and not loss adjustment. It targets the insurer's final manual decision-drafting bottleneck.
+This is the specific pain SettleOps AI targets: not accident reporting, not workshop repair, and not loss adjustment. It targets the insurer's final manual decision-drafting bottleneck.
 
-### 2.3 Why Claims Engine Is Feasible Now
+### 2.3 Why SettleOps AI Is Feasible Now
 
 The product opportunity exists because several conditions have recently converged:
 
@@ -97,88 +95,106 @@ The secondary user is a fleet operations manager whose business is affected by v
 
 - Operations Manager at a fleet business with approximately 200 vehicles.
 - Needs accident claims resolved quickly so vehicles can return to service.
-- May use Claims Engine to prepare claim packets before insurer submission.
 
 **User pain:**
 
 - Every day a vehicle sits in a workshop creates lost revenue.
 - Claim follow-up with insurers can be slow and opaque.
-- Fleet teams often submit incomplete or poorly structured claim evidence.
 
 **Desired outcome:**
 
-Ahmad's team uploads claim materials and receives a structured draft decision packet that can reduce back-and-forth with the insurer and speed up review.
+- Ahmad benefits from the significantly faster claim processing time enabled by the insurer using SettleOps AI, reducing vehicle downtime and operational loss.
 
 ### 3.3 Loss Adjuster Positioning
 
-Claims Engine **does not replace the licensed loss adjuster**.
+SettleOps AI **does not replace the licensed loss adjuster**.
 
-The loss adjuster remains a regulated, independent professional who physically inspects the vehicle and produces the adjuster report. Claims Engine consumes the adjuster's report as a key input and operates after the adjuster's work, inside the insurer's claim decision process.
+The loss adjuster remains a regulated, independent professional who physically inspects the vehicle and produces the adjuster report. SettleOps AI consumes the adjuster's report as a key input and operates after the adjuster's work, inside the insurer's claim decision process.
 
 This positioning is non-negotiable for product, regulatory, and pitch credibility.
 
 ### 3.4 Additional Service Buyers
 
-These are the commercial or operational buyers who may purchase or sponsor usage of Claims Engine. Parties that provide evidence but do not use the product directly are intentionally excluded from this PRD.
+These are the commercial or operational buyers who may purchase or sponsor usage of SettleOps AI. Parties that provide evidence but do not use the product directly are intentionally excluded from this document.
 
-| Buyer | How they use Claims Engine |
+| Buyer | How they use SettleOps AI |
 |---|---|
-| Insurer Head of Claims Operations | Buys Claims Engine to reduce review time, improve consistency, and increase claims officer throughput. |
+| Insurer Head of Claims Operations | Buys SettleOps AI to reduce review time, improve consistency, and increase claims officer throughput. |
 | Claims Team Lead / Supervisor | Monitors escalated cases, reviews decision quality, and uses audit trails for coaching and governance. |
-| Fleet Operations Director | Uses Claims Engine as a pre-drafting tool to submit cleaner claim packets and reduce vehicle downtime. |
+| Fleet Operations Director | Invests in SettleOps AI to ensure their insurance provider can settle claims faster, reducing business downtime. |
+
+Page 5 of 22
 
 ## 4. Product Overview & Core Features
 
-### 4.1 End-to-End Product Experience
+### 4.1 Product Architecture & Interaction
 
-Claims Engine should feel like an operations cockpit for motor claim decisions. A first-time judge should immediately understand three things: what documents entered the system, what the AI is reviewing, and what decision the human officer can safely take.
+SettleOps AI is built around a centralized Intelligence Hub that allows officers to manage cases, interact with AI, and oversee automated workflows.
 
-The MVP demo experience follows one claim from submission to human decision:
+1.  **Chat Home Page:** A interface where users can ask questions about any claim or start a new claim by simply uploading documents.
+2.  **Manage Hub:** A dedicated space for file management and evidence uploading. Once a new claim is initiated, the officer uses this hub to organize and submit the document stack.
+3.  **Claims Queue:** A real-time dashboard showing all active cases. Each case workflow is independent and runs in parallel, allowing for massive throughput.
+4.  **Case Workflow Page (Three-Pane Cockpit):** The core operational interface for reviewing a specific claim.
+5.  **Multi-Agent Reasoning:** A fleet of 9-13 specialized AI agents (Liability, Coverage, Fraud, Payout, Vision, etc.) work simultaneously to analyze the case. This includes a dedicated **Vision AI Agent** that performs forensic analysis on damage photos to corroborate narratives. A high-level "Auditor" agent oversees the final synthesis.
 
-1. **A claim is submitted.** A demo user or fleet operator uploads the required claim materials. The product confirms that the case has been created and starts review.
-2. **The case appears in the claims queue.** The officer sees the case alongside other claims, with a clear status such as running, awaiting approval, escalated, approved, or declined.
-3. **The officer opens the dashboard.** The screen is divided into the raw evidence, the live review workflow, and the structured decision blackboard.
-4. **The review becomes visible.** The officer can see which parts of the claim are being reviewed, which parts are complete, and whether any inconsistency has triggered a challenge.
-5. **The draft decision is presented.** The system summarizes coverage, liability, fraud risk, payout, and audit result in a format that is faster to review than the original document stack.
-6. **The officer remains in control.** The officer approves, declines with a reason, or challenges a specific part of the reasoning.
-7. **The output is generated.** The officer can download the Claim Decision PDF and audit trail for handoff, record keeping, or demo proof.
+### 4.2 Three-Pane Case Workflow Page
 
-Claims Engine has three primary product surfaces for the MVP demo:
+The workflow page is designed for maximum transparency and control:
 
-1. **Document upload experience** for submitting claim materials.
-2. **Claims queue** for officers to view submitted cases and their current status.
-3. **Three-pane claims officer dashboard** for reviewing live AI progress, structured reasoning, and final decision actions.
+-   **Panel 1: Uploaded Evidences:** Displays all raw input documents, photos, and transcripts for quick reference.
+-   **Panel 2: Workflow Canvas:** A live visualization of the 9-13 agents running in parallel. The officer can see the reasoning steps as they happen.
+-   **Panel 3: Outcome & Interaction (Toggleable):**
+    -   **Blackboard State:** Shows the structured output results (Liability %, Payout, etc.).
+    -   **AI Strategy Chat:** A direct chat interface where the officer can ask the AI to explain specific outcomes, clarify reasoning, or provide feedback to the Auditor agent to recheck a specific issue.
 
-The hero experience is the claims officer dashboard. It must make clear that Claims Engine is not a chatbot; it is a decision-support workflow that turns messy claim documents into a structured, reviewable decision draft.
+### 4.3 AI Model & Prompt Design
 
-### 4.2 Document Upload Experience
+#### 4.3.1 Model Selection & Benchmarking
 
-The upload experience should be simple enough for a hackathon demo but realistic enough for judges to believe it maps to a real insurer workflow. The user should understand which documents are required, which are optional, and what happens after submission.
+SettleOps AI utilizes **Google Gemini 2.5 Flash** as its foundational intelligence engine. Our benchmarking against industry leaders revealed that while several models offer high reasoning capability, Gemini 2.5 Flash provides the optimal balance of speed, multimodal vision, and context length required for real-time insurance automation.
 
-The upload experience allows a demo user or fleet operator to submit the core claim materials:
+| Model | Reasoning Depth | Inference Speed | Context Window | Vision Accuracy | Cost Efficiency | SettleOps Fit |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Gemini 2.5 Flash** | High | Ultra-Fast | 1M+ Tokens | Excellent | High | **Primary Engine** |
+| OpenAI GPT-4o | Very High | Fast | 128k | Good | Moderate | Secondary/Fallback |
+| Claude 3.5 Sonnet | Very High | Moderate | 200k | Moderate | Low (Costly) | Over-engineered |
+| GLM-4 | Moderate | Fast | 128k | Basic | Moderate | Regional alternative |
+| Gemini 1.5 Pro | Ultra-High | Moderate | 2M+ Tokens | Excellent | Moderate | Auditor Tasks |
 
-- Police report.
-- Policy schedule or cover note.
-- Repair quotation.
-- Crash photos.
-- Adjuster report, if available.
-- Optional driver chat transcript or informal statement.
+**Why Gemini 2.5 Flash?**
+- **Sub-90s Decisions:** Its high token-per-second throughput is critical for our 90-second generation target.
+- **Multimodal Vision AI:** Native image support allows the Vision AI Agent to analyze crash photos directly for damage corroboration without external OCR dependencies.
+- **Infinite Context:** Handling multiple PDFs (police reports, adjuster reports, and 100-page policy booklets) simultaneously requires a massive context window which Gemini provides.
 
-After submission, the system creates a case and begins reviewing the claim. The user receives clear confirmation that the case has entered the review workflow. The confirmation should show the case reference, current status, and next step so the presenter can smoothly move from upload to officer review.
+**Development vs. Production Strategy**
+During the development and prototyping phase, the team utilized **Gemini 1.5 Pro** and **Claude 3.5 Sonnet** for their extreme reasoning depth. This allowed us to validate the complex multi-agent architecture and "stress-test" the liability logic across contradictory evidence sets. For a live **Production** environment, however, we prioritize **Gemini 2.5 Flash**. The shift to 2.5 Flash is driven by the need for commercial scalability; it delivers the rapid inference speeds required for a responsive user experience and a significantly more sustainable cost-per-claim ratio, which is essential for handling the high volume of claims in the Malaysian insurance market.
 
-### 4.3 Claims Queue
+#### 4.3.2 Prompting Strategy: Multi-Step Agentic Prompting
 
-The claims queue is the officer's landing page. It lists submitted cases with practical status information so the officer can quickly identify which cases are pending, running, escalated, awaiting approval, approved, declined, or failed.
+-   **Our Approach:** SettleOps AI uses a **Multi-Step Agentic Prompting** strategy coordinated by a central Auditor. Each of the 9-13 specialized agents is assigned a highly focused domain (e.g., Liability, Policy, or Damage) with strict JSON output constraints.
+-   **Why it fits:** Insurance claims are inherently non-linear and involve contradictory evidence. A single-shot or zero-shot approach would struggle to reconcile a police report against a repair quote. By decomposing the claim into sub-tasks, we ensure higher reasoning accuracy, improve traceability for audits, and enable the Auditor Agent to perform cross-consistency checks between specialized outputs.
 
-The queue should make the product feel like an insurer operations tool, not a standalone demo page. A good queue experience lets Siti scan her workload in seconds:
+#### 4.3.3 Context & Input Handling: Large-Scale Multimodal Ingestion
 
-- Which cases are ready for her decision.
-- Which cases are still being reviewed.
-- Which cases carry fraud or escalation signals.
-- Which cases have already been approved or declined.
-- Which case should be opened next.
+-   **Our Approach:** The system is designed to handle messy, unstructured document stacks including PDFs, handwritten reports, and crash photos.
+-   **Maximum Input Size:** Utilizing **Gemini 2.5 Flash**, the system accepts up to **1,000,000 tokens** per case. This massive window allows us to process full policy booklets and high-resolution images in a single context without early rejection.
+-   **Handling Oversized Inputs:** In the rare event that a case exceeds the 1M token limit (e.g., a massive multi-year fleet history), the system employs **Recursive Summarization**. Critical legal evidence (Police Reports) is prioritized for full-text ingestion, while secondary technical annexes are summarized into structured summaries to fit the context window without losing essential intent.
 
-### 4.4 Three-Pane Claims Officer Dashboard
+#### 4.3.4 Fallback & Failure Behavior: Conflict Resolution Protocol
+
+-   **Hallucination & Failure Detection:** If a model returns an off-topic, unusable, or hallucinated response, the **Auditor Agent** identifies the inconsistency during its cross-check phase (e.g., detecting a mismatch between the Damage and Liability results).
+-   **Mechanism for Retrying:** The system implements a **Surgical Rerun** mechanism. The Auditor sends the failing agent specific corrective feedback (e.g., 'Re-check photo evidence for rear impact') and triggers a retry (capped at 3 attempts to prevent infinite loops).
+-   **Human Escalation Path:** If a contradiction remains unresolved after the retries (a genuine evidentiary conflict), the system marks the case as **"Inconsistent"**. This pauses the automated workflow and highlights the conflicting data for the Claims Officer to resolve via the **AI Strategy Chat** or a manual override.
+-   **Graceful Error State:** If a critical technical failure occurs, the case is moved to an **"Escalated"** status, providing a clear audit log of the failure reason so the officer can take over the manual review immediately.
+
+### 4.4 Human-in-the-Loop Feedback Loop
+
+The system is designed to be human-supervised. If a final report or a warning appears, the officer can:
+-   Interrogate the AI through the chat panel for clarification.
+-   Provide direct feedback to the **Auditor Agent**.
+-   Request a re-check or re-run of a specific reasoning process if the officer identifies a nuance the agents may have missed.
+
+### 4.5 Three-Pane Claims Officer Dashboard
 
 The dashboard is organized around the officer's review job:
 
@@ -203,7 +219,7 @@ Allows the officer to:
 - Challenge a specific part of the reasoning.
 - Download the decision artifact and audit trail when available.
 
-### 4.5 Human-in-the-Loop Review
+### 4.6 Human-in-the-Loop Review
 
 Every AI-drafted decision is provisional. The officer remains the final decision-maker.
 
@@ -215,20 +231,20 @@ The system supports three human actions:
 
 The system must limit repeated challenges so the workflow cannot run indefinitely. When uncertainty remains unresolved, the system must escalate rather than force an unsupported decision.
 
-### 4.6 Output Artifacts
+### 4.7 Output Artifacts
 
-Claims Engine produces two primary outputs:
+SettleOps AI produces two primary outputs:
 
 - **Claim Decision PDF:** A formal decision document containing claim reference, incident summary, coverage rationale, liability assessment, fraud assessment, payout breakdown, challenge history, and officer decision status.
 - **Structured audit trail:** A review record showing what the system considered, what it concluded, where it found uncertainty, and what the officer did.
 
 These outputs are designed for review, compliance support, and operational handoff. They are not a replacement for insurer approval controls.
 
-### 4.7 Feature Comparison with Alternatives
+### 4.8 Feature Comparison with Alternatives
 
-Claims Engine should be positioned against adjacent tools and likely judge comparisons. The clearest message is: existing tools move documents, estimate damage, or provide generic automation; Claims Engine drafts the insurer-side claim decision with visible reasoning and human control.
+SettleOps AI should be positioned against adjacent tools and likely judge comparisons. The clearest message is: existing tools move documents, estimate damage, or provide generic automation; SettleOps AI drafts the insurer-side claim decision with visible reasoning and human control.
 
-| Capability | Claims Engine | Merimen eClaims | Generic chatbot | Workflow automation tools | Visual damage AI |
+| Capability | SettleOps AI | Merimen eClaims | Generic chatbot | Workflow automation tools | Visual damage AI |
 |---|---|---|---|---|---|
 | Malaysian motor claim decision support | **Yes. Built around insurer claim review.** | Partial. Manages claim workflow and document exchange. | No. Requires manual prompting and lacks claim workflow context. | No. Automates predefined steps but does not reason over claim evidence. | No. Focuses on vehicle damage images. |
 | Claims officer dashboard | **Yes. Queue, evidence, review progress, blackboard, actions.** | Yes for workflow operations, not AI decision drafting. | No. Chat interface only. | No dedicated claims officer cockpit. | No. Usually image-assessment focused. |
@@ -238,56 +254,11 @@ Claims Engine should be positioned against adjacent tools and likely judge compa
 | Human-in-the-loop final decision | **Yes. Officer approves, declines, or challenges.** | Yes as workflow owner, but not AI decision support. | Human decides outside the tool. | Depends on configuration. | Usually reviewer validates image estimate. |
 | Strategic role | **AI reasoning layer beside Merimen.** | Industry workflow backbone. | General assistant. | Process automation layer. | Damage assessment point solution. |
 
-## 5. Scope Boundaries
+Page 10 of 22
 
-### 5.1 In Scope for the MVP Demo
+## 5. Functional Requirements
 
-The MVP demo includes:
-
-- Claims queue for officer case selection.
-- Document upload flow for demo claim submission.
-- Three-pane claims officer dashboard.
-- Live progress display for the AI review workflow.
-- Review of police report, policy document, repair quotation, crash photos, and optional adjuster report or chat transcript.
-- Structured decision blackboard showing facts, coverage, liability, fraud, payout, and audit result.
-- AI-drafted claim decision produced in under 90 seconds for standard demo cases.
-- Visible challenge behavior when the system detects inconsistent reasoning.
-- Fraud risk flagging and escalation.
-- Officer actions: approve, decline with reason, and challenge.
-- Claim Decision PDF generation and download.
-- Structured audit trail download.
-- Recovery of the current case view after page refresh or temporary connection loss.
-- Cached replay fallback for the hackathon presentation.
-- Two primary demo cases: happy path and fraud catch.
-- One optional demo case: auditor challenge correcting a flawed recommendation.
-
-### 5.2 Out of Scope for the MVP Demo
-
-The MVP demo excludes:
-
-- Replacing licensed loss adjusters.
-- Real Merimen production integration.
-- Real insurer system integration.
-- Payment processing or fund disbursement.
-- Native mobile app.
-- Production user authentication, account management, or multi-tenancy.
-- Full analytics dashboard.
-- Push notifications, email workflows, or messaging integrations.
-- Voice-note transcription.
-- Bahasa Malaysia output.
-- Automated damage cost estimation from photos.
-- Multi-insurer policy support.
-- Historical claims database.
-- Production-grade data retention, audit storage, or enterprise access controls.
-- Rebuilding MySettle's police-report or identity-verification flow.
-
-### 5.3 Scope Rationale
-
-The hackathon product must demonstrate depth, not breadth. The core proof is that Claims Engine can convert messy claim evidence into a structured, challengeable, human-reviewed decision draft. Features that do not strengthen that proof are deferred.
-
-## 6. Functional Requirements
-
-### 6.1 Claim Submission
+### 5.1 Claim Submission
 
 The system must allow a user to submit claim materials and start a new review case.
 
@@ -298,7 +269,7 @@ The system must allow a user to submit claim materials and start a new review ca
 - Given optional documents are not provided, when the user submits, then the system still creates the case if all required materials are present.
 - Given the case is created successfully, when the user proceeds, then the case appears in the claims queue.
 
-### 6.2 Claims Queue
+### 5.2 Claims Queue
 
 The system must give claims officers a clear queue of submitted cases.
 
@@ -309,7 +280,7 @@ The system must give claims officers a clear queue of submitted cases.
 - Given a case is awaiting human decision, when the officer views the queue, then that status is easy to identify.
 - Given the officer selects a case, when the case opens, then the officer is taken to the three-pane dashboard.
 
-### 6.3 Live Review Progress
+### 5.3 Live Review Progress
 
 The system must display review progress in a way that makes the AI workflow transparent and understandable.
 
@@ -320,7 +291,7 @@ The system must display review progress in a way that makes the AI workflow tran
 - Given the system detects an inconsistency, when a challenge occurs, then the dashboard visibly shows the challenge and the affected review area.
 - Given review completes successfully, when the officer views the dashboard, then the final recommendation is clearly marked as ready for human decision.
 
-### 6.4 Input Evidence View
+### 5.4 Input Evidence View
 
 The system must let the officer inspect the raw claim materials alongside the AI-generated reasoning.
 
@@ -331,7 +302,7 @@ The system must let the officer inspect the raw claim materials alongside the AI
 - Given a chat transcript was submitted, when the officer views inputs, then the transcript is accessible.
 - Given a document cannot be previewed, when the officer opens it, then the system provides a clear fallback message rather than failing silently.
 
-### 6.5 Structured Decision Blackboard
+### 5.5 Structured Decision Blackboard
 
 The system must present the claim reasoning in structured sections rather than a single freeform answer.
 
@@ -342,7 +313,7 @@ The system must present the claim reasoning in structured sections rather than a
 - Given the system lacks confidence or detects missing evidence, when the blackboard updates, then the uncertainty is clearly shown.
 - Given the officer needs to inspect the basis for a recommendation, then the blackboard includes concise evidence references and rationale.
 
-### 6.6 Coverage and Liability Assessment
+### 5.6 Coverage and Liability Assessment
 
 The system must help the officer understand whether the claim is covered and how fault is assessed.
 
@@ -353,7 +324,7 @@ The system must help the officer understand whether the claim is covered and how
 - Given police, adjuster, photo, or statement evidence affects fault, when liability is shown, then the officer can see the evidence basis.
 - Given evidence conflicts, when the system cannot resolve it confidently, then the case is challenged or escalated rather than presented as certain.
 
-### 6.7 Fraud Risk Review
+### 5.7 Fraud Risk Review
 
 The system must identify and explain fraud risk indicators.
 
@@ -364,7 +335,7 @@ The system must identify and explain fraud risk indicators.
 - Given fraud risk exceeds the acceptable threshold, when the recommendation is produced, then the case is escalated rather than recommended for routine approval.
 - Given a case is escalated for fraud, when the officer views it, then the escalation reason is clear enough to support handoff to investigation.
 
-### 6.8 Payout Recommendation
+### 5.8 Payout Recommendation
 
 The system must produce a draft payout recommendation that is understandable and reviewable by the officer.
 
@@ -375,7 +346,7 @@ The system must produce a draft payout recommendation that is understandable and
 - Given the case should be declined or escalated, then the system does not present the payout as a routine approval.
 - Given the officer challenges the payout, then the system revisits the relevant reasoning and updates the recommendation or escalates.
 
-### 6.9 Auditor Challenge and Escalation
+### 5.9 Auditor Challenge and Escalation
 
 The system must challenge weak or inconsistent recommendations before they reach final officer approval.
 
@@ -386,7 +357,7 @@ The system must challenge weak or inconsistent recommendations before they reach
 - Given the challenge cannot be resolved within the allowed limit, when review completes, then the case is escalated to the officer.
 - Given a case is escalated, then the officer can see the unresolved disagreement or missing evidence.
 
-### 6.10 Officer Decision Actions
+### 5.10 Officer Decision Actions
 
 The system must support final human decision-making.
 
@@ -399,7 +370,7 @@ The system must support final human decision-making.
 - Given the maximum number of officer challenges has been reached, when the officer attempts another challenge, then the system prevents it and prompts the officer to approve or decline.
 - Given a case review is actively running, when the officer attempts a final action, then the system blocks the action until the review is ready.
 
-### 6.11 Decision Artifacts
+### 5.11 Decision Artifacts
 
 The system must provide downloadable artifacts suitable for demo and operational review.
 
@@ -410,7 +381,7 @@ The system must provide downloadable artifacts suitable for demo and operational
 - Given a case is escalated, when the officer views artifacts, then the output reflects escalation rather than routine approval.
 - Given a recommendation changes after a challenge, then the final artifacts reflect the latest recommendation.
 
-### 6.12 Demo Reliability
+### 5.12 Demo Reliability
 
 The product must support a credible live hackathon demo even if venue conditions are unreliable.
 
@@ -420,7 +391,7 @@ The product must support a credible live hackathon demo even if venue conditions
 - Given fallback mode is active, when judges watch the demo, then the experience remains visually consistent with the intended live workflow.
 - Given the demo case has completed before, when replay is used, then the same claim reasoning and decision artifacts are shown.
 
-## 7. Non-Functional Requirements
+## 6. Non-Functional Requirements
 
 | Requirement | Target |
 |---|---|
@@ -435,91 +406,32 @@ The product must support a credible live hackathon demo even if venue conditions
 | Recoverability | Refreshing the dashboard or briefly losing connection must not require restarting the case review. |
 | Demo focus | Non-MVP features such as login, voice, analytics, and general chat must not distract from the claims officer workflow. |
 
-## 8. Demo Scenarios
+Page 18 of 22
 
-### 8.1 Happy Path: Standard Rear-End Collision
+## 7. Use Case Scenario
 
-**User story:** As Siti, I want Claims Engine to draft a routine approval for a clear rear-end collision so I can approve it quickly.
+### Scenario: Complex Liability Dispute
 
-**Flow:**
+**Background:** A claim is submitted involving a two-vehicle collision at a junction. The driver's statement and the police report contain conflicting accounts of who had the right of way.
 
-1. A new claim appears in the claims queue.
-2. Siti opens the case and sees the uploaded police report, policy document, repair quotation, crash photos, and adjuster report.
-3. The dashboard shows the AI review stages completing in real time.
-4. The blackboard shows that the third-party driver was cited by police, the damage pattern supports a rear-end collision, coverage applies, fraud risk is low, and the recommended payout is RM 4,200.
-5. The system indicates the recommendation is ready for human decision.
-6. Siti reviews the summary and clicks Approve.
-7. The final Claim Decision PDF becomes available.
+**The Workflow:**
+1.  **Initiation:** The Claims Officer clicks "Start a new claim" on the Chat Home Page and uploads the document stack in the Manage Hub.
+2.  **Parallel Analysis:** On the Workflow Canvas, the officer watches the 9-13 specialized agents—including the **Liability Agent** and **Vision AI Agent**—analyze the police sketch and vehicle impact points simultaneously. The Vision AI Agent performs deep analysis of the crash photos to determine the exact point of impact.
+3.  **Surfacing Inconsistency:** The system flags a warning: the damage pattern on the vehicle (right side) contradicts the police report's description of a head-on collision.
+4.  **Human Intervention:** The officer uses the **AI Strategy Chat** to ask: "Explain why the Vision AI Agent flagged a discrepancy in the impact zone."
+5.  **Clarification:** The AI explains that the dent curvature suggests a side-swipe, not a direct hit.
+6.  **Auditor Feedback:** The officer provides feedback: "Recalculate liability assuming the third party was changing lanes improperly based on the vision agent's findings."
+7.  **Re-run:** The **Auditor Agent** triggers a re-check of the liability reasoning.
+8.  **Final Decision:** The Blackboard updates to show a 70/30 liability split. The officer approves the refined decision and generates the final report.
 
-**Demo point:** Claims Engine turns a routine 30-60 minute review into a short supervised approval.
+Page 20 of 22
 
-### 8.2 Auditor Challenge: Inconsistent Photo Evidence
+## 8. Product Roadmap
 
-**User story:** As Siti, I want the system to catch inconsistencies before I approve a flawed decision.
+SettleOps AI aims to become the definitive reasoning layer for the global insurance industry.
 
-**Flow:**
-
-1. A new claim is reviewed and initially appears to support a rear-end collision.
-2. The system identifies that a cited photo does not match the stated impact direction.
-3. The dashboard visibly shows a challenge against the liability reasoning.
-4. The liability assessment is revised to reflect the inconsistency.
-5. The payout recommendation updates based on the revised fault assessment.
-6. The final review result explains what changed and why.
-7. Siti inspects the disagreement log and makes the final decision.
-
-**Demo point:** The system does not merely generate a confident answer; it challenges its own weak reasoning and makes disagreement visible.
-
-### 8.3 Fraud Catch and Escalation
-
-**User story:** As Siti, I want high-risk claims to be escalated with clear reasons instead of being routed for routine approval.
-
-**Flow:**
-
-1. A new claim enters the queue.
-2. The system reviews the documents and identifies fraud indicators, such as very recent policy purchase, inconsistent photo timing, and repeated claim history.
-3. The case is marked as high risk in the dashboard.
-4. The blackboard lists the specific fraud signals in plain language.
-5. The recommendation becomes Escalate rather than Approve.
-6. Siti routes the case to further investigation instead of approving payment.
-
-**Demo point:** Claims Engine adds value beyond speed by surfacing fraud risk that may be missed in rushed manual review.
-
-### 8.4 Fleet Self-Service Pre-Drafting
-
-**User story:** As Ahmad, I want to prepare a structured claim packet before insurer submission so my fleet vehicle can return to service faster.
-
-**Flow:**
-
-1. Ahmad's team uploads the police report, repair quotation, photos, and available claim documents.
-2. Claims Engine produces a draft decision packet.
-3. Ahmad's team attaches the structured output to the insurer submission.
-4. The insurer's claims officer receives a cleaner, pre-analyzed case.
-5. The claim requires fewer clarification cycles and moves faster toward approval or escalation.
-
-**Demo point:** The product can support both insurer-side operations and fleet-side pre-submission workflows.
-
-## 9. Success Criteria
-
-### 9.1 Hackathon Success Criteria
-
-The UMHackathon 2026 demo is successful if:
-
-- The live demo completes within 3 minutes without visible product failure.
-- The dashboard clearly shows a multi-stage AI review workflow, not a simple chatbot.
-- Judges see at least one visible challenge or disagreement resolved by the system.
-- A Claim Decision PDF is generated and downloadable during the demo.
-- The product story clearly positions Claims Engine as a Merimen-complementary AI reasoning layer.
-- The team can confidently explain that Claims Engine does not replace licensed loss adjusters.
-- The demo communicates concrete business value: faster review, better consistency, clearer fraud escalation, and human-controlled decisions.
-
-### 9.2 Long-Term Product Success Criteria
-
-If continued beyond the hackathon, Claims Engine should aim to achieve:
-
-- Reduce claims officer review time from 30-60 minutes to under 5 minutes per claim.
-- Reduce overall motor claim cycle time from 2-4 weeks to 5-10 working days for suitable cases.
-- Achieve at least 90% agreement with experienced claims officers on back-tested routine cases.
-- Surface at least 2 genuine fraud attempts per 1,000 claims reviewed.
-- Complete a pilot with at least one Malaysian insurer or fleet operator.
-- Establish a strategic integration or partnership path with Merimen or Merimen-connected insurers.
-- Demonstrate a credible commercial model, such as per-claim insurer pricing or fleet subscription pricing.
+-   **Phase 1: Ecosystem Integration:** Seamless API-level integration with Merimen eClaims and other core insurer systems to eliminate manual document uploads.
+-   **Phase 2: Advanced Computer Vision:** Proprietary models for deep damage assessment, estimating repair costs directly from photos to cross-reference workshop quotations.
+-   **Phase 3: Multi-Party Collaboration:** A unified portal where adjusters and workshops can interact with the AI-assisted review process in real-time.
+-   **Phase 4: Predictive Fraud Network:** Aggregating anonymized cross-insurer data to identify sophisticated fraud rings and patterns across the industry.
+-   **Phase 5: Automated Settlement:** End-to-end straight-through processing (STP) for routine claims with automated payout disbursement.
