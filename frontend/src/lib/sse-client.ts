@@ -49,6 +49,42 @@ export class SseClient {
       useCaseStore.getState().handleWorkflowCompleted(data);
     });
 
+    // Chat Events (AI Strategist)
+    this.eventSource.addEventListener("Notif", (e) => {
+      const data = JSON.parse(e.data);
+      useCaseStore.getState().addOfficerMessage({
+        message_id: `notif-${Date.now()}`,
+        role: "assistant",
+        message: data.message,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    this.eventSource.addEventListener("Replies", (e) => {
+      const data = JSON.parse(e.data);
+      useCaseStore.getState().addOfficerMessage({
+        message_id: data.message_id,
+        role: "assistant",
+        message: data.text,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    this.eventSource.addEventListener("ToolCall", (e) => {
+      const data = JSON.parse(e.data);
+      useCaseStore.getState().addOfficerMessage({
+        message_id: `tool-${Date.now()}`,
+        role: "assistant",
+        message: `*Calling tool: ${data.tool_name}...*`,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    this.eventSource.addEventListener("TTSResult", (e) => {
+      const data = JSON.parse(e.data);
+      useCaseStore.getState().addAudioUrl(data.text, data.audio_url);
+    });
+
     this.eventSource.onerror = (error) => {
       console.error("SSE Connection Error for case:", this.caseId, "State:", this.eventSource?.readyState, error);
       this.disconnect();

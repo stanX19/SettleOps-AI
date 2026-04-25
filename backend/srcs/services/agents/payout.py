@@ -18,12 +18,19 @@ def payout_node(state: ClaimWorkflowState) -> dict[str, Any]:
             "payout_results": {
                 "recommended_action": "escalate",
                 "status": "escalated",
-                "rationale": "Missing verified damage total from workshop quotation. Cannot calculate payout without a damage estimate.",
+                "rationale": (
+                    "Missing verified damage total from workshop quotation. "
+                    "The damage extraction task failed to identify a total repair cost or a breakdown of parts and labour. "
+                    "Cannot calculate payout without a base damage estimate."
+                ),
                 "missing_fields": ["verified_total"],
                 "payout_breakdown": None,
                 "confidence": 1.0
             },
-            "trace_log": ["[Payout] ESCALATION: Missing verified_total. Pausing for human intervention."]
+            "trace_log": [
+                f"[Payout] ESCALATION: Missing verified_total. Damage results keys: {list(damage.keys())}",
+                "[Payout] Pausing for human intervention or document re-upload."
+            ]
         }
 
     # 1. Extraction with Guard Clauses

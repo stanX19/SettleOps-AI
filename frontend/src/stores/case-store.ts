@@ -36,6 +36,8 @@ interface CaseState extends CaseSnapshot {
   addOfficerMessage: (message: OfficerMessageInfo) => void;
   setBlackboardMode: (mode: 'blackboard' | 'chat') => void;
   blackboard_mode: 'blackboard' | 'chat';
+  audio_urls: Record<string, string>;
+  addAudioUrl: (text: string, url: string) => void;
 }
 
 const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; selectedAgentId: AgentId | null } = {
@@ -52,6 +54,7 @@ const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; sel
   awaiting_clarification: false,
   chatbox_enabled: false,
   blackboard_mode: 'blackboard',
+  audio_urls: {},
   current_agent: null,
   selectedAgentId: null,
 };
@@ -181,5 +184,9 @@ export const useCaseStore = create<CaseState>((set) => ({
   
   addOfficerMessage: (msg) => set((state) => ({
     officer_messages: [...state.officer_messages, msg]
+  })),
+
+  addAudioUrl: (text, url) => set((state) => ({
+    audio_urls: { ...state.audio_urls, [text]: url }
   })),
 }));

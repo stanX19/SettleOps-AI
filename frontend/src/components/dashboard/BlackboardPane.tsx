@@ -133,38 +133,12 @@ export function BlackboardPane() {
   const [isEditingPayout, setIsEditingPayout] = useState(false);
   const [overrideData, setOverrideData] = useState<any>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
-  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({}); // msg_id -> tts_url
+  const audio_urls = useCaseStore(state => state.audio_urls);
   const isSyncing = status === CaseStatus.RUNNING;
   const isAwaitingApproval = status === CaseStatus.AWAITING_APPROVAL || status === CaseStatus.ESCALATED;
 
-  // SSE for Chatbot (AI Strategist)
-  useEffect(() => {
-    if (mode !== 'chat' || !caseId) return;
-
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
-    const eventSource = new EventSource(`${baseUrl}/api/v1/chat/stream/${caseId}`);
-
-    eventSource.addEventListener("Replies", (event) => {
-      const data = JSON.parse(event.data);
-      addOfficerMessage({
-        message_id: data.message_id,
-        role: "assistant",
-        message: data.text,
-        timestamp: new Date().toISOString()
-      });
-    });
-
-    eventSource.addEventListener("TTSResult", (event) => {
-      const data = JSON.parse(event.data);
-      // Try to find the message this TTS belongs to by text match or just use the latest
-      // For now, we'll just store it in a way that we can associate with messages
-      setAudioUrls(prev => ({ ...prev, [data.text]: data.audio_url }));
-    });
-
-    return () => {
-      eventSource.close();
-    };
-  }, [mode, caseId, addOfficerMessage]);
+  // SSE for chat is now handled globally in SseClient via the main stream
+  // This ensures no messages are missed when switching between Blackboard/Chat modes.
 
   const handleStartRecording = async () => {
     try {
@@ -225,11 +199,27 @@ export function BlackboardPane() {
       });
 
       if (isChallengeMode) {
-        await api.sendMessage(caseId, currentMessage);
-        // The graph rerun will be handled via the main case SSE stream
+        const response = await api.sendMessage(caseId, currentMessage);
+        
+        // Handle Clarification Response (e.g. system asking for more info)
+        if ('clarification' in response) {
+          addOfficerMessage({
+            message_id: `sys-${Date.now()}`,
+            role: "assistant", // Using assistant role for the system reply
+            message: response.clarification.message,
+            timestamp: new Date().toISOString()
+          });
+        } else if ('target_agent' in response) {
+          // Normal rerun started
+          addOfficerMessage({
+            message_id: `sys-${Date.now()}`,
+            role: "assistant",
+            message: `*Instruction received. Rerunning ${response.target_agent} analysis...*`,
+            timestamp: new Date().toISOString()
+          });
+        }
       } else {
         await api.sendChatMessage(caseId, currentMessage, selectedAgentId || undefined);
-        // The AI reply will come via the chat SSE stream
       }
     } catch (err) {
       console.error("Failed to send message:", err);
@@ -663,9 +653,9 @@ export function BlackboardPane() {
                           msg.role === 'officer' ? 'text-neutral-text-primary' : 'text-neutral-text-primary'
                         }`}
                       />
-                      {msg.role === 'assistant' && audioUrls[msg.message] && (
+                      {msg.role === 'assistant' && audio_urls[msg.message] && (
                         <button 
-                          onClick={() => playAudio(audioUrls[msg.message])}
+                          onClick={() => playAudio(audio_urls[msg.message])}
                           className="mt-2 p-1 rounded-md bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary transition-colors flex items-center space-x-1"
                         >
                           <Volume2 className="w-3 h-3" />

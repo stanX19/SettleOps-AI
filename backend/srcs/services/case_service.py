@@ -66,6 +66,7 @@ from srcs.services.case_store import (
     transition_status,
 )
 from srcs.services.sse_service import SseService
+from srcs.schemas.chat_dto import SseRepliesData
 
 logger = logging.getLogger(__name__)
 from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes
@@ -1071,17 +1072,29 @@ def classify_officer_message(
 
     # Clarification needed
     state.awaiting_clarification = True
-    state.officer_messages.append(
-        OfficerMessageRecord(
-            message_id=_next_message_id(state),
-            role="system",
-            message=(
-                "Could you be more specific about which part of the decision"
-                " seems wrong?"
-            ),
-            type="clarification",
+    clarification_text = (
+        "Could you be more specific about which part of the decision"
+        " seems wrong?"
+    )
+    clarification_record = OfficerMessageRecord(
+        message_id=_next_message_id(state),
+        role="system",
+        message=clarification_text,
+        type="clarification",
+    )
+    state.officer_messages.append(clarification_record)
+
+    # Emit SSE so the chat UI updates immediately
+    asyncio.create_task(
+        SseService.emit(
+            state.case_id,
+            SseRepliesData(
+                message_id=clarification_record.message_id,
+                text=clarification_text
+            )
         )
     )
+
     return None, record
 
 

@@ -35,6 +35,37 @@ def _ensure_policy_fields(data: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+# -- Damage extraction defaults (robustness fallbacks) --------------------
+_DAMAGE_DEFAULTS: dict[str, Any] = {
+    "verified_total": None, # Force escalation if truly missing
+    "verified_parts": 0.0,
+    "verified_labour": 0.0,
+    "verified_paint": 0.0,
+    "verified_towing": 0.0,
+    "suspicious_parts": [],
+}
+
+
+def _ensure_damage_fields(data: dict[str, Any]) -> dict[str, Any]:
+    """Merge safe defaults and perform auto-summation if total is missing."""
+    # Handle both nested and flat structures
+    raw_data = data.get("data", data)
+    merged = {**_DAMAGE_DEFAULTS, **{k: v for k, v in raw_data.items() if v is not None}}
+    
+    # Auto-calculate verified_total if components exist but total doesn't
+    if merged["verified_total"] is None:
+        component_sum = (
+            float(merged["verified_parts"]) + 
+            float(merged["verified_labour"]) + 
+            float(merged["verified_paint"]) + 
+            float(merged["verified_towing"])
+        )
+        if component_sum > 0:
+            merged["verified_total"] = component_sum
+            
+    return merged
+
+
 async def policy_analysis_task(state: ClusterState, feedback: Optional[str] = None) -> dict[str, Any]:
     """Analyzes the insurance policy for coverage, excess, and limits."""
     content = get_doc_content(state, "policy_covernote")
@@ -127,15 +158,25 @@ async def damage_quote_audit_task(state: ClusterState, feedback: Optional[str] =
     
     Feedback: {feedback if feedback else "None"}
     
-    IMPORTANT: Extract the cost breakdown in MYR.
+    IMPORTANT: Extract the cost breakdown in MYR. 
+    If a value is not explicitly found, return 0.0 for that field.
+    
+    REQUIRED JSON FIELDS in 'data':
+    - verified_total: float (Total approved repair estimate)
+    - verified_parts: float (Total for parts)
+    - verified_labour: float (Total for labour hours)
+    - verified_paint: float (Total for paint/refinishing)
+    - verified_towing: float (Towing charges if any)
+    - suspicious_parts: list[str] (List parts that seem overpriced or unnecessary)
+
     Return JSON format: {{"data": {{...}}, "reasoning": "Assessor audit trail: 1. Reconciled part codes [list]. 2. Flagged [suspicious] for necessity check. 3. Verified labour hours against industry standards. 4. Confirmed total MYR [total]."}}
     """
     try:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
         raw = response.json_data if response.json_data else {}
-        return {"data": raw.get("data", raw), "reasoning": raw.get("reasoning", "Extracted")}
+        return {"data": _ensure_damage_fields(raw), "reasoning": raw.get("reasoning", "Extracted")}
     except Exception as e:
-        return {"data": {}, "reasoning": f"Error: {str(e)}"}
+        return {"data": _DAMAGE_DEFAULTS.copy(), "reasoning": f"Error during extraction: {str(e)}"}
 
 async def fraud_assessment_task(state: ClusterState, feedback: Optional[str] = None) -> dict[str, Any]:
     """Checks for suspicious patterns or inconsistencies indicating fraud."""
