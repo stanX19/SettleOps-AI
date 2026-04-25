@@ -7,6 +7,7 @@
 ## Hackathon Submissions
 -   **[Product Requirement Documentation (PRD)](./Product%20Requirement%20Documentation%20(Team%20spectrUM).pdf)**
 -   **[System Analysis Documentation (SAD)](./System%20Analysis%20Documentation%20(Team%20spectrUM).pdf)**
+-   **[Quality Assurance Testing Documentation (QAT)](./Quality%20Assurance%20Testing%20Documentation%20(Team%20spectrUM).pdf)**
 -   **[Pitch Deck](./Pitch%20Deck.pdf)**
 -   **[Pitching Video](https://drive.google.com/file/d/1bGQ-UCeKLpXQD6t4sACn5RKw2GfPQTo8/view?usp=sharing)**
 
