@@ -13,7 +13,8 @@ import {
   SseAgentOutput,
   SseAgentMessageToAgent,
   SseArtifactCreated,
-  SseWorkflowCompleted
+  SseWorkflowCompleted,
+  BlackboardSection
 } from "../lib/types";
 
 interface CaseState extends CaseSnapshot {
@@ -21,6 +22,10 @@ interface CaseState extends CaseSnapshot {
   setCase: (snapshot: CaseSnapshot) => void;
   reset: () => void;
   
+  // Selection
+  selectedAgentId: AgentId | null;
+  setSelectedAgentId: (id: AgentId | null) => void;
+
   // SSE Event Handlers
   handleWorkflowStarted: (data: SseWorkflowStarted) => void;
   handleAgentStatusChanged: (data: SseAgentStatusChanged) => void;
@@ -33,7 +38,7 @@ interface CaseState extends CaseSnapshot {
   blackboard_mode: 'blackboard' | 'chat';
 }
 
-const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat' } = {
+const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; selectedAgentId: AgentId | null } = {
   case_id: "",
   status: CaseStatus.SUBMITTED,
   submitted_at: "",
@@ -48,6 +53,7 @@ const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat' } = 
   chatbox_enabled: false,
   blackboard_mode: 'blackboard',
   current_agent: null,
+  selectedAgentId: null,
 };
 
 export const useCaseStore = create<CaseState>((set) => ({
@@ -59,11 +65,11 @@ export const useCaseStore = create<CaseState>((set) => ({
 
   setBlackboardMode: (mode) => set({ blackboard_mode: mode }),
 
+  setSelectedAgentId: (id) => set({ selectedAgentId: id }),
+
   handleWorkflowStarted: (data) => set((state) => ({
     status: CaseStatus.RUNNING,
     current_agent: data.target_agent || null,
-    // On officer rerun, we might want to clear downstream agent statuses, 
-    // but the backend will send status_changed events anyway.
   })),
 
   handleAgentStatusChanged: (data) => set((state) => {
@@ -99,16 +105,41 @@ export const useCaseStore = create<CaseState>((set) => ({
     };
   }),
 
-  handleAgentOutput: (data) => set((state) => ({
-    blackboard: {
+  handleAgentOutput: (data) => set((state) => {
+    const nextBlackboard = {
       ...state.blackboard,
       [data.section]: data.data
+    };
+
+    let nextDocuments = state.documents;
+
+    // PROBLEM 1 FIX: If CaseFacts changed, we must update the doc_type/tags in the documents array
+    // so that the left pane (InputsPane) refreshes immediately.
+    if (data.section === BlackboardSection.CASE_FACTS) {
+      const taggedDocs = data.data.tagged_documents || {};
+      nextDocuments = state.documents.map(doc => {
+        if (doc.index !== undefined) {
+          const rawTags = taggedDocs[String(doc.index)];
+          if (rawTags) {
+            return {
+              ...doc,
+              doc_type: Array.isArray(rawTags) ? (rawTags[0] || "uploaded") : rawTags,
+              tags: Array.isArray(rawTags) ? rawTags : [rawTags]
+            };
+          }
+        }
+        return doc;
+      });
     }
-  })),
+
+    return {
+      blackboard: nextBlackboard,
+      documents: nextDocuments
+    };
+  }),
 
   handleAgentMessageToAgent: (data) => set((state) => ({
     auditor_loop_count: data.loop_count,
-    // We could also add a system message to officer_messages here if we want to show agent talk
   })),
 
   handleArtifactCreated: (data) => set((state) => ({

@@ -114,7 +114,17 @@ function BlackboardSkeleton() {
 }
 
 export function BlackboardPane() {
-  const { blackboard, status, officer_messages, addOfficerMessage, artifacts, blackboard_mode: mode, setBlackboardMode: setMode } = useCaseStore();
+  const { 
+    blackboard, 
+    status, 
+    officer_messages, 
+    addOfficerMessage, 
+    artifacts, 
+    blackboard_mode: mode, 
+    setBlackboardMode: setMode,
+    selectedAgentId,
+    setSelectedAgentId
+  } = useCaseStore();
   const caseId = useCaseStore(state => state.case_id);
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -134,7 +144,7 @@ export function BlackboardPane() {
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
     const eventSource = new EventSource(`${baseUrl}/api/v1/chat/stream/${caseId}`);
 
-    eventSource.addEventListener("reply", (event) => {
+    eventSource.addEventListener("Replies", (event) => {
       const data = JSON.parse(event.data);
       addOfficerMessage({
         message_id: data.message_id,
@@ -144,7 +154,7 @@ export function BlackboardPane() {
       });
     });
 
-    eventSource.addEventListener("tts_result", (event) => {
+    eventSource.addEventListener("TTSResult", (event) => {
       const data = JSON.parse(event.data);
       // Try to find the message this TTS belongs to by text match or just use the latest
       // For now, we'll just store it in a way that we can associate with messages
@@ -218,7 +228,7 @@ export function BlackboardPane() {
         await api.sendMessage(caseId, currentMessage);
         // The graph rerun will be handled via the main case SSE stream
       } else {
-        await api.sendChatMessage(caseId, currentMessage);
+        await api.sendChatMessage(caseId, currentMessage, selectedAgentId || undefined);
         // The AI reply will come via the chat SSE stream
       }
     } catch (err) {
@@ -694,6 +704,22 @@ export function BlackboardPane() {
                 >
                   Challenge Analysis
                 </button>
+                
+                {selectedAgentId && (
+                  <div className="flex items-center gap-1.5 ml-auto animate-in fade-in slide-in-from-right-2">
+                    <span className="text-[9px] text-neutral-text-tertiary font-bold uppercase tracking-widest">Targeting:</span>
+                    <Badge variant="outline" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/30 text-[9px] px-1.5 py-0 capitalize flex items-center gap-1">
+                      <Bot className="w-2.5 h-2.5" />
+                      {selectedAgentId}
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setSelectedAgentId(null); }}
+                        className="ml-1 hover:text-white transition-colors"
+                      >
+                        ×
+                      </button>
+                    </Badge>
+                  </div>
+                )}
               </div>
               <form 
                 onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}

@@ -18,7 +18,7 @@ class ChatService:
 
     @staticmethod
     async def send_message(
-        db: Session, topic_id: str, message: str,
+        db: Session, topic_id: str, message: str, agent_id: str | None = None,
     ) -> ChatMessage:
         """Persist a user message and kick off the agent reply in the background.
 
@@ -32,6 +32,7 @@ class ChatService:
                 topic_id=topic_id,
                 user_prompt=message,
                 exclude_message_id=user_msg.message_id,
+                agent_id=agent_id,
             )
         )
 
@@ -88,6 +89,7 @@ class ChatService:
         topic_id: str,
         user_prompt: str,
         exclude_message_id: str,
+        agent_id: str | None = None,
     ) -> None:
         """Background coroutine: build history, call agent, persist reply, emit SSE."""
         from srcs.database import SessionLocal
@@ -113,7 +115,15 @@ class ChatService:
                     for section, data in case_state.blackboard.items()
                     if data
                 ])
-                context_text = f"You are the AI Claims Strategist for Case {topic_id}.\n\nCURRENT CLAIM STATUS (Blackboard):\n{blackboard_str}"
+                
+                # FOCUS ON SELECTED AGENT
+                agent_context = ""
+                if agent_id and agent_id in case_state.agent_states:
+                    rs = case_state.agent_states[agent_id]
+                    logs_str = "\n".join(rs.logs)
+                    agent_context = f"\n\nFOCUS: The user is specifically asking about the {agent_id.upper()} agent.\nExecution Logs for {agent_id}:\n{logs_str}"
+
+                context_text = f"You are the AI Claims Strategist for Case {topic_id}.\n\nCURRENT CLAIM STATUS (Blackboard):\n{blackboard_str}{agent_context}"
             else:
                 context_text = memory_manager.load_context()
 

@@ -119,6 +119,7 @@ class AgentRuntimeState:
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     sub_tasks: dict[str, AgentRuntimeState] = field(default_factory=dict)
+    logs: list[str] = field(default_factory=list)
 
 
 @dataclass

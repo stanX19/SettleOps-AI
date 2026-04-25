@@ -109,6 +109,9 @@ class AgentStateInfo(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     sub_tasks: dict[str, AgentStateInfo] = Field(default_factory=dict)
+    purpose: Optional[str] = None
+    system_prompt: Optional[str] = None
+    logs: list[str] = Field(default_factory=list)
 
 
 class OfficerMessageInfo(BaseModel):

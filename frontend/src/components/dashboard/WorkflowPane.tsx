@@ -102,6 +102,8 @@ const Y_CLUSTER = 220;
 const Y_PAYOUT = 520;
 const Y_AUDITOR = 700;
 
+import { AgentDetailsModal } from './AgentDetailsModal';
+
 export function WorkflowPane() {
   const params = useParams();
   const caseId = params?.caseId as string;
@@ -110,6 +112,12 @@ export function WorkflowPane() {
   const caseStatus = useCaseStore(state => state.status);
   const agents = useCaseStore(state => state.agents);
   const topology = useCaseStore(state => state.topology);
+  const setSelectedAgentId = useCaseStore(state => state.setSelectedAgentId);
+  const setBlackboardMode = useCaseStore(state => state.setBlackboardMode);
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedAgentForModal, setSelectedAgentForModal] = useState<AgentId | null>(null);
 
   // 1. Calculate the initial layout (nodes and edges)
   const { initialNodes, initialEdges } = useMemo(() => {
@@ -316,8 +324,41 @@ export function WorkflowPane() {
     }));
   }, [agents, setNodes, setEdges]);
 
+  const onNodeClick = (_: React.MouseEvent, node: Node) => {
+    // If it's a top-level agent or cluster ID that exists in agents store
+    let agentId: AgentId | null = null;
+    if (agents[node.id]) {
+      agentId = node.id as AgentId;
+    } else {
+      // Check if it's an aggregator or subtask by finding the parent
+      for (const [parentId, parentState] of Object.entries(agents)) {
+        if (node.id === `${parentId}-aggregator` || (parentState.sub_tasks && parentState.sub_tasks[node.id])) {
+          agentId = parentId as AgentId;
+          break;
+        }
+      }
+    }
+
+    if (agentId) {
+      setSelectedAgentForModal(agentId);
+      setModalOpen(true);
+    }
+  };
+
   return (
     <div className="flex-1 w-full h-full relative border-r border-neutral-border">
+      {/* Agent Details Modal */}
+      <AgentDetailsModal 
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        agentId={selectedAgentForModal}
+        agentInfo={selectedAgentForModal ? agents[selectedAgentForModal] : null}
+        onSelectForChat={(id) => {
+          setSelectedAgentId(id);
+          setBlackboardMode('chat');
+        }}
+      />
+
       {/* Error Overlay for failed fetches */}
       {!topology && caseStatus === CaseStatus.SUBMITTED && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-neutral-background/80 backdrop-blur-sm p-4">
@@ -374,6 +415,7 @@ export function WorkflowPane() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
+        onNodeClick={onNodeClick}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         className="bg-neutral-background"

@@ -141,11 +141,11 @@ export const api = {
   /**
    * Send a general chat message to the AI Strategist (RAG)
    */
-  async sendChatMessage(topicId: string, message: string): Promise<any> {
+  async sendChatMessage(topicId: string, message: string, agentId?: string): Promise<any> {
     const res = await fetch(`${API_BASE}/api/v1/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ topic_id: topicId, message }),
+      body: JSON.stringify({ topic_id: topicId, message, agent_id: agentId }),
     });
     return handleResponse(res);
   },

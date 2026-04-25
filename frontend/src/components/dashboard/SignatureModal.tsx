@@ -9,11 +9,12 @@ import {
   Calendar,
   CheckCircle2,
   Loader2,
-  ShieldCheck
+  ShieldCheck,
+  FileKey
 } from "lucide-react";
 import { Button } from "@/components/primitives/Button";
 import { api } from "@/lib/api";
-import { BlackboardSection } from "@/lib/types";
+import { BlackboardSection, ArtifactType } from "@/lib/types";
 import { useCaseStore } from "@/stores/case-store";
 
 interface SignatureModalProps {
@@ -29,6 +30,9 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  const artifacts = useCaseStore(state => state.artifacts);
+  const decisionPdf = artifacts.find(a => a.artifact_type === ArtifactType.DECISION_PDF && !a.superseded);
+  
   const payoutBreakdown = useCaseStore(state => state.blackboard[BlackboardSection.PAYOUT_RECOMMENDATION]?.payout_breakdown);
   const finalPayout = payoutBreakdown?.final_payout_myr || 0;
 
@@ -93,6 +97,17 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
                 <p className="text-[11px] text-neutral-text-secondary leading-relaxed">
                   By signing this document, you are confirming that all agent findings have been verified and the final settlement amount of <strong>RM {finalPayout.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> is approved for payout.
                 </p>
+                {decisionPdf && (
+                  <a 
+                    href={`${process.env.NEXT_PUBLIC_API_URL || ""}${decisionPdf.url}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center text-[10px] font-bold text-brand-primary uppercase tracking-widest hover:underline"
+                  >
+                    <FileKey className="w-3 h-3 mr-1.5" />
+                    View Draft Document
+                  </a>
+                )}
               </div>
 
               <div className="space-y-3">

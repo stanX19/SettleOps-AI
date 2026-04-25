@@ -297,12 +297,22 @@ def node_sse_wrapper(node_name: str, func):
                     break
             
             # Sync to Store & Emit Output
-            if section and data is not None:
-                case = CaseStore.get(case_id)
-                if case:
-                    async with CaseStore.lock(case_id):
+            case = CaseStore.get(case_id)
+            if case:
+                async with CaseStore.lock(case_id):
+                    # 1. Store Blackboard Data
+                    if section and data is not None:
                         case.set_section_data(section, data)
-                
+                    
+                    # 2. Store Trace Logs
+                    trace_log = result.get("trace_log", [])
+                    if trace_log and agent_id:
+                        rs = case.agent_states.get(agent_id)
+                        if rs:
+                            rs.logs.extend(trace_log)
+            
+            # Emit Output SSE
+            if section and data is not None:
                 await SseService.emit(case_id, SseAgentOutputData(
                     case_id=case_id,
                     timestamp=now_iso(),

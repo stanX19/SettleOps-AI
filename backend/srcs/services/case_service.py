@@ -226,6 +226,39 @@ def _blackboard_for(state: CaseState) -> dict[str, Any]:
     return out
 
 
+# Metadata for agents (purpose and prompts)
+AGENT_METADATA = {
+    AgentId.INTAKE: {
+        "purpose": "Categorizes and validates incoming claim documents for completeness.",
+        "prompt": "You are an expert intake agent. Identify document types and check for missing evidence."
+    },
+    AgentId.POLICY: {
+        "purpose": "Analyzes policy documents to determine coverage limits, excess, and exclusions.",
+        "prompt": "Extract policy details precisely. Check if the incident type is covered under the specific plan."
+    },
+    AgentId.LIABILITY: {
+        "purpose": "Determines the fault split between the insured and third parties based on narratives.",
+        "prompt": "Be impartial and use standard motor liability guidelines. Determine % of fault."
+    },
+    AgentId.DAMAGE: {
+        "purpose": "Audits workshop quotations against industry standard pricing and photo evidence.",
+        "prompt": "Identify overpriced parts or labour that does not match the damage photos."
+    },
+    AgentId.FRAUD: {
+        "purpose": "Evaluates the claim for red flags and suspicious patterns using cross-referenced data.",
+        "prompt": "Check for common fraud indicators: staging, exaggerated damage, or inconsistencies."
+    },
+    AgentId.PAYOUT: {
+        "purpose": "Calculates the final settlement amount after applying depreciation, excess, and liability.",
+        "prompt": "Ensure mathematical accuracy. Final payout = (Estimate - Depr) * (1 - Fault) - Excess."
+    },
+    AgentId.AUDITOR: {
+        "purpose": "Reviewer that ensures consistency across all agent findings before final approval.",
+        "prompt": "Double check that Payout logic matches Policy and Liability findings."
+    }
+}
+
+
 def build_snapshot(state: CaseState) -> CaseSnapshot:
     return CaseSnapshot(
         case_id=state.case_id,
@@ -237,11 +270,15 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
                 status=rs.status,
                 started_at=rs.started_at,
                 completed_at=rs.completed_at,
+                purpose=AGENT_METADATA.get(agent, {}).get("purpose"),
+                system_prompt=AGENT_METADATA.get(agent, {}).get("prompt"),
+                logs=rs.logs,
                 sub_tasks={
                     name: AgentStateInfo(
                         status=sub_rs.status,
                         started_at=sub_rs.started_at,
-                        completed_at=sub_rs.completed_at
+                        completed_at=sub_rs.completed_at,
+                        logs=sub_rs.logs
                     )
                     for name, sub_rs in rs.sub_tasks.items()
                 }
