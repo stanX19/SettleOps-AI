@@ -6,7 +6,7 @@ def get_doc_content(state: Union[ClaimWorkflowState, ClusterState], doc_type: st
     """Helper to retrieve document content based on its tagged category."""
     # Note: case_facts is shared between global and cluster states
     tagged_docs = state.get("case_facts", {}).get("tagged_documents", {})
-    doc_index = next((k for k, v in tagged_docs.items() if v == doc_type), None)
+    doc_index = next((k for k, v in tagged_docs.items() if (isinstance(v, list) and doc_type in v) or v == doc_type), None)
     
     if doc_index is None:
         return "[Document missing or not tagged correctly]"
@@ -96,7 +96,8 @@ async def liability_narrative_task(state: ClusterState, feedback: Optional[str] 
     """
     try:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
-        return response.json_data if response.json_data else {"data": {}, "reasoning": "Parsing failed"}
+        raw = response.json_data if response.json_data else {}
+        return {"data": raw.get("data", raw), "reasoning": raw.get("reasoning", "Extracted")}
     except Exception as e:
         return {"data": {}, "reasoning": f"Error: {str(e)}"}
 
@@ -121,7 +122,8 @@ async def liability_poi_task(state: ClusterState, feedback: Optional[str] = None
     """
     try:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
-        return response.json_data if response.json_data else {"data": {}, "reasoning": "Parsing failed"}
+        raw = response.json_data if response.json_data else {}
+        return {"data": raw.get("data", raw), "reasoning": raw.get("reasoning", "Extracted")}
     except Exception as e:
         return {"data": {}, "reasoning": f"Error: {str(e)}"}
 
@@ -150,7 +152,8 @@ async def damage_quote_audit_task(state: ClusterState, feedback: Optional[str] =
     """
     try:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
-        return response.json_data if response.json_data else {"data": {}, "reasoning": "Parsing failed"}
+        raw = response.json_data if response.json_data else {}
+        return {"data": raw.get("data", raw), "reasoning": raw.get("reasoning", "Extracted")}
     except Exception as e:
         return {"data": {}, "reasoning": f"Error: {str(e)}"}
 
@@ -175,7 +178,8 @@ async def fraud_assessment_task(state: ClusterState, feedback: Optional[str] = N
     """
     try:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
-        return response.json_data if response.json_data else {"data": {}, "reasoning": "Parsing failed"}
+        raw = response.json_data if response.json_data else {}
+        return {"data": raw.get("data", raw), "reasoning": raw.get("reasoning", "Extracted")}
     except Exception as e:
         return {"data": {}, "reasoning": f"Error: {str(e)}"}
 
@@ -217,6 +221,7 @@ async def entity_extraction_task(state: Union[ClaimWorkflowState, ClusterState],
     """
     try:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
-        return response.json_data if response.json_data else {"data": {}, "reasoning": "Parsing failed"}
+        raw = response.json_data if response.json_data else {}
+        return {"data": raw.get("data", raw), "reasoning": raw.get("reasoning", "Extracted")}
     except Exception as e:
         return {"data": {}, "reasoning": f"Error: {str(e)}"}

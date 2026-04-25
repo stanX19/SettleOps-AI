@@ -62,8 +62,8 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-      <div className="bg-neutral-surface border border-neutral-border rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 fade-in duration-300">
+      <div className="bg-neutral-surface border border-neutral-border rounded-xl shadow-2xl w-full max-w-[480px] overflow-hidden">
         <div className="p-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30">
           <div className="flex items-center space-x-2">
             <ShieldCheck className="w-5 h-5 text-brand-primary" />
@@ -76,7 +76,7 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {isSuccess ? (
-            <div className="py-8 flex flex-col items-center justify-center text-center space-y-4 animate-in zoom-in-95">
+            <div className="py-8 flex flex-col items-center justify-center text-center space-y-4">
               <div className="w-16 h-16 bg-semantic-success/20 rounded-full flex items-center justify-center">
                 <CheckCircle2 className="w-10 h-10 text-semantic-success" />
               </div>
