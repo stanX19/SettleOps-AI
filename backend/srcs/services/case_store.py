@@ -131,8 +131,10 @@ class CaseState:
     police_report_path: Optional[str] = None
     policy_pdf_path: Optional[str] = None
     repair_quotation_path: Optional[str] = None
+    road_tax_path: Optional[str] = None
     adjuster_report_path: Optional[str] = None
     photo_paths: list[str] = field(default_factory=list)
+    uploaded_document_paths: list[str] = field(default_factory=list)
     chat_transcript: Optional[str] = None  # may be text or path
 
     # Agent outputs (blackboard sections)
@@ -154,6 +156,9 @@ class CaseState:
     current_agent: Optional[AgentId] = None
     awaiting_clarification: bool = False
     human_audit_log: list[dict] = field(default_factory=list)
+
+    # Pre-extracted text from uploaded documents (keyed by slot name)
+    document_extractions: dict[str, Any] = field(default_factory=dict)
 
     # Artifacts
     artifacts: list[ArtifactRecord] = field(default_factory=list)

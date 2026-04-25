@@ -17,6 +17,7 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
     """Categorize NEW uploaded documents into required slots using LLM."""
     docs = state.get("documents", [])
     processed_indices = set(state.get("processed_indices", []))
+    existing_tags = state.get("case_facts", {}).get("tagged_documents", {})
     
     # Identify documents that haven't been tagged yet
     new_docs_to_process = []
@@ -24,9 +25,12 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
         if i not in processed_indices:
             new_docs_to_process.append({
                 "index": i,
+                "slot": doc.get("slot", f"document_{i}"),
                 "filename": doc.get("filename", "unknown"),
+                "source_type": doc.get("source_type", "unknown"),
                 "doc_type_hint": doc.get("doc_type", "unknown"),
-                "snippet": doc.get("content", "")[:500]
+                "extraction_method": doc.get("extraction_method", "unknown"),
+                "snippet": doc.get("content", "")[:1200],
             })
 
     if not new_docs_to_process:
@@ -38,6 +42,8 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
     You are an insurance intake specialist. Categorize the following NEW documents into these 8 required slots:
     {", ".join(REQUIRED_DOCS)}
     If a document does not fit or is ambiguous, use "unknown".
+    Use the document content first, then filename and doc_type_hint as supporting clues.
+    Photo/image snippets may be AI vision descriptions rather than literal OCR text.
 
     Documents:
     {new_docs_to_process}
@@ -51,11 +57,23 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
         tagged = response.json_data if response.json_data else {}
         
         # Validation: Ensure only allowed categories are used
-        sanitized_tags = {k: v for k, v in tagged.items() if v in REQUIRED_DOCS or v == "unknown"}
-        new_indices = [int(k) for k in sanitized_tags.keys()]
+        sanitized_tags = {}
+        new_indices = []
+        for key, value in tagged.items():
+            if value not in REQUIRED_DOCS and value != "unknown":
+                continue
+            try:
+                index = int(key)
+            except (TypeError, ValueError):
+                continue
+            if index < 0 or index >= len(docs):
+                continue
+            sanitized_tags[str(index)] = value
+            new_indices.append(index)
+        merged_tags = {**existing_tags, **sanitized_tags}
         
         return {
-            "case_facts": {"tagged_documents": sanitized_tags},
+            "case_facts": {"tagged_documents": merged_tags},
             "processed_indices": new_indices,
             "trace_log": [f"[Intake] Tagged {len(sanitized_tags)} new documents."]
         }

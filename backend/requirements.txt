@@ -22,4 +22,8 @@ watchfiles
 python-dotenv
 reportlab
 pypdf
+markitdown[all]
+pytesseract
+Pillow
+pytest
 websockets>=13.0
