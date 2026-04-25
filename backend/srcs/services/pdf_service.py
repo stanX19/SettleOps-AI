@@ -17,7 +17,7 @@ from srcs.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-CLAIM_NO_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+CLAIM_NO_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_ \-/]{0,63}$")
 
 
 def get_report_path(claim_no: str, suffix: str = "_repair_approval.pdf") -> str:
@@ -26,7 +26,11 @@ def get_report_path(claim_no: str, suffix: str = "_repair_approval.pdf") -> str:
     settings = get_settings()
     reports_dir = Path(settings.REPORTS_DIR).resolve()
     reports_dir.mkdir(parents=True, exist_ok=True)
-    file_path = (reports_dir / f"{claim_no}{suffix}").resolve()
+    
+    # Sanitize claim_no for safe filename (replace spaces, slashes with underscores)
+    safe_claim_no = re.sub(r"[^A-Za-z0-9_-]", "_", claim_no)
+    file_path = (reports_dir / f"{safe_claim_no}{suffix}").resolve()
+    
     if not file_path.is_relative_to(reports_dir):
         raise ValueError("Path traversal detected")
     return str(file_path)

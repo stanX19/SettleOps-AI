@@ -92,6 +92,7 @@ class DocumentInfo(BaseModel):
     filename: str
     url: str
     index: Optional[int] = None  # populated for photos
+    tags: list[str] = []
 
 
 class ArtifactInfo(BaseModel):
@@ -108,6 +109,9 @@ class AgentStateInfo(BaseModel):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     sub_tasks: dict[str, AgentStateInfo] = Field(default_factory=dict)
+    purpose: Optional[str] = None
+    system_prompt: Optional[str] = None
+    logs: list[str] = Field(default_factory=list)
 
 
 class OfficerMessageInfo(BaseModel):
@@ -221,6 +225,7 @@ class SseAgentOutputData(_CaseSseBase):
     agent: AgentId
     section: BlackboardSection
     data: dict[str, Any]
+    logs: Optional[list[str]] = None
 
 
 class SseAgentMessageToAgentData(_CaseSseBase):

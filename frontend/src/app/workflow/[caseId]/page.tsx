@@ -23,22 +23,27 @@ export default function WorkflowCasePage({ params }: PageProps) {
   // Load snapshot and connect to SSE on mount
   useEffect(() => {
     let sse: SseClient | null = null;
+    let isCancelled = false;
 
     const init = async () => {
       try {
         const snapshot = await api.getCaseSnapshot(caseId);
+        if (isCancelled) return;
         setCase(snapshot);
         
         sse = new SseClient(caseId);
         sse.connect();
       } catch (err) {
-        console.error("Failed to initialize case:", err);
+        if (!isCancelled) {
+          console.error("Failed to initialize case:", err);
+        }
       }
     };
 
     init();
 
     return () => {
+      isCancelled = true;
       if (sse) sse.disconnect();
       resetCase();
     };

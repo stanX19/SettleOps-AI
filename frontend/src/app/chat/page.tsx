@@ -24,7 +24,7 @@ function makeBotMessage(text: string, extras?: Partial<ChatMessage>): ChatMessag
   return { id: crypto.randomUUID(), role: "bot", text, ...extras };
 }
 
-function buildMissingDocsMessage(missing: DocKey[]): ChatMessage {
+function buildMissingDocsMessage(missing: string[]): ChatMessage {
   const labels = missing.map((k) => `- ${getSlot(k).label}`).join("\n");
   return makeBotMessage(
     `I still need the following document${missing.length > 1 ? "s" : ""} before I can create your case:\n\n${labels}\n\nUse the paperclip to attach the missing file${missing.length > 1 ? "s" : ""}, then press Send again.`,
@@ -32,10 +32,10 @@ function buildMissingDocsMessage(missing: DocKey[]): ChatMessage {
   );
 }
 
-function buildAckMessage(uploaded: DocKey[]): string {
-  return uploaded.length === 1
-    ? `Got it - ${getSlot(uploaded[0]).label} received`
-    : `Received ${uploaded.length} documents`;
+function buildAckMessage(count: number): string {
+  return count === 1
+    ? `Got it - 1 document received`
+    : `Received ${count} documents`;
 }
 
 const WELCOME_MESSAGE: ChatMessage = makeBotMessage(
@@ -107,7 +107,7 @@ export default function ChatPage() {
   const router = useRouter();
 
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
-  const [docs, setDocs] = useState<UploadedDocs>({ photos: [] });
+  const [docs, setDocs] = useState<UploadedDocs>({ files: [] });
   const [inputText, setInputText] = useState("");
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -149,42 +149,13 @@ export default function ChatPage() {
     }, 600);
   }, []);
 
-  function hasUploadedDoc(key: SingleFileDocKey, staged: Partial<Record<DocKey, File[]>>) {
-    return Boolean(staged[key]?.length || docs[key]);
-  }
-
-  function guessPdfDocKey(file: File, staged: Partial<Record<DocKey, File[]>>): SingleFileDocKey {
-    const name = file.name.toLowerCase();
-    if (name.includes("police")) return "police_report";
-    if (name.includes("policy") || name.includes("insurance")) return "policy_pdf";
-    if (
-      name.includes("repair") ||
-      name.includes("quotation") ||
-      name.includes("quote") ||
-      name.includes("workshop") ||
-      name.includes("estimate")
-    ) return "repair_quotation";
-    if (name.includes("adjuster") || name.includes("adjustor") || name.includes("loss")) return "adjuster_report";
-
-    return PDF_DOC_ORDER.find((key) => !hasUploadedDoc(key, staged)) ?? "adjuster_report";
-  }
-
   function handleSelectedFiles(files: File[]) {
     if (files.length === 0) return;
 
     setStagedDocs((prev) => {
       const next: Partial<Record<DocKey, File[]>> = { ...prev };
-
-      for (const file of files) {
-        if (file.type.startsWith("image/")) {
-          next.photos = [...(next.photos ?? []), file];
-          continue;
-        }
-
-        const key = guessPdfDocKey(file, next);
-        next[key] = [file];
-      }
-
+      // All files are tagged as unknown for generic upload
+      next.unknown = [...(next.unknown ?? []), ...files];
       return next;
     });
   }
@@ -199,37 +170,19 @@ export default function ChatPage() {
       const files = next[key];
       if (!files) return next;
 
-      if (key === "photos") {
-        const remaining = files.filter((_, index) => index !== fileIndex);
-        if (remaining.length > 0) next.photos = remaining;
-        else delete next.photos;
-      } else {
-        delete next[key];
-      }
+      const remaining = files.filter((_, index) => index !== fileIndex);
+      if (remaining.length > 0) next[key] = remaining;
+      else delete next[key];
 
       return next;
     });
-  }
-
-  function commitStagedDocs(staged: Partial<Record<DocKey, File[]>>): DocKey[] {
-    const uploaded: DocKey[] = [];
-    setDocs((prev) => {
-      const next = { ...prev };
-      for (const [k, files] of Object.entries(staged) as [DocKey, File[]][]) {
-        if (!files?.length) continue;
-        if (k === "photos") next.photos = [...prev.photos, ...files];
-        else next[k as SingleFileDocKey] = files[0];
-        uploaded.push(k);
-      }
-      return next;
-    });
-    return uploaded;
   }
 
   async function handleSend() {
     const text = inputText.trim();
-    const hasStagedFiles = Object.values(stagedDocs).some((f) => f && f.length > 0);
-    if (!text && !hasStagedFiles) return;
+    const allStagedFiles = Object.values(stagedDocs).flat().filter(Boolean) as File[];
+    
+    if (!text && allStagedFiles.length === 0) return;
 
     const attachments = (Object.entries(stagedDocs) as [DocKey, File[]][])
       .filter(([, f]) => f && f.length > 0)
@@ -244,32 +197,21 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setInputText("");
 
-    const uploadedKeys = commitStagedDocs(stagedDocs);
-    const snapshot = { ...docs };
-    for (const [k, files] of Object.entries(stagedDocs) as [DocKey, File[]][]) {
-      if (!files?.length) continue;
-      if (k === "photos") snapshot.photos = [...docs.photos, ...files];
-      else snapshot[k as SingleFileDocKey] = files[0];
-    }
+    const newDocs = [...docs.files, ...allStagedFiles];
+    setDocs({ files: newDocs });
     setStagedDocs({});
 
-    const missing = getMissingRequired(snapshot);
-
-    if (missing.length === 0) {
+    // Dynamic Agentic Intake: Always attempt to create case if we have at least one doc
+    if (newDocs.length > 0) {
       addBotReply(makeBotMessage(
-        uploadedKeys.length > 0
-          ? `${buildAckMessage(uploadedKeys)}\n\nAll required documents are here. Creating your case now…`
-          : "All required documents are present. Creating your case now…"
+        allStagedFiles.length > 0
+          ? `${buildAckMessage(allStagedFiles.length)}\n\nInitiating agentic ingestion...`
+          : "Analyzing your claim details..."
       ));
+      
       setIsSubmitting(true);
       try {
-        const result = await api.createCase({
-          police_report: snapshot.police_report!,
-          policy_pdf: snapshot.policy_pdf!,
-          repair_quotation: snapshot.repair_quotation!,
-          photos: snapshot.photos,
-          adjuster_report: snapshot.adjuster_report,
-        });
+        const result = await api.createCase(newDocs);
         setMessages((prev) => [...prev, makeBotMessage(`Case ${result.case_id} created! Redirecting to your workflow…`)]);
         setTimeout(() => router.push(`/workflow/${result.case_id}`), 1200);
       } catch (err: unknown) {
@@ -278,11 +220,7 @@ export default function ChatPage() {
         addBotReply(makeBotMessage(`Sorry, I couldn't create the case: ${message}. Please try again.`));
       }
     } else {
-      if (uploadedKeys.length > 0) {
-        addBotReply(makeBotMessage(`${buildAckMessage(uploadedKeys)}\n\nStill need a few more documents:`, { missingDocs: missing }));
-      } else if (text) {
-        addBotReply(buildMissingDocsMessage(missing));
-      }
+      addBotReply(makeBotMessage("Please attach your documents so I can start the claim process."));
     }
   }
 

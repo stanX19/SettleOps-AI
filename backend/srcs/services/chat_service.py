@@ -8,6 +8,7 @@ from srcs.models.chat_message import ChatMessage
 from srcs.schemas.chat_dto import SseNotifData, SseRepliesData, SseToolCallData
 from srcs.services.sse_service import SseService
 from srcs.services.agents.chatbot import chatbot
+from srcs.services.case_store import CaseStore
 
 
 class ChatService:
@@ -17,7 +18,7 @@ class ChatService:
 
     @staticmethod
     async def send_message(
-        db: Session, topic_id: str, message: str,
+        db: Session, topic_id: str, message: str, agent_id: str | None = None,
     ) -> ChatMessage:
         """Persist a user message and kick off the agent reply in the background.
 
@@ -31,6 +32,7 @@ class ChatService:
                 topic_id=topic_id,
                 user_prompt=message,
                 exclude_message_id=user_msg.message_id,
+                agent_id=agent_id,
             )
         )
 
@@ -87,6 +89,7 @@ class ChatService:
         topic_id: str,
         user_prompt: str,
         exclude_message_id: str,
+        agent_id: str | None = None,
     ) -> None:
         """Background coroutine: build history, call agent, persist reply, emit SSE."""
         from srcs.database import SessionLocal
@@ -103,7 +106,29 @@ class ChatService:
                     db, topic_id, exclude_id=exclude_message_id,
                 )
                 
-            context_text = memory_manager.load_context()
+            # Case Context Logic:
+            # If topic_id exists in CaseStore, provide the blackboard as context.
+            case_state = CaseStore.get(topic_id)
+            if case_state:
+                sections = []
+                from srcs.schemas.case_dto import BlackboardSection
+                for section in BlackboardSection:
+                    data = case_state.section_data(section)
+                    if data:
+                        sections.append(f"### {section.value.upper()}\n{str(data)}")
+                
+                blackboard_str = "\n".join(sections)
+                
+                # FOCUS ON SELECTED AGENT
+                agent_context = ""
+                if agent_id and agent_id in case_state.agent_states:
+                    rs = case_state.agent_states[agent_id]
+                    logs_str = "\n".join(rs.logs)
+                    agent_context = f"\n\nFOCUS: The user is specifically asking about the {agent_id.upper()} agent.\nExecution Logs for {agent_id}:\n{logs_str}"
+
+                context_text = f"You are the AI Claims Strategist for Case {topic_id}.\n\nCURRENT CLAIM STATUS (Blackboard):\n{blackboard_str}{agent_context}"
+            else:
+                context_text = memory_manager.load_context()
 
             async def _on_tool_call(tool_name: str, arguments: dict) -> None:
                 await SseService.emit(

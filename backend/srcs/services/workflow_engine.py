@@ -9,7 +9,7 @@ workflow_checkpointer = MemorySaver()
 
 from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes
 from srcs.schemas.case_dto import AgentId, AgentStatus, BlackboardSection
-from srcs.services.agents.intake import ingest_tagging, validation_gate, wait_for_docs_node
+from srcs.services.agents.intake import ingest_tagging, entity_extraction_node, validation_gate, wait_for_docs_node
 from srcs.services.agents.payout import payout_node
 from srcs.services.agents.auditor import auditor_node, decision_router, decision_gate_logic
 from srcs.services.agents.refiner import refiner_node
@@ -71,7 +71,8 @@ def build_workflow() -> StateGraph:
 
     # 1. Intake Phase
     builder.add_node("ingest_tagging", node_sse_wrapper("ingest_tagging", ingest_tagging))
-    builder.add_node("validation_gate", validation_gate)
+    builder.add_node("entity_extraction", node_sse_wrapper("entity_extraction", entity_extraction_node))
+    builder.add_node("validation_gate", node_sse_wrapper("validation_gate", validation_gate))
     builder.add_node("wait_for_docs", wait_for_docs_node)
     
     # 2. Analysis Phase (Clusters)
@@ -97,12 +98,20 @@ def build_workflow() -> StateGraph:
     # 4. Refinement & Decision Phase
     builder.add_node(WorkflowNodes.DECISION_GATE, decision_gate_logic)
     builder.add_node(WorkflowNodes.REFINER, node_sse_wrapper(WorkflowNodes.REFINER, refiner_node))
-    builder.add_node(WorkflowNodes.REPORT_GENERATOR, lambda x: {"status": "completed"})
+    async def run_report_gen(state):
+        case = CaseStore.get(state["case_id"])
+        if case:
+            from srcs.services.case_service import generate_artifacts
+            await generate_artifacts(case)
+        return {"status": "completed"}
+
+    builder.add_node(WorkflowNodes.REPORT_GENERATOR, node_sse_wrapper(WorkflowNodes.REPORT_GENERATOR, run_report_gen))
 
     # -- Edges & Routing ------------------------------------------------------
     
     builder.add_edge(START, "ingest_tagging")
-    builder.add_edge("ingest_tagging", "validation_gate")
+    builder.add_edge("ingest_tagging", "entity_extraction")
+    builder.add_edge("entity_extraction", "validation_gate")
     
     # 2. Analysis Phase (Parallel Clusters)
     builder.add_node("parallel_analysis_start", lambda x: {})
@@ -157,6 +166,8 @@ def build_workflow() -> StateGraph:
 # Mapping nodes to AgentId and Section for SSE
 _NODE_TO_AGENT = {
     "ingest_tagging": AgentId.INTAKE,
+    "entity_extraction": AgentId.INTAKE,
+    "validation_gate": AgentId.INTAKE,
     WorkflowNodes.POLICY_CLUSTER: AgentId.POLICY,
     WorkflowNodes.LIABILITY_CLUSTER: AgentId.LIABILITY,
     WorkflowNodes.DAMAGE_CLUSTER: AgentId.DAMAGE,
@@ -167,6 +178,8 @@ _NODE_TO_AGENT = {
 
 _NODE_TO_SECTION = {
     "ingest_tagging": BlackboardSection.CASE_FACTS,
+    "entity_extraction": BlackboardSection.CASE_FACTS,
+    "validation_gate": BlackboardSection.CASE_FACTS,
     WorkflowNodes.POLICY_CLUSTER: BlackboardSection.POLICY_VERDICT,
     WorkflowNodes.LIABILITY_CLUSTER: BlackboardSection.LIABILITY_VERDICT,
     WorkflowNodes.DAMAGE_CLUSTER: BlackboardSection.DAMAGE_RESULT,
@@ -239,6 +252,7 @@ async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkf
         chatbox_enabled=display_status in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS),
         topology=TOPOLOGY
     ))
+    return final_state_wrapper
 
 async def resume_workflow_with_sse(case_id: str, updates: dict):
     """Resumes a suspended graph thread with new state updates."""
@@ -249,7 +263,7 @@ async def resume_workflow_with_sse(case_id: str, updates: dict):
     await graph.aupdate_state(config, updates)
     
     # Resume execution (passing None to signal resumption of existing thread)
-    await run_workflow_with_sse(case_id, None)
+    return await run_workflow_with_sse(case_id, None)
 
 def node_sse_wrapper(node_name: str, func):
     """Wraps a node to automatically emit SSE status and data updates."""
@@ -283,18 +297,29 @@ def node_sse_wrapper(node_name: str, func):
                     break
             
             # Sync to Store & Emit Output
-            if section and data is not None:
-                case = CaseStore.get(case_id)
-                if case:
-                    async with CaseStore.lock(case_id):
+            case = CaseStore.get(case_id)
+            if case:
+                async with CaseStore.lock(case_id):
+                    # 1. Store Blackboard Data
+                    if section and data is not None:
                         case.set_section_data(section, data)
-                
+                    
+                    # 2. Store Trace Logs
+                    trace_log = result.get("trace_log", [])
+                    if trace_log and agent_id:
+                        rs = case.agent_states.get(agent_id)
+                        if rs:
+                            rs.logs.extend(trace_log)
+            
+            # Emit Output SSE
+            if section and data is not None:
                 await SseService.emit(case_id, SseAgentOutputData(
                     case_id=case_id,
                     timestamp=now_iso(),
                     agent=agent_id,
                     section=section,
-                    data=data
+                    data=data,
+                    logs=trace_log
                 ))
             
             # Emit Status: COMPLETED or ERROR

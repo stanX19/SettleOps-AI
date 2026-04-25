@@ -13,8 +13,8 @@ from srcs.services.signature_service import sign_and_stamp
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/claims", tags=["Claims"])
-mock_router = APIRouter(prefix="/claims", tags=["Claims (Mock)"])
+router = APIRouter(prefix="/api/v1/claims", tags=["Claims"])
+mock_router = APIRouter(prefix="/api/v1/claims", tags=["Claims (Mock)"])
 
 
 MOCK_CLAIM_DATA = {

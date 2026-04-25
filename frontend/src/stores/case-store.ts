@@ -13,7 +13,8 @@ import {
   SseAgentOutput,
   SseAgentMessageToAgent,
   SseArtifactCreated,
-  SseWorkflowCompleted
+  SseWorkflowCompleted,
+  BlackboardSection
 } from "../lib/types";
 
 interface CaseState extends CaseSnapshot {
@@ -21,6 +22,10 @@ interface CaseState extends CaseSnapshot {
   setCase: (snapshot: CaseSnapshot) => void;
   reset: () => void;
   
+  // Selection
+  selectedAgentId: AgentId | null;
+  setSelectedAgentId: (id: AgentId | null) => void;
+
   // SSE Event Handlers
   handleWorkflowStarted: (data: SseWorkflowStarted) => void;
   handleAgentStatusChanged: (data: SseAgentStatusChanged) => void;
@@ -28,9 +33,14 @@ interface CaseState extends CaseSnapshot {
   handleAgentMessageToAgent: (data: SseAgentMessageToAgent) => void;
   handleArtifactCreated: (data: SseArtifactCreated) => void;
   handleWorkflowCompleted: (data: SseWorkflowCompleted) => void;
+  addOfficerMessage: (message: OfficerMessageInfo) => void;
+  setBlackboardMode: (mode: 'blackboard' | 'chat') => void;
+  blackboard_mode: 'blackboard' | 'chat';
+  audio_urls: Record<string, string>;
+  addAudioUrl: (text: string, url: string) => void;
 }
 
-const initialState: CaseSnapshot = {
+const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; selectedAgentId: AgentId | null } = {
   case_id: "",
   status: CaseStatus.SUBMITTED,
   submitted_at: "",
@@ -43,7 +53,10 @@ const initialState: CaseSnapshot = {
   officer_challenge_count: 0,
   awaiting_clarification: false,
   chatbox_enabled: false,
+  blackboard_mode: 'blackboard',
+  audio_urls: {},
   current_agent: null,
+  selectedAgentId: null,
 };
 
 export const useCaseStore = create<CaseState>((set) => ({
@@ -53,11 +66,13 @@ export const useCaseStore = create<CaseState>((set) => ({
   
   reset: () => set(initialState),
 
+  setBlackboardMode: (mode) => set({ blackboard_mode: mode }),
+
+  setSelectedAgentId: (id) => set({ selectedAgentId: id }),
+
   handleWorkflowStarted: (data) => set((state) => ({
     status: CaseStatus.RUNNING,
     current_agent: data.target_agent || null,
-    // On officer rerun, we might want to clear downstream agent statuses, 
-    // but the backend will send status_changed events anyway.
   })),
 
   handleAgentStatusChanged: (data) => set((state) => {
@@ -93,16 +108,52 @@ export const useCaseStore = create<CaseState>((set) => ({
     };
   }),
 
-  handleAgentOutput: (data) => set((state) => ({
-    blackboard: {
+  handleAgentOutput: (data) => set((state) => {
+    const nextBlackboard = {
       ...state.blackboard,
       [data.section]: data.data
+    };
+
+    // Update logs for the agent if provided
+    const newAgents = { ...state.agents };
+    if (data.logs && data.logs.length > 0) {
+      const agentId = data.agent;
+      newAgents[agentId] = {
+        ...(newAgents[agentId] || { status: AgentStatus.IDLE, sub_tasks: {} }),
+        logs: data.logs
+      };
     }
-  })),
+
+    let nextDocuments = state.documents;
+
+    // PROBLEM 1 FIX: If CaseFacts changed, we must update the doc_type/tags in the documents array
+    // so that the left pane (InputsPane) refreshes immediately.
+    if (data.section === BlackboardSection.CASE_FACTS) {
+      const taggedDocs = data.data.tagged_documents || {};
+      nextDocuments = state.documents.map(doc => {
+        if (doc.index !== undefined) {
+          const rawTags = taggedDocs[String(doc.index)];
+          if (rawTags) {
+            return {
+              ...doc,
+              doc_type: Array.isArray(rawTags) ? (rawTags[0] || "uploaded") : rawTags,
+              tags: Array.isArray(rawTags) ? rawTags : [rawTags]
+            };
+          }
+        }
+        return doc;
+      });
+    }
+
+    return {
+      blackboard: nextBlackboard,
+      documents: nextDocuments,
+      agents: newAgents
+    };
+  }),
 
   handleAgentMessageToAgent: (data) => set((state) => ({
     auditor_loop_count: data.loop_count,
-    // We could also add a system message to officer_messages here if we want to show agent talk
   })),
 
   handleArtifactCreated: (data) => set((state) => ({
@@ -129,5 +180,19 @@ export const useCaseStore = create<CaseState>((set) => ({
     chatbox_enabled: data.chatbox_enabled,
     topology: data.topology || state.topology,
     current_agent: null
+  })),
+  
+  addOfficerMessage: (msg) => set((state) => {
+    // Deduplicate by message_id
+    if (state.officer_messages.some(m => m.message_id === msg.message_id)) {
+      return state;
+    }
+    return {
+      officer_messages: [...state.officer_messages, msg]
+    };
+  }),
+
+  addAudioUrl: (text, url) => set((state) => ({
+    audio_urls: { ...state.audio_urls, [text]: url }
   })),
 }));

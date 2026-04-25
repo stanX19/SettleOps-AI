@@ -82,7 +82,7 @@ class LLMConfig:
             A LangChain Runnable.
         """
         use_model: str = model if model else self.model
-        if self.provider == "ilmu":
+        if self.provider in ["ilmu", "localhost"]:
             # max_retries=0: rotation layer owns retries + backoff.
             # Letting ChatOpenAI also retry would amplify 429s.
             return ChatOpenAI(
@@ -180,16 +180,19 @@ class RotatingLLM:
     def __init__(
             self,
             llm_configs: list[LLMConfig],
-            cooldown_seconds: int = 60
+            cooldown_seconds: int = 60,
+            use_cache: bool = True
     ) -> None:
         """Initialize RotatingLLM with a pool of configurations.
 
         Args:
             llm_configs: List of LLM configurations to rotate.
             cooldown_seconds: Wait time (seconds) after rate limit (not used in current logic).
+            use_cache: Whether to use response caching by default.
         """
         self.llm_configs: list[LLMConfig] = llm_configs
         self.cooldown_seconds: int = cooldown_seconds
+        self.use_cache: bool = use_cache
         self._lock: asyncio.Lock = asyncio.Lock()
         self._call_counts: dict[str, int] = {c.api_key: 0 for c in llm_configs}
         self._cache_lock: asyncio.Lock = asyncio.Lock()
@@ -237,16 +240,35 @@ class RotatingLLM:
 
     def _log_request(self, messages: list[BaseMessage]) -> None:
         """Log the request messages if DEBUG is enabled."""
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+
         logger.debug("[RotatingLLM] === SENDING REQUEST ===")
         for idx, msg in enumerate(messages):
-            content: str = str(msg.content)
-            if len(content) > 500:
-                prefix = content[:250]
-                suffix = content[-250:]
-                content = f"{prefix}\n... [TRUNCATED {len(content)-500} chars] ...\n{suffix}"
-
             role: str = getattr(msg, 'type', 'unknown')
-            logger.debug("[RotatingLLM] %s [%d]: %s", role.capitalize(), idx, content)
+            content = msg.content
+            
+            if isinstance(content, list):
+                # Multi-modal content
+                summary = []
+                for part in content:
+                    if isinstance(part, dict):
+                        if part.get("type") == "text":
+                            text = part.get("text", "")
+                            summary.append(f"[Text: {text[:100]}...]" if len(text) > 100 else f"[Text: {text}]")
+                        elif part.get("type") == "image_url":
+                            summary.append("[Image Data]")
+                    else:
+                        summary.append(str(part))
+                display_content = " ".join(summary)
+            else:
+                display_content = str(content)
+                if len(display_content) > 500:
+                    prefix = display_content[:250]
+                    suffix = display_content[-250:]
+                    display_content = f"{prefix}\n... [TRUNCATED {len(display_content)-500} chars] ...\n{suffix}"
+
+            logger.debug("[RotatingLLM] %s [%d]: %s", role.capitalize(), idx, display_content)
 
     def _log_health(self) -> None:
         """Log a formatted health summary of all API keys."""
@@ -361,7 +383,7 @@ class RotatingLLM:
         """
         last_exc: Exception | None = None
         self._log_request(messages)
-        use_cache = bool(kwargs.pop("use_cache", True))
+        use_cache = bool(kwargs.pop("use_cache", self.use_cache))
         cache_key: str | None = None
         if use_cache:
             cache_key = self._make_cache_key(messages, temperature, model, kwargs)
@@ -635,6 +657,31 @@ class RotatingLLM:
         load_dotenv()
         settings = get_settings()
 
+        # Local mode override
+        if settings.LLM_LOCALHOST:
+            logger.info("[RotatingLLM] LLM_LOCALHOST enabled. Using local mode.")
+            try:
+                import requests
+                resp = requests.get(f"{settings.LLM_LOCALHOST_URL}/models", timeout=2)
+                if resp.status_code == 200:
+                    data = resp.json().get("data", [])
+                    if data:
+                        model_id = data[0]["id"]
+                        logger.info(f"[RotatingLLM] Local model detected: {model_id}")
+                        return RotatingLLM([LLMConfig(
+                            provider="localhost",
+                            api_key="lm-studio",
+                            model=model_id,
+                            base_url=settings.LLM_LOCALHOST_URL,
+                        )])
+                logger.warning(f"[RotatingLLM] Local mode enabled but no models found at {settings.LLM_LOCALHOST_URL}")
+            except Exception as e:
+                logger.warning(f"[RotatingLLM] Local mode enabled but failed to connect to {settings.LLM_LOCALHOST_URL}: {e}")
+            
+            # If we are here, local mode failed but was requested.
+            # We return an empty RotatingLLM to honor "only use llm localhost"
+            return RotatingLLM([])
+
         llm_configs: list[LLMConfig] = []
         if settings.ILMU_API_KEY and settings.ILMU_API_KEY.strip():
             llm_configs.append(LLMConfig(
@@ -659,7 +706,8 @@ class RotatingLLM:
                     model=settings.GEMINI_MODEL_NAME
                 ))
 
-        return RotatingLLM(llm_configs)
+        return RotatingLLM(llm_configs, use_cache=settings.USE_LLM_CACHE)
+
 
     def __str__(self):
         configs_str = ",\n  ".join([str(config) for config in self.llm_configs])
