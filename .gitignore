@@ -49,6 +49,8 @@ run_frontend.bat
 *.mp3
 *.m4a
 
+/docs
+
 /.claude
 backend/scratch
 backend/uploads/*
