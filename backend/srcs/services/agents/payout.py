@@ -10,23 +10,20 @@ def payout_node(state: ClaimWorkflowState) -> dict[str, Any]:
     liability = state.get("liability_results", {})
     policy = state.get("policy_results", {})
 
-    # 0. Escalation Protocol: Check for missing critical data
-    # In a production system, these would be required fields from the previous nodes.
-    if policy.get("excess_myr") is None or damage.get("verified_total") is None:
-        missing_fields = []
-        if not policy.get("excess_myr"): missing_fields.append("excess_myr")
-        if not damage.get("verified_total"): missing_fields.append("verified_total")
-
+    # 0. Escalation Protocol: Only hard-escalate when verified_total is missing.
+    # excess_myr defaults to 0.0 (no deductible) — safer for claimant, auditor can flag.
+    if damage.get("verified_total") is None:
         return {
             "status": "escalated",
             "payout_results": {
                 "recommended_action": "escalate",
                 "status": "escalated",
-                "rationale": f"Missing critical financial data: {', '.join(missing_fields)}.",
+                "rationale": "Missing verified damage total from workshop quotation. Cannot calculate payout without a damage estimate.",
+                "missing_fields": ["verified_total"],
                 "payout_breakdown": None,
                 "confidence": 1.0
             },
-            "trace_log": [f"[Payout] ESCALATION: Missing {', '.join(missing_fields)}. Pausing for human intervention."]
+            "trace_log": ["[Payout] ESCALATION: Missing verified_total. Pausing for human intervention."]
         }
 
     # 1. Extraction with Guard Clauses

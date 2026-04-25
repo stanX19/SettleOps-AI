@@ -9,7 +9,7 @@ workflow_checkpointer = MemorySaver()
 
 from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes
 from srcs.schemas.case_dto import AgentId, AgentStatus, BlackboardSection
-from srcs.services.agents.intake import ingest_tagging, validation_gate, wait_for_docs_node
+from srcs.services.agents.intake import ingest_tagging, entity_extraction_node, validation_gate, wait_for_docs_node
 from srcs.services.agents.payout import payout_node
 from srcs.services.agents.auditor import auditor_node, decision_router, decision_gate_logic
 from srcs.services.agents.refiner import refiner_node
@@ -71,6 +71,7 @@ def build_workflow() -> StateGraph:
 
     # 1. Intake Phase
     builder.add_node("ingest_tagging", node_sse_wrapper("ingest_tagging", ingest_tagging))
+    builder.add_node("entity_extraction", node_sse_wrapper("entity_extraction", entity_extraction_node))
     builder.add_node("validation_gate", validation_gate)
     builder.add_node("wait_for_docs", wait_for_docs_node)
     
@@ -102,7 +103,8 @@ def build_workflow() -> StateGraph:
     # -- Edges & Routing ------------------------------------------------------
     
     builder.add_edge(START, "ingest_tagging")
-    builder.add_edge("ingest_tagging", "validation_gate")
+    builder.add_edge("ingest_tagging", "entity_extraction")
+    builder.add_edge("entity_extraction", "validation_gate")
     
     # 2. Analysis Phase (Parallel Clusters)
     builder.add_node("parallel_analysis_start", lambda x: {})
@@ -157,6 +159,7 @@ def build_workflow() -> StateGraph:
 # Mapping nodes to AgentId and Section for SSE
 _NODE_TO_AGENT = {
     "ingest_tagging": AgentId.INTAKE,
+    "entity_extraction": AgentId.INTAKE,
     WorkflowNodes.POLICY_CLUSTER: AgentId.POLICY,
     WorkflowNodes.LIABILITY_CLUSTER: AgentId.LIABILITY,
     WorkflowNodes.DAMAGE_CLUSTER: AgentId.DAMAGE,
@@ -167,6 +170,7 @@ _NODE_TO_AGENT = {
 
 _NODE_TO_SECTION = {
     "ingest_tagging": BlackboardSection.CASE_FACTS,
+    "entity_extraction": BlackboardSection.CASE_FACTS,
     WorkflowNodes.POLICY_CLUSTER: BlackboardSection.POLICY_VERDICT,
     WorkflowNodes.LIABILITY_CLUSTER: BlackboardSection.LIABILITY_VERDICT,
     WorkflowNodes.DAMAGE_CLUSTER: BlackboardSection.DAMAGE_RESULT,

@@ -109,3 +109,19 @@ def wait_for_docs_node(state: ClaimWorkflowState) -> dict[str, Any]:
         "status": "awaiting_docs",
         "trace_log": ["[Intake] Workflow resumed. Re-triggering document tagging."]
     }
+
+async def entity_extraction_node(state: ClaimWorkflowState) -> dict[str, Any]:
+    """Surgical extraction of key claim entities for the final report."""
+    from srcs.services.agents.analysis_tasks import entity_extraction_task
+    
+    result = await entity_extraction_task(state)
+    data = result.get("data", {})
+    
+    # Merge existing case_facts (like tagged_documents) with new extracted facts
+    current_facts = state.get("case_facts", {})
+    merged_facts = {**current_facts, **data}
+    
+    return {
+        "case_facts": merged_facts,
+        "trace_log": [f"[Intake] Extracted claim entities for {data.get('claim_no', 'unknown')}"]
+    }

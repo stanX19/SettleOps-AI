@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from typing import Any, Optional
 
@@ -65,11 +66,19 @@ from srcs.services.case_store import (
     transition_status,
 )
 from srcs.services.sse_service import SseService
+
+logger = logging.getLogger(__name__)
 from srcs.schemas.state import ClaimWorkflowState
 from srcs.services.workflow_engine import (
     run_workflow_with_sse,
     resume_workflow_with_sse as resume_workflow_with_sse_engine,
     TOPOLOGY
+)
+from srcs.services.pdf_service import (
+    RepairApprovalData,
+    CostBreakdown,
+    generate_repair_approval_pdf,
+    get_report_path
 )
 
 
@@ -397,17 +406,62 @@ def current_artifacts_ready(state: CaseState) -> bool:
     return True
 
 
+def build_repair_approval_data(state: CaseState) -> RepairApprovalData:
+    """Bridges blackboard sections to the PDF data model."""
+    facts = state.section_data(BlackboardSection.CASE_FACTS) or {}
+    payout = state.section_data(BlackboardSection.PAYOUT_RECOMMENDATION) or {}
+    breakdown = payout.get("payout_breakdown") or {}
+    
+    # Use fallback defaults if facts are missing
+    return RepairApprovalData(
+        claim_no=facts.get("claim_no") or state.case_id,
+        policy_no=facts.get("policy_no") or "N/A",
+        insured_name=facts.get("insured_name") or "VALUED CUSTOMER",
+        nric=facts.get("nric") or "N/A",
+        vehicle_no=facts.get("vehicle_no") or "N/A",
+        vehicle_model=facts.get("vehicle_model") or "N/A",
+        accident_date=facts.get("accident_date") or "N/A",
+        report_date=facts.get("report_date") or now_iso()[:10],
+        workshop_name=facts.get("workshop_name") or "AUTHORIZED PANEL",
+        workshop_code=facts.get("workshop_code") or "PANEL-001",
+        workshop_address=facts.get("workshop_address") or "N/A",
+        workshop_phone=facts.get("workshop_phone") or "N/A",
+        costs=CostBreakdown(
+            parts=float(breakdown.get("repair_estimate_myr") or 0.0),
+            labour=0.0, # Breakdown logic can be refined later if agents extract it
+            paint=0.0,
+            towing=0.0,
+            misc=0.0
+        ),
+        approved_by="MyClaim Agentic Engine",
+        designation="Autonomous Claims Strategist",
+        date=now_iso()[:10]
+    )
+
+
 async def generate_artifacts(state: CaseState) -> None:
     """Write stub artifacts and emit `artifact.created` for each."""
     adir = case_artifact_dir(state.case_id)
 
     pdf_version = _next_artifact_version(state, ArtifactType.DECISION_PDF)
     pdf_name = f"claim_decision_{state.case_id}_v{pdf_version}.pdf"
-    pdf_path = os.path.join(adir, pdf_name)
-    # Stub PDF payload — a teammate will swap this for ReportLab output.
-    await asyncio.to_thread(
-        _write_pdf_artifact, pdf_path, b"%PDF-1.4\n% stub decision\n"
-    )
+    
+    # Generate real PDF using reportlab via pdf_service
+    try:
+        pdf_data = build_repair_approval_data(state)
+        # We need to ensure the filename matches our versioned name
+        # but the pdf_service uses its own suffix. We'll rename it after.
+        temp_path = await asyncio.to_thread(generate_repair_approval_pdf, pdf_data)
+        pdf_path = os.path.join(adir, pdf_name)
+        if os.path.exists(temp_path):
+            os.replace(temp_path, pdf_path)
+        else:
+            # Fallback to stub if generator failed
+            await asyncio.to_thread(_write_pdf_artifact, pdf_path, b"%PDF-1.4\n% stub decision\n")
+    except Exception as e:
+        logger.error(f"Failed to generate real PDF: {e}")
+        pdf_path = os.path.join(adir, pdf_name)
+        await asyncio.to_thread(_write_pdf_artifact, pdf_path, b"%PDF-1.4\n% stub decision\n")
 
     _supersede_artifacts(state, ArtifactType.DECISION_PDF)
     state.artifacts.append(

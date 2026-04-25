@@ -55,7 +55,12 @@ export function InputsPane() {
       <CollapsibleSection title="Official Reports" icon={<FileText className="w-4 h-4" />} count={policeReport || adjusterReport ? (policeReport ? 1 : 0) + (adjusterReport ? 1 : 0) : 0}>
         <div className="space-y-3">
           {policeReport && (
-            <div className="flex items-center p-3 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors">
+            <a 
+              href={policeReport.url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center p-3 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors block"
+            >
               <div className="w-8 h-10 bg-semantic-danger/10 text-semantic-danger flex items-center justify-center rounded truncate font-mono text-[10px] border border-semantic-danger/20 mr-3 shrink-0">PDF</div>
               <div className="flex-1 overflow-hidden">
                 <div className="text-sm font-medium truncate text-neutral-text-primary">{policeReport.filename}</div>
@@ -64,11 +69,16 @@ export function InputsPane() {
                   {isSyncing ? "Analyzing..." : "Parsed by Intake"}
                 </div>
               </div>
-            </div>
+            </a>
           )}
 
           {adjusterReport && (
-            <div className="flex items-center p-3 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors">
+            <a 
+              href={adjusterReport.url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center p-3 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors block"
+            >
               <div className="w-8 h-10 bg-semantic-danger/10 text-semantic-danger flex items-center justify-center rounded truncate font-mono text-[10px] border border-semantic-danger/20 mr-3 shrink-0">PDF</div>
               <div className="flex-1 overflow-hidden">
                 <div className="text-sm font-medium truncate text-neutral-text-primary">{adjusterReport.filename}</div>
@@ -77,7 +87,7 @@ export function InputsPane() {
                   {isSyncing ? "Analyzing..." : "Parsed by Intake"}
                 </div>
               </div>
-            </div>
+            </a>
           )}
 
           {!policeReport && !adjusterReport && (
@@ -88,7 +98,12 @@ export function InputsPane() {
 
       <CollapsibleSection title="Policy Schedule" icon={<FileText className="w-4 h-4" />} count={policyPdf ? 1 : 0}>
         {policyPdf ? (
-          <div className="flex items-center p-3 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors group">
+          <a 
+            href={policyPdf.url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center p-3 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors group block"
+          >
             <div className="w-8 h-10 bg-red-900/20 text-red-500 flex items-center justify-center rounded truncate font-mono text-[10px] border border-red-500/30 mr-3 shrink-0 group-hover:bg-red-900/30">PDF</div>
             <div className="flex-1 overflow-hidden">
               <div className="text-sm font-medium truncate text-neutral-text-primary">{policyPdf.filename}</div>
@@ -96,7 +111,7 @@ export function InputsPane() {
                 <CheckCircle2 className="w-3 h-3 text-semantic-success mr-1" /> Verified against API
               </div>
             </div>
-          </div>
+          </a>
         ) : (
           <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No policy document</div>
         )}
@@ -106,11 +121,17 @@ export function InputsPane() {
         {photos.length > 0 ? (
           <div className="grid grid-cols-2 gap-2">
             {photos.slice(0, 3).map((photo, i) => (
-              <div key={i} className="aspect-video bg-neutral-border rounded-md overflow-hidden relative group">
+              <a 
+                key={i} 
+                href={photo.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="aspect-video bg-neutral-border rounded-md overflow-hidden relative group block"
+              >
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                   <span className="text-white text-[10px] font-medium truncate px-1">{photo.filename}</span>
                 </div>
-              </div>
+              </a>
             ))}
             {photos.length > 3 && (
               <div className="aspect-video bg-neutral-border rounded-md overflow-hidden relative group flex items-center justify-center text-xs text-neutral-text-tertiary">
@@ -125,17 +146,23 @@ export function InputsPane() {
 
       <CollapsibleSection title="Quotations" icon={<Wrench className="w-4 h-4" />} count={quotation ? 1 : 0}>
         {quotation ? (
-          <div className="flex items-center p-2 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors group">
+          <a 
+            href={quotation.url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex items-center p-2 rounded-md border border-neutral-border bg-neutral-background cursor-pointer hover:border-brand-primary transition-colors group block"
+          >
             <div className="w-7 h-9 bg-red-900/20 text-red-500 flex items-center justify-center rounded truncate font-mono text-[9px] border border-red-500/30 mr-2 shrink-0 group-hover:bg-red-900/30">PDF</div>
             <div className="flex-1 overflow-hidden">
               <div className="text-xs font-medium truncate text-neutral-text-primary">{quotation.filename}</div>
               <div className="text-[10px] text-neutral-text-secondary flex items-center mt-0.5"><CheckCircle2 className="w-2.5 h-2.5 text-semantic-success mr-1" /> Pricing Extracted</div>
             </div>
-          </div>
+          </a>
         ) : (
           <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No quotation</div>
         )}
       </CollapsibleSection>
+
 
       <CollapsibleSection title="Other Evidences" icon={<FileQuestion className="w-4 h-4" />} count={0}>
         <div className="text-[10px] text-neutral-text-tertiary italic text-center py-4">

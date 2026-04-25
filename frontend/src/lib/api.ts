@@ -59,6 +59,18 @@ export const api = {
   },
 
   /**
+   * Approve a case with a signature
+   */
+  async approveWithSignature(caseId: string, data: { signer_name: string, designation: string, sign_date: string }): Promise<any> {
+    const res = await fetch(`${API_BASE}/api/v1/signature/${caseId}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
+
+  /**
    * Decline a case with a reason
    */
   async declineCase(caseId: string, reason: string): Promise<{ status: CaseStatus }> {
@@ -124,5 +136,30 @@ export const api = {
   async createCase(documents: File[]): Promise<{ case_id: string }> {
     const draft = await this.initiateDraftCase();
     return this.submitDocuments(draft.case_id, documents);
+  },
+
+  /**
+   * Send a general chat message to the AI Strategist (RAG)
+   */
+  async sendChatMessage(topicId: string, message: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/api/v1/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topic_id: topicId, message }),
+    });
+    return handleResponse(res);
+  },
+
+  /**
+   * Transcribe audio blob to text (STT)
+   */
+  async transcribeAudio(audioBlob: Blob): Promise<{ text: string }> {
+    const form = new FormData();
+    form.append("file", audioBlob, "recording.webm");
+    const res = await fetch(`${API_BASE}/api/v1/speech/stt`, {
+      method: "POST",
+      body: form,
+    });
+    return handleResponse(res);
   },
 };

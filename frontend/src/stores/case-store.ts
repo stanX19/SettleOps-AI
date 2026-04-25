@@ -28,9 +28,12 @@ interface CaseState extends CaseSnapshot {
   handleAgentMessageToAgent: (data: SseAgentMessageToAgent) => void;
   handleArtifactCreated: (data: SseArtifactCreated) => void;
   handleWorkflowCompleted: (data: SseWorkflowCompleted) => void;
+  addOfficerMessage: (message: OfficerMessageInfo) => void;
+  setBlackboardMode: (mode: 'blackboard' | 'chat') => void;
+  blackboard_mode: 'blackboard' | 'chat';
 }
 
-const initialState: CaseSnapshot = {
+const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat' } = {
   case_id: "",
   status: CaseStatus.SUBMITTED,
   submitted_at: "",
@@ -43,6 +46,7 @@ const initialState: CaseSnapshot = {
   officer_challenge_count: 0,
   awaiting_clarification: false,
   chatbox_enabled: false,
+  blackboard_mode: 'blackboard',
   current_agent: null,
 };
 
@@ -52,6 +56,8 @@ export const useCaseStore = create<CaseState>((set) => ({
   setCase: (snapshot) => set(snapshot),
   
   reset: () => set(initialState),
+
+  setBlackboardMode: (mode) => set({ blackboard_mode: mode }),
 
   handleWorkflowStarted: (data) => set((state) => ({
     status: CaseStatus.RUNNING,
@@ -129,5 +135,9 @@ export const useCaseStore = create<CaseState>((set) => ({
     chatbox_enabled: data.chatbox_enabled,
     topology: data.topology || state.topology,
     current_agent: null
+  })),
+  
+  addOfficerMessage: (msg) => set((state) => ({
+    officer_messages: [...state.officer_messages, msg]
   })),
 }));

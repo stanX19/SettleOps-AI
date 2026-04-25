@@ -20,6 +20,21 @@ def get_doc_content(state: Union[ClaimWorkflowState, ClusterState], doc_type: st
     except Exception:
         return "[Error retrieving document content]"
 
+# -- Policy extraction defaults (safe fallbacks for payout engine) --------
+_POLICY_DEFAULTS: dict[str, Any] = {
+    "claim_type": "own_damage",
+    "max_payout_myr": 50000.0,
+    "excess_myr": 0.0,
+    "depreciation_percent": 0.0,
+}
+
+
+def _ensure_policy_fields(data: dict[str, Any]) -> dict[str, Any]:
+    """Merge safe defaults into LLM output so payout never starves."""
+    merged = {**_POLICY_DEFAULTS, **{k: v for k, v in data.items() if v is not None}}
+    return merged
+
+
 async def policy_analysis_task(state: ClusterState, feedback: Optional[str] = None) -> dict[str, Any]:
     """Analyzes the insurance policy for coverage, excess, and limits."""
     content = get_doc_content(state, "policy_covernote")
@@ -32,20 +47,32 @@ async def policy_analysis_task(state: ClusterState, feedback: Optional[str] = No
     
     Feedback from auditor/human: {feedback if feedback else "None"}
     
-    Required JSON:
+    IMPORTANT EXTRACTION RULES:
+    1. You MUST extract every field below. Do NOT omit any.
+    2. If a value cannot be found in the document, use these defaults:
+       - claim_type: "own_damage"
+       - max_payout_myr: 50000.0
+       - excess_myr: 0.0
+       - depreciation_percent: 0.0
+    3. excess_myr is the policy excess / deductible the insured must pay.
+       Look for keywords: "Excess", "Deductible", "Policy Excess".
+    
+    Required JSON (ALL fields mandatory):
     - claim_type: "own_damage" | "third_party"
-    - max_payout_myr: float
-    - excess_myr: float
-    - depreciation_percent: float
+    - max_payout_myr: float (sum insured / max coverage)
+    - excess_myr: float (policy excess / deductible, 0.0 if not found)
+    - depreciation_percent: float (0.0 if not applicable)
     
     Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
     """
     
     try:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
-        return response.json_data if response.json_data else {"data": {}, "reasoning": "Parsing failed"}
+        raw = response.json_data if response.json_data else {}
+        data = raw.get("data", raw)  # handle both {"data": {...}} and flat dict
+        return {"data": _ensure_policy_fields(data), "reasoning": raw.get("reasoning", "Extracted with defaults")}
     except Exception as e:
-        return {"data": {}, "reasoning": f"Error: {str(e)}"}
+        return {"data": _POLICY_DEFAULTS.copy(), "reasoning": f"Extraction failed ({e}), using safe defaults"}
 
 async def liability_narrative_task(state: ClusterState, feedback: Optional[str] = None) -> dict[str, Any]:
     """Extracts and analyzes the incident narrative from police reports."""
@@ -138,6 +165,48 @@ async def fraud_assessment_task(state: ClusterState, feedback: Optional[str] = N
     Required JSON:
     - suspicion_score: float (0.0 to 1.0)
     - red_flags: list[str]
+    
+    Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
+    """
+    try:
+        response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+        return response.json_data if response.json_data else {"data": {}, "reasoning": "Parsing failed"}
+    except Exception as e:
+        return {"data": {}, "reasoning": f"Error: {str(e)}"}
+
+async def entity_extraction_task(state: Union[ClaimWorkflowState, ClusterState], feedback: Optional[str] = None) -> dict[str, Any]:
+    """Extracts basic claim entities (Names, IDs, Vehicles) for documentation."""
+    police_content = get_doc_content(state, "police_report")
+    policy_content = get_doc_content(state, "policy_covernote")
+    quote_content = get_doc_content(state, "workshop_quote")
+    
+    prompt = f"""
+    You are an Insurance Data Entry Specialist. Extract the following entities from the provided documents.
+    
+    POLICE REPORT:
+    {police_content}
+    
+    POLICY COVERNOTE:
+    {policy_content}
+    
+    WORKSHOP QUOTE:
+    {quote_content}
+    
+    Feedback: {feedback if feedback else "None"}
+    
+    Required JSON:
+    - claim_no: str (Look for Ref No or Claim No)
+    - policy_no: str
+    - insured_name: str
+    - nric: str (Insured's ID)
+    - vehicle_no: str (Plate number)
+    - vehicle_model: str
+    - accident_date: str
+    - report_date: str
+    - workshop_name: str
+    - workshop_code: str (if available)
+    - workshop_address: str
+    - workshop_phone: str
     
     Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
     """

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react"
+import React, { useState, useEffect } from "react"
 import { Badge } from "@/components/primitives/Badge"
 import {
   CheckCircle2,
@@ -17,10 +17,14 @@ import {
   User,
   Bot,
   ArrowUp,
-  Wrench
+  Wrench,
+  Mic,
+  Volume2,
+  Square
 } from "lucide-react"
 import { useCaseStore } from "@/stores/case-store"
-import { BlackboardSection } from "@/lib/types"
+import { BlackboardSection, CaseStatus, OfficerMessageInfo } from "@/lib/types"
+import { api } from "@/lib/api"
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer"
 
 function Tag({ children }: { children: React.ReactNode }) {
@@ -108,10 +112,117 @@ function BlackboardSkeleton() {
 }
 
 export function BlackboardPane() {
-  const blackboard = useCaseStore(state => state.blackboard);
-  const status = useCaseStore(state => state.status);
-  const isSyncing = status === "running" || status === "escalated" || status === "awaiting_docs";
-  const [mode, setMode] = React.useState<'blackboard' | 'chat'>('blackboard');
+  const { blackboard, status, officer_messages, addOfficerMessage, artifacts, blackboard_mode: mode, setBlackboardMode: setMode } = useCaseStore();
+  const caseId = useCaseStore(state => state.case_id);
+  const [message, setMessage] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [isChallengeMode, setIsChallengeMode] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({}); // msg_id -> tts_url
+  const isSyncing = status === CaseStatus.RUNNING;
+
+  // SSE for Chatbot (AI Strategist)
+  useEffect(() => {
+    if (mode !== 'chat' || !caseId) return;
+
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const eventSource = new EventSource(`${baseUrl}/api/v1/chat/stream/${caseId}`);
+
+    eventSource.addEventListener("reply", (event) => {
+      const data = JSON.parse(event.data);
+      addOfficerMessage({
+        message_id: data.message_id,
+        role: "assistant",
+        message: data.text,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    eventSource.addEventListener("tts_result", (event) => {
+      const data = JSON.parse(event.data);
+      // Try to find the message this TTS belongs to by text match or just use the latest
+      // For now, we'll just store it in a way that we can associate with messages
+      setAudioUrls(prev => ({ ...prev, [data.text]: data.audio_url }));
+    });
+
+    return () => {
+      eventSource.close();
+    };
+  }, [mode, caseId, addOfficerMessage]);
+
+  const handleStartRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => chunks.push(e.data);
+      recorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        setIsSending(true);
+        try {
+          const result = await api.transcribeAudio(blob);
+          setMessage(prev => (prev ? prev + " " : "") + result.text);
+        } catch (err) {
+          console.error("STT failed:", err);
+        } finally {
+          setIsSending(false);
+        }
+      };
+
+      recorder.start();
+      setMediaRecorder(recorder);
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Microphone access denied:", err);
+    }
+  };
+
+  const handleStopRecording = () => {
+    if (mediaRecorder && isRecording) {
+      mediaRecorder.stop();
+      setIsRecording(false);
+      mediaRecorder.stream.getTracks().forEach(track => track.stop());
+    }
+  };
+
+  const playAudio = (url: string) => {
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const audio = new Audio(`${baseUrl}${url}`);
+    audio.play();
+  };
+
+  const handleSendMessage = async () => {
+    if (!message.trim() || isSending || !caseId) return;
+
+    const currentMessage = message;
+    setMessage("");
+    setIsSending(true);
+
+    try {
+      // Optimistic update
+      addOfficerMessage({
+        message_id: `temp-${Date.now()}`,
+        role: "officer",
+        message: currentMessage,
+        timestamp: new Date().toISOString()
+      });
+
+      if (isChallengeMode) {
+        await api.sendMessage(caseId, currentMessage);
+        // The graph rerun will be handled via the main case SSE stream
+      } else {
+        await api.sendChatMessage(caseId, currentMessage);
+        // The AI reply will come via the chat SSE stream
+      }
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      // Could add an error message to the chat here
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   const renderCaseFacts = (data: any) => {
     const tagged = data.tagged_documents ? Object.values(data.tagged_documents) : [];
@@ -194,9 +305,56 @@ export function BlackboardPane() {
   const renderPayoutRecommendation = (data: any) => {
     const breakdown = data.payout_breakdown;
     const isEscalated = data.status === "escalated" || data.recommended_action === "escalate";
+    const missingFields: string[] = data.missing_fields || [];
+    
+    // Human-readable labels for missing fields
+    const fieldLabels: Record<string, string> = {
+      "excess_myr": "Policy Excess (deductible amount the insured must pay)",
+      "verified_total": "Verified Damage Total (from workshop quotation audit)",
+    };
+
+    if (isEscalated) {
+      return (
+        <OutputCard title="Payout Recommendation" icon={<Landmark className="w-4 h-4" />} status="danger">
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-4 h-4 text-semantic-danger flex-shrink-0" />
+              <span className="text-xs font-bold text-semantic-danger uppercase tracking-wider">Escalated — Missing Data</span>
+            </div>
+            
+            <p className="text-[11px] text-neutral-text-secondary leading-relaxed">
+              {data.rationale || "The payout engine cannot compute a final amount because required data is missing from upstream analysis."}
+            </p>
+
+            {missingFields.length > 0 && (
+              <div className="p-2.5 bg-semantic-danger/5 rounded border border-semantic-danger/15 space-y-1.5">
+                <span className="text-[9px] text-semantic-danger font-bold uppercase tracking-wider block">Missing Fields</span>
+                {missingFields.map((field: string) => (
+                  <div key={field} className="flex items-start space-x-1.5">
+                    <span className="text-semantic-danger text-[10px] mt-0.5">•</span>
+                    <div>
+                      <span className="text-[11px] font-semibold text-neutral-text-primary font-mono">{field}</span>
+                      {fieldLabels[field] && (
+                        <span className="text-[10px] text-neutral-text-tertiary ml-1">— {fieldLabels[field]}</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="pt-1">
+              <p className="text-[10px] text-neutral-text-tertiary italic">
+                Upload the missing document(s) via the Manage Hub, or approve manually to override with safe defaults.
+              </p>
+            </div>
+          </div>
+        </OutputCard>
+      );
+    }
     
     return (
-      <OutputCard title="Payout Recommendation" icon={<Landmark className="w-4 h-4" />} status={isEscalated ? "warning" : "success"}>
+      <OutputCard title="Payout Recommendation" icon={<Landmark className="w-4 h-4" />} status="success">
         {breakdown ? (
           <div className="space-y-1.5">
             <div className="flex justify-between items-center text-xs">
@@ -238,6 +396,37 @@ export function BlackboardPane() {
       )}
     </OutputCard>
   );
+
+  const renderArtifacts = () => {
+    if (!artifacts || artifacts.length === 0) return null;
+
+    const activeArtifacts = artifacts.filter(a => !a.superseded);
+
+    return (
+      <OutputCard title="Claim Artifacts" icon={<FileKey className="w-4 h-4" />} status="success">
+        <div className="space-y-2">
+          {activeArtifacts.map((art, idx) => (
+            <a
+              key={idx}
+              href={art.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between p-2 rounded-md border border-neutral-border bg-neutral-background hover:border-brand-primary transition-colors group"
+            >
+              <div className="flex items-center space-x-2 overflow-hidden">
+                <FileKey className="w-3.5 h-3.5 text-brand-primary" />
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-[11px] font-medium text-neutral-text-primary truncate">{art.filename}</span>
+                  <span className="text-[9px] text-neutral-text-tertiary uppercase">v{art.version} • {art.artifact_type.replace('_', ' ')}</span>
+                </div>
+              </div>
+              <ArrowUp className="w-3 h-3 rotate-90 text-neutral-text-tertiary group-hover:text-brand-primary transition-colors" />
+            </a>
+          ))}
+        </div>
+      </OutputCard>
+    );
+  };
 
   return (
     <div className="flex flex-col h-full bg-neutral-background overflow-hidden border-l border-neutral-border">
@@ -281,6 +470,7 @@ export function BlackboardPane() {
             {blackboard[BlackboardSection.DAMAGE_RESULT] && renderDamageResult(blackboard[BlackboardSection.DAMAGE_RESULT])}
             {blackboard[BlackboardSection.FRAUD_ASSESSMENT] && renderFraudAssessment(blackboard[BlackboardSection.FRAUD_ASSESSMENT])}
             {blackboard[BlackboardSection.PAYOUT_RECOMMENDATION] && renderPayoutRecommendation(blackboard[BlackboardSection.PAYOUT_RECOMMENDATION])}
+            {renderArtifacts()}
 
             {!Object.keys(blackboard).length && !isSyncing && (
               <div className="flex-1 flex flex-col items-center justify-center text-neutral-text-tertiary opacity-40 py-20 text-center">
@@ -290,58 +480,112 @@ export function BlackboardPane() {
             )}
           </div>
         ) : (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col h-full overflow-hidden">
             {/* Chat Interface */}
-            <div className="flex-1 flex flex-col space-y-4 mb-4">
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4 text-black" />
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 mb-4 pr-1">
+              {officer_messages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center py-10">
+                  <Bot className="w-10 h-10 text-neutral-text-tertiary opacity-20 mb-3" />
+                  <p className="text-xs text-neutral-text-tertiary font-medium">AI Strategist Ready</p>
+                  <p className="text-[10px] text-neutral-text-tertiary/60 max-w-[180px] mt-1">
+                    Ask for analysis, or use the "Modify" button to challenge agent findings.
+                  </p>
                 </div>
-                <div className="bg-neutral-surface border border-neutral-border p-3 rounded-tr-xl rounded-br-xl rounded-bl-xl max-w-[85%] shadow-sm">
-                  <MarkdownRenderer
-                    content="Hello! I am your AI Claims Strategist. How can I help you optimize this settlement workflow **today**?"
-                    className="text-xs text-neutral-text-primary"
-                  />
-                </div>
-              </div>
+              ) : (
+                officer_messages.map((msg) => (
+                  <div 
+                    key={msg.message_id} 
+                    className={`flex items-start space-x-3 ${msg.role === 'officer' ? 'justify-end' : ''}`}
+                  >
+                    {msg.role !== 'officer' && (
+                      <div className="w-7 h-7 rounded-full bg-brand-primary flex items-center justify-center flex-shrink-0">
+                        <Bot className="w-3.5 h-3.5 text-black" />
+                      </div>
+                    )}
+                    
+                    <div className={`p-2.5 rounded-xl max-w-[85%] shadow-sm ${
+                      msg.role === 'officer' 
+                        ? 'bg-brand-primary/10 rounded-tr-none' 
+                        : 'bg-neutral-surface border border-neutral-border rounded-tl-none'
+                    }`}>
+                      <MarkdownRenderer
+                        content={msg.message}
+                        className={`text-[11px] leading-relaxed ${
+                          msg.role === 'officer' ? 'text-neutral-text-primary' : 'text-neutral-text-primary'
+                        }`}
+                      />
+                      {msg.role === 'assistant' && audioUrls[msg.message] && (
+                        <button 
+                          onClick={() => playAudio(audioUrls[msg.message])}
+                          className="mt-2 p-1 rounded-md bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary transition-colors flex items-center space-x-1"
+                        >
+                          <Volume2 className="w-3 h-3" />
+                          <span className="text-[9px] font-bold uppercase tracking-widest">Listen</span>
+                        </button>
+                      )}
+                      <div className={`text-[8px] mt-1 uppercase tracking-tighter opacity-40 ${msg.role === 'officer' ? 'text-right' : ''}`}>
+                        {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
 
-              <div className="flex items-start space-x-3 justify-end">
-                <div className="bg-brand-primary/10 p-3 rounded-tl-xl rounded-bl-xl rounded-br-xl max-w-[85%] shadow-sm">
-                  <MarkdownRenderer
-                    content="Can you check if there are any conflicting statements between the claimant and the police report?"
-                    className="text-xs text-neutral-text-primary prose-p:text-neutral-text-primary"
-                  />
-                </div>
-                <div className="w-8 h-8 rounded-full bg-neutral-surface border border-neutral-border flex items-center justify-center flex-shrink-0">
-                  <User className="w-4 h-4 text-neutral-text-primary" />
-                </div>
-              </div>
-
-              <div className="flex items-start space-x-3">
-                <div className="w-8 h-8 rounded-full bg-brand-primary flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4 text-black" />
-                </div>
-                <div className="bg-neutral-surface border border-neutral-border p-3 rounded-tr-xl rounded-br-xl rounded-bl-xl max-w-[85%] shadow-sm">
-                  <MarkdownRenderer
-                    content="Based on my analysis of the uploaded evidence, the claimant mentions the intersection was clear, but the police report (Doc Ref: PR-923) indicates a traffic signal malfunction reported 10 minutes prior. This significantly impacts the liability split."
-                    className="text-xs text-neutral-text-primary"
-                  />
-                </div>
-              </div>
+                    {msg.role === 'officer' && (
+                      <div className="w-7 h-7 rounded-full bg-neutral-surface border border-neutral-border flex items-center justify-center flex-shrink-0">
+                        <User className="w-3.5 h-3.5 text-neutral-text-primary" />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
 
             {/* Chat Input */}
-            <div className="sticky bottom-0 bg-neutral-background pt-2">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Ask the settleOps AI..."
-                  className="w-full bg-neutral-surface border border-neutral-border rounded-lg pl-4 pr-10 py-3 text-xs text-neutral-text-primary focus:outline-none focus:border-brand-primary/50 transition-colors"
-                />
-                <button className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 bg-brand-primary text-black rounded-md hover:bg-brand-primary/90 transition-colors shadow-sm">
-                  <ArrowUp className="w-4 h-4" />
+            <div className="sticky bottom-0 bg-neutral-background pt-2 border-t border-neutral-border/50">
+              <div className="flex items-center space-x-2 mb-2">
+                <button
+                  type="button"
+                  onClick={() => setIsChallengeMode(false)}
+                  className={`px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-colors ${!isChallengeMode ? 'bg-brand-primary text-black' : 'bg-neutral-surface text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
+                >
+                  Ask Strategist
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsChallengeMode(true)}
+                  className={`px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-colors ${isChallengeMode ? 'bg-semantic-warning text-black' : 'bg-neutral-surface text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
+                >
+                  Challenge Analysis
                 </button>
               </div>
+              <form 
+                onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
+                className="relative"
+              >
+                <input
+                  type="text"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  placeholder={isChallengeMode ? "Enter instruction for surgical rerun..." : "Ask strategist about the claim..."}
+                  disabled={isSending || isRecording}
+                  className={`w-full bg-neutral-surface border rounded-lg pl-3 pr-20 py-2.5 text-xs text-neutral-text-primary focus:outline-none transition-colors disabled:opacity-50 ${isChallengeMode ? 'border-semantic-warning/50 focus:border-semantic-warning' : 'border-neutral-border focus:border-brand-primary/50'}`}
+                />
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center space-x-1">
+                  <button 
+                    type="button"
+                    onClick={isRecording ? handleStopRecording : handleStartRecording}
+                    disabled={isSending}
+                    className={`p-1.5 rounded-md transition-colors shadow-sm ${isRecording ? 'bg-semantic-danger text-white animate-pulse' : 'bg-neutral-background text-neutral-text-tertiary hover:text-brand-primary'}`}
+                  >
+                    {isRecording ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                  </button>
+                  <button 
+                    type="submit"
+                    disabled={isSending || isRecording || !message.trim()}
+                    className={`p-1.5 rounded-md transition-colors shadow-sm disabled:opacity-50 ${isChallengeMode ? 'bg-semantic-warning text-black hover:bg-semantic-warning/90' : 'bg-brand-primary text-black hover:bg-brand-primary/90'}`}
+                  >
+                    {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowUp className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

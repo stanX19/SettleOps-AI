@@ -8,6 +8,7 @@ from srcs.models.chat_message import ChatMessage
 from srcs.schemas.chat_dto import SseNotifData, SseRepliesData, SseToolCallData
 from srcs.services.sse_service import SseService
 from srcs.services.agents.chatbot import chatbot
+from srcs.services.case_store import CaseStore
 
 
 class ChatService:
@@ -103,7 +104,18 @@ class ChatService:
                     db, topic_id, exclude_id=exclude_message_id,
                 )
                 
-            context_text = memory_manager.load_context()
+            # Case Context Logic:
+            # If topic_id exists in CaseStore, provide the blackboard as context.
+            case_state = CaseStore.get(topic_id)
+            if case_state:
+                blackboard_str = "\n".join([
+                    f"### {section.value.upper()}\n{str(data)}"
+                    for section, data in case_state.blackboard.items()
+                    if data
+                ])
+                context_text = f"You are the AI Claims Strategist for Case {topic_id}.\n\nCURRENT CLAIM STATUS (Blackboard):\n{blackboard_str}"
+            else:
+                context_text = memory_manager.load_context()
 
             async def _on_tool_call(tool_name: str, arguments: dict) -> None:
                 await SseService.emit(

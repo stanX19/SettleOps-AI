@@ -4,27 +4,21 @@ import { Check, Edit3, ShieldX, XCircle, AlertCircle, Loader2 } from "lucide-rea
 import { useCaseStore } from "@/stores/case-store"
 import { CaseStatus } from "@/lib/types"
 import { api } from "@/lib/api"
+import { SignatureModal } from "./SignatureModal"
 
 export function ActionBar() {
   const caseId = useCaseStore(state => state.case_id);
   const status = useCaseStore(state => state.status);
   const [isConfirmingDecline, setIsConfirmingDecline] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
 
-  if (!caseId || status !== CaseStatus.AWAITING_APPROVAL) {
+  if (!caseId || ![CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED].includes(status)) {
     return null;
   }
 
   const handleApprove = async () => {
-    try {
-      setIsSubmitting(true);
-      await api.approveCase(caseId);
-      // The SSE stream will update the status to COMPLETED
-    } catch (error) {
-      console.error("Failed to approve case:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    setIsSignatureModalOpen(true);
   };
 
   const handleDecline = async () => {
@@ -84,6 +78,7 @@ export function ActionBar() {
           variant="secondary" 
           className="border-neutral-border text-neutral-text-primary h-9 rounded-md px-4 py-2 text-sm font-medium hover:bg-neutral-background"
           disabled={isSubmitting}
+          onClick={() => useCaseStore.getState().setBlackboardMode('chat')}
         >
           <Edit3 className="w-4 h-4 mr-2 text-brand-primary" />
           Modify
@@ -98,6 +93,15 @@ export function ActionBar() {
           Approve Settlement
         </Button>
       </div>
+
+      <SignatureModal 
+        isOpen={isSignatureModalOpen} 
+        onClose={() => setIsSignatureModalOpen(false)}
+        caseId={caseId}
+        onSuccess={() => {
+          // Success is handled by the modal (close + redirect or sse)
+        }}
+      />
     </div>
   )
 }
