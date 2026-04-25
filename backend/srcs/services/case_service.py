@@ -66,7 +66,7 @@ from srcs.services.case_store import (
     transition_status,
 )
 from srcs.services.sse_service import SseService
-from srcs.schemas.chat_dto import SseRepliesData
+from srcs.schemas.chat_dto import SseRepliesData, SseNotifData
 
 logger = logging.getLogger(__name__)
 from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes
@@ -870,6 +870,12 @@ async def run_partial_pipeline(
             target_agent=target_agent,
             message_id=message_id,
         ),
+    )
+
+    # Chat feedback
+    await SseService.emit(
+        case_id,
+        SseNotifData(message=f"Instruction received. Rerunning {target_agent.value} analysis...")
     )
     
     # Map the human feedback into the active_challenge for the graph

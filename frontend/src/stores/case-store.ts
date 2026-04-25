@@ -182,9 +182,15 @@ export const useCaseStore = create<CaseState>((set) => ({
     current_agent: null
   })),
   
-  addOfficerMessage: (msg) => set((state) => ({
-    officer_messages: [...state.officer_messages, msg]
-  })),
+  addOfficerMessage: (msg) => set((state) => {
+    // Deduplicate by message_id
+    if (state.officer_messages.some(m => m.message_id === msg.message_id)) {
+      return state;
+    }
+    return {
+      officer_messages: [...state.officer_messages, msg]
+    };
+  }),
 
   addAudioUrl: (text, url) => set((state) => ({
     audio_urls: { ...state.audio_urls, [text]: url }

@@ -199,27 +199,11 @@ export function BlackboardPane() {
       });
 
       if (isChallengeMode) {
-        const response = await api.sendMessage(caseId, currentMessage);
-        
-        // Handle Clarification Response (e.g. system asking for more info)
-        if ('clarification' in response) {
-          addOfficerMessage({
-            message_id: `sys-${Date.now()}`,
-            role: "assistant", // Using assistant role for the system reply
-            message: response.clarification.message,
-            timestamp: new Date().toISOString()
-          });
-        } else if ('target_agent' in response) {
-          // Normal rerun started
-          addOfficerMessage({
-            message_id: `sys-${Date.now()}`,
-            role: "assistant",
-            message: `*Instruction received. Rerunning ${response.target_agent} analysis...*`,
-            timestamp: new Date().toISOString()
-          });
-        }
+        await api.sendMessage(caseId, currentMessage);
+        // The clarification or rerun ack will be delivered via the global SSE stream
       } else {
         await api.sendChatMessage(caseId, currentMessage, selectedAgentId || undefined);
+        // AI Strategist replies are also delivered via SSE
       }
     } catch (err) {
       console.error("Failed to send message:", err);

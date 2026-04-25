@@ -110,11 +110,14 @@ class ChatService:
             # If topic_id exists in CaseStore, provide the blackboard as context.
             case_state = CaseStore.get(topic_id)
             if case_state:
-                blackboard_str = "\n".join([
-                    f"### {section.value.upper()}\n{str(data)}"
-                    for section, data in case_state.blackboard.items()
-                    if data
-                ])
+                sections = []
+                from srcs.schemas.case_dto import BlackboardSection
+                for section in BlackboardSection:
+                    data = case_state.section_data(section)
+                    if data:
+                        sections.append(f"### {section.value.upper()}\n{str(data)}")
+                
+                blackboard_str = "\n".join(sections)
                 
                 # FOCUS ON SELECTED AGENT
                 agent_context = ""
