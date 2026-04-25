@@ -147,25 +147,36 @@ def _document_info_for(state: CaseState) -> list[DocumentInfo]:
                 )
             )
 
-    add("police_report", state.police_report_path)
-    add("policy_pdf", state.policy_pdf_path)
-    add("repair_quotation", state.repair_quotation_path)
-    add("adjuster_report", state.adjuster_report_path)
+    if state.uploaded_document_paths:
+        for i, path in enumerate(state.uploaded_document_paths):
+            docs.append(
+                DocumentInfo(
+                    doc_type="uploaded",
+                    filename=os.path.basename(path),
+                    url=f"{base}/uploaded/{i}",
+                    index=i,
+                )
+            )
+    else:
+        add("police_report", state.police_report_path)
+        add("policy_pdf", state.policy_pdf_path)
+        add("repair_quotation", state.repair_quotation_path)
+        add("adjuster_report", state.adjuster_report_path)
+        for i, p in enumerate(state.photo_paths):
+            docs.append(
+                DocumentInfo(
+                    doc_type="photo",
+                    filename=os.path.basename(p),
+                    url=f"{base}/photo/{i}",
+                    index=i,
+                )
+            )
     if state.chat_transcript:
         docs.append(
             DocumentInfo(
                 doc_type="chat_transcript",
                 filename="chat_transcript.txt",
                 url=f"{base}/chat_transcript",
-            )
-        )
-    for i, p in enumerate(state.photo_paths):
-        docs.append(
-            DocumentInfo(
-                doc_type="photo",
-                filename=os.path.basename(p),
-                url=f"{base}/photo/{i}",
-                index=i,
             )
         )
     return docs
@@ -521,47 +532,103 @@ async def _run_agent_stub(
 
 # -- Workflow State Mapper ---------------------------------------------------
 
-def _read_doc_content(path: Optional[str]) -> str:
-    """Helper to read document content from disk for agent consumption."""
-    if not path or not os.path.exists(path):
-        return "[No content available]"
-    try:
-        # We assume transcripts/markdown for now as per the PR overview
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception:
-        return "[Error reading content]"
+_WORKFLOW_DOC_SLOTS: tuple[tuple[str, str, str, Optional[str]], ...] = (
+    ("police_report", "police_report_path", "police_report", "police_report"),
+    ("policy_pdf", "policy_pdf_path", "policy_covernote", "policy_pdf"),
+    ("repair_quotation", "repair_quotation_path", "workshop_quote", "repair_quotation"),
+    ("road_tax", "road_tax_path", "road_tax_reg", "road_tax"),
+    ("adjuster_report", "adjuster_report_path", "adjuster_report", "adjuster_report"),
+)
+
+
+def _extraction_for(case: CaseState, slot: str) -> dict[str, Any]:
+    extraction = case.document_extractions.get(slot)
+    return extraction if isinstance(extraction, dict) else {}
+
+
+def _content_from_extraction(case: CaseState, slot: str) -> str:
+    extraction = _extraction_for(case, slot)
+    text = extraction.get("text")
+    if isinstance(text, str) and text.strip():
+        return text
+
+    method = extraction.get("method", "not_extracted")
+    error = extraction.get("error") or extraction.get("gemini_error")
+    if error:
+        return f"[Extraction unavailable via {method}: {error}]"
+    return "[No extracted content available]"
+
+
+def _workflow_document(
+    case: CaseState,
+    *,
+    slot: str,
+    path: Optional[str],
+    source_type: str,
+    doc_type_hint: str,
+) -> Optional[dict[str, Any]]:
+    if not path:
+        return None
+
+    extraction = _extraction_for(case, slot)
+    return {
+        "slot": slot,
+        "filename": os.path.basename(path),
+        "source_type": source_type,
+        "doc_type": doc_type_hint,
+        "content": _content_from_extraction(case, slot),
+        "extraction_method": extraction.get("method", "not_extracted"),
+        "extraction_error": extraction.get("error") or extraction.get("gemini_error"),
+        "path": path,
+    }
+
+
+def _source_type_for_path(path: str) -> str:
+    ext = os.path.splitext(path)[1].lower()
+    if ext in {".jpg", ".jpeg", ".png"}:
+        return "image"
+    if ext in {".pdf", ".docx", ".doc", ".pptx", ".ppt"}:
+        return "document"
+    return "unknown"
 
 
 def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
     """Maps internal CaseState to LangGraph ClaimWorkflowState."""
     docs = []
-    if case.police_report_path:
-        docs.append({
-            "filename": os.path.basename(case.police_report_path),
-            "doc_type": "police_report",
-            "content": _read_doc_content(case.police_report_path)
-        })
-    if case.policy_pdf_path:
-        docs.append({
-            "filename": os.path.basename(case.policy_pdf_path),
-            "doc_type": "policy_covernote",
-            "content": _read_doc_content(case.policy_pdf_path)
-        })
-    if case.repair_quotation_path:
-        docs.append({
-            "filename": os.path.basename(case.repair_quotation_path),
-            "doc_type": "workshop_quote",
-            "content": _read_doc_content(case.repair_quotation_path)
-        })
-    
-    for i, p in enumerate(case.photo_paths):
-        # Without direct Vision support in this node, we pass a hint to the tagger
-        docs.append({
-            "filename": os.path.basename(p),
-            "doc_type": "photo",
-            "content": f"[Photo Metadata: {os.path.basename(p)} at index {i}]"
-        })
+    if case.uploaded_document_paths:
+        for index, path in enumerate(case.uploaded_document_paths):
+            source_type = _source_type_for_path(path)
+            doc = _workflow_document(
+                case,
+                slot=f"uploaded_{index}",
+                path=path,
+                source_type=source_type,
+                doc_type_hint="photo" if source_type == "image" else "unknown",
+            )
+            if doc:
+                docs.append(doc)
+    else:
+        for slot, attr_name, doc_type_hint, source_type in _WORKFLOW_DOC_SLOTS:
+            doc = _workflow_document(
+                case,
+                slot=slot,
+                path=getattr(case, attr_name),
+                source_type=source_type or "document",
+                doc_type_hint=doc_type_hint,
+            )
+            if doc:
+                docs.append(doc)
+
+        for i, path in enumerate(case.photo_paths):
+            doc = _workflow_document(
+                case,
+                slot=f"photo_{i}",
+                path=path,
+                source_type="image",
+                doc_type_hint="photo",
+            )
+            if doc:
+                docs.append(doc)
 
     return {
         "case_id": case.case_id,

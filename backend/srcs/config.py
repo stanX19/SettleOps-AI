@@ -3,8 +3,8 @@ Environment configuration for backend.
 """
 import os.path
 from functools import lru_cache
-from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,8 +20,12 @@ class Settings(BaseSettings):
     ILMU_MODEL_NAME: str = "ilmu-glm-5.1"
     
     # Gemini Configuration
+    GEMINI_API_KEY: str = ""
     GEMINI_API_KEY_LIST: list[str] = []
-    GEMINI_MODEL_NAME: str = "gemini-2.0-flash"
+    GEMINI_MODEL_NAME: str = "gemini-2.5-flash"
+    GEMINI_VISION_TIMEOUT_SECONDS: float = 15.0
+    GEMINI_VISION_BATCH_SIZE: int = 4
+    GEMINI_VISION_MAX_KEYS: int = 12
 
     # ElevenLabs (Speech) Configuration
     ELEVENLABS_API_KEY: str = ""
@@ -45,10 +49,26 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     PORT: int = 8000
 
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def _parse_debug(cls, value):
+        """Accept deployment labels like DEBUG=release as non-debug mode."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {
+                "release", "prod", "production", "false", "0", "no", "off", "",
+            }:
+                return False
+            if normalized in {
+                "debug", "dev", "development", "true", "1", "yes", "on",
+            }:
+                return True
+        return value
+
     model_config = SettingsConfigDict(
         env_file=f"{ROOT}/.env",
         env_file_encoding="utf-8",
-        extra="allow"  # Allow extra fields from .env without explicit definition
+        extra="ignore",
     )
 
 @lru_cache

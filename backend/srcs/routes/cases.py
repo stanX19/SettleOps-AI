@@ -5,6 +5,7 @@ See `docs/api_sse_plan.md` for the authoritative public API contract.
 from __future__ import annotations
 
 import asyncio
+import logging
 import mimetypes
 import os
 import shutil
@@ -35,6 +36,7 @@ from srcs.schemas.case_dto import (
     MessageRequest,
     MessageRerunResponse,
 )
+from srcs.services.document_processor import extract_case_documents, extract_uploaded_documents
 from srcs.services.case_service import (
     api_error,
     build_snapshot,
@@ -62,6 +64,7 @@ from srcs.services.sse_service import CLOSE_EVENT_KEY, SseService
 
 
 router = APIRouter(prefix="/api/v1/cases", tags=["cases"])
+logger = logging.getLogger(__name__)
 
 
 # -- Upload constraints ------------------------------------------------------
@@ -71,6 +74,13 @@ _PDF_MAX = 10 * _MB
 _PHOTO_MAX = 5 * _MB
 
 _PDF_MIMES = {"application/pdf"}
+_DOC_MIMES = {
+    *_PDF_MIMES,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",  # .pptx
+    "application/msword",  # .doc
+    "application/vnd.ms-powerpoint",  # .ppt
+}
 _PHOTO_MIMES = {"image/jpeg", "image/png"}
 
 
@@ -112,8 +122,12 @@ def _write_upload_file(
         if os.path.exists(dest_path):
             try:
                 os.remove(dest_path)
-            except OSError:
-                pass
+            except OSError as cleanup_exc:
+                logger.warning(
+                    "Failed to remove partial upload %s after write failure: %s",
+                    dest_path,
+                    cleanup_exc,
+                )
         raise
     return total
 
@@ -154,24 +168,26 @@ def _validate_case_uploads(
     repair_quotation: Optional[UploadFile],
     photos: list[UploadFile],
     adjuster_report: Optional[UploadFile],
+    documents: list[UploadFile] | None = None,
 ) -> None:
     if not photos:
-        # We still want at least something to be uploaded to start, 
+        # We still want at least something to be uploaded to start,
         # but let's see if we should even allow 0 photos.
         # The prompt says "the workflow can self identify if something is missing".
         pass
 
     if police_report:
-        _require_mime(police_report, _PDF_MIMES)
+        _require_mime(police_report, _DOC_MIMES)
     if policy_pdf:
-        _require_mime(policy_pdf, _PDF_MIMES)
+        _require_mime(policy_pdf, _DOC_MIMES)
     if repair_quotation:
-        _require_mime(repair_quotation, _PDF_MIMES)
-    
+        _require_mime(repair_quotation, _DOC_MIMES)
     for p in photos:
         _require_mime(p, _PHOTO_MIMES | _PDF_MIMES)
     if adjuster_report is not None:
-        _require_mime(adjuster_report, _PDF_MIMES)
+        _require_mime(adjuster_report, _DOC_MIMES)
+    for document in documents or []:
+        _require_mime(document, _DOC_MIMES | _PHOTO_MIMES)
 
 
 async def _save_case_uploads(
@@ -180,18 +196,31 @@ async def _save_case_uploads(
     policy_pdf: Optional[UploadFile],
     repair_quotation: Optional[UploadFile],
     photos: list[UploadFile],
+    road_tax: Optional[UploadFile],
     adjuster_report: Optional[UploadFile],
+    documents: list[UploadFile],
     chat_transcript: Optional[str],
-) -> tuple[Optional[str], Optional[str], Optional[str], Optional[str], list[str], Optional[str]]:
+) -> tuple[
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    list[str],
+    list[str],
+    Optional[str],
+]:
     upload_dir = case_upload_dir(case_id)
 
     try:
         police_path = None
+        uploaded_document_paths: list[str] = []
         if police_report:
             police_path = os.path.join(
                 upload_dir, f"police_report_{_safe_name(police_report.filename)}"
             )
             await _save_upload(police_report, police_path, _PDF_MAX)
+            uploaded_document_paths.append(police_path)
 
         policy_path = None
         if policy_pdf:
@@ -199,6 +228,7 @@ async def _save_case_uploads(
                 upload_dir, f"policy_pdf_{_safe_name(policy_pdf.filename)}"
             )
             await _save_upload(policy_pdf, policy_path, _PDF_MAX)
+            uploaded_document_paths.append(policy_path)
 
         quote_path = None
         if repair_quotation:
@@ -206,6 +236,7 @@ async def _save_case_uploads(
                 upload_dir, f"repair_quotation_{_safe_name(repair_quotation.filename)}"
             )
             await _save_upload(repair_quotation, quote_path, _PDF_MAX)
+            uploaded_document_paths.append(quote_path)
 
         photo_paths: list[str] = []
         for i, p in enumerate(photos):
@@ -214,6 +245,16 @@ async def _save_case_uploads(
             limit = _PDF_MAX if p.content_type in _PDF_MIMES else _PHOTO_MAX
             await _save_upload(p, path, limit)
             photo_paths.append(path)
+            uploaded_document_paths.append(path)
+
+        road_tax_path: Optional[str] = None
+        if road_tax is not None:
+            road_tax_path = os.path.join(
+                upload_dir,
+                f"road_tax_{_safe_name(road_tax.filename)}",
+            )
+            await _save_upload(road_tax, road_tax_path, _PDF_MAX)
+            uploaded_document_paths.append(road_tax_path)
 
         adjuster_path: Optional[str] = None
         if adjuster_report is not None:
@@ -222,6 +263,16 @@ async def _save_case_uploads(
                 f"adjuster_report_{_safe_name(adjuster_report.filename)}",
             )
             await _save_upload(adjuster_report, adjuster_path, _PDF_MAX)
+            uploaded_document_paths.append(adjuster_path)
+
+        for i, document in enumerate(documents):
+            path = os.path.join(
+                upload_dir,
+                f"uploaded_{i}_{_safe_name(document.filename)}",
+            )
+            limit = _PHOTO_MAX if document.content_type in _PHOTO_MIMES else _PDF_MAX
+            await _save_upload(document, path, limit)
+            uploaded_document_paths.append(path)
 
         transcript_path: Optional[str] = None
         if chat_transcript:
@@ -235,8 +286,10 @@ async def _save_case_uploads(
         police_path,
         policy_path,
         quote_path,
+        road_tax_path,
         adjuster_path,
         photo_paths,
+        uploaded_document_paths,
         transcript_path,
     )
 
@@ -263,6 +316,8 @@ async def submit_case_documents(
     policy_pdf: Optional[UploadFile] = File(None),
     repair_quotation: Optional[UploadFile] = File(None),
     photos: list[UploadFile] = File([]),
+    documents: list[UploadFile] = File([]),
+    road_tax: Optional[UploadFile] = File(None),
     adjuster_report: Optional[UploadFile] = File(None),
     chat_transcript: Optional[str] = Form(None),
 ) -> CaseCreateResponse:
@@ -280,13 +335,18 @@ async def submit_case_documents(
         repair_quotation,
         photos,
         adjuster_report,
+        documents,
     )
+    if road_tax is not None:
+        _require_mime(road_tax, _DOC_MIMES)
     (
         police_path,
         policy_path,
         quote_path,
+        road_tax_path,
         adjuster_path,
         photo_paths,
+        uploaded_document_paths,
         transcript_path,
     ) = await _save_case_uploads(
         case_id,
@@ -294,30 +354,45 @@ async def submit_case_documents(
         policy_pdf,
         repair_quotation,
         photos,
+        road_tax,
         adjuster_report,
+        documents,
         chat_transcript,
     )
 
     async with CaseStore.lock(case_id):
         state = require_case(case_id)
-        if state.status != CaseStatus.DRAFT:
+        if state.status not in (CaseStatus.DRAFT, CaseStatus.AWAITING_DOCS):
             shutil.rmtree(case_upload_dir(case_id), ignore_errors=True)
             raise api_error(
                 409,
                 ErrorCode.INVALID_STATUS,
-                "Documents can only be submitted for a draft case",
+                "Documents can only be submitted for a draft or awaiting_docs case",
             )
 
         state.police_report_path = police_path
         state.policy_pdf_path = policy_path
         state.repair_quotation_path = quote_path
+        state.road_tax_path = road_tax_path
         state.adjuster_report_path = adjuster_path
         state.photo_paths = photo_paths
+        state.uploaded_document_paths = uploaded_document_paths
         state.chat_transcript = transcript_path
-        
-        # If we are resuming from AWAITING_DOCS, we move directly to RUNNING
+
         old_status = state.status
         transition_status(state, CaseStatus.RUNNING)
+
+    # Extract content before pipeline starts. Prefer the generic ordered upload
+    # list so tagging, not field names, determines each document's role.
+    if uploaded_document_paths:
+        extractions = await extract_uploaded_documents(uploaded_document_paths)
+    else:
+        extractions = await extract_case_documents(
+            police_path, policy_path, quote_path, road_tax_path, adjuster_path, photo_paths
+        )
+    async with CaseStore.lock(case_id):
+        state = require_case(case_id)
+        state.document_extractions = extractions
 
     if old_status == CaseStatus.AWAITING_DOCS:
         background.add_task(
@@ -402,6 +477,7 @@ _DOC_FIELDS: dict[str, str] = {
     "police_report": "police_report_path",
     "policy_pdf": "policy_pdf_path",
     "repair_quotation": "repair_quotation_path",
+    "road_tax": "road_tax_path",
     "adjuster_report": "adjuster_report_path",
     "chat_transcript": "chat_transcript",
 }
@@ -430,6 +506,22 @@ async def get_photo(case_id: str, index: int) -> FileResponse:
         raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Photo missing on disk")
     media_type, _ = mimetypes.guess_type(path)
     return FileResponse(path, media_type=media_type or "image/jpeg")
+
+
+@router.get("/{case_id}/documents/uploaded/{index}")
+async def get_uploaded_document(case_id: str, index: int) -> FileResponse:
+    state = require_case(case_id)
+    if index < 0 or index >= len(state.uploaded_document_paths):
+        raise api_error(
+            404,
+            ErrorCode.INVALID_DOC_TYPE,
+            "Uploaded document index out of range",
+        )
+    path = state.uploaded_document_paths[index]
+    if not os.path.exists(path):
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document missing on disk")
+    media_type, _ = mimetypes.guess_type(path)
+    return FileResponse(path, media_type=media_type or "application/octet-stream")
 
 
 # -- Artifact download -------------------------------------------------------
