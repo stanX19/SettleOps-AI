@@ -57,13 +57,7 @@ async def policy_analysis_task(state: ClusterState, feedback: Optional[str] = No
     3. excess_myr is the policy excess / deductible the insured must pay.
        Look for keywords: "Excess", "Deductible", "Policy Excess".
     
-    Required JSON (ALL fields mandatory):
-    - claim_type: "own_damage" | "third_party"
-    - max_payout_myr: float (sum insured / max coverage)
-    - excess_myr: float (policy excess / deductible, 0.0 if not found)
-    - depreciation_percent: float (0.0 if not applicable)
-    
-    Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
+    Return JSON format: {{"data": {{...}}, "reasoning": "Step-by-step audit of policy terms: 1. Found coverage for [type]. 2. Identified deductible of [amount]. 3. Verified sum insured [limit]. 4. Calculated applicable depreciation [percent]."}}
     """
     
     try:
@@ -86,13 +80,7 @@ async def liability_narrative_task(state: ClusterState, feedback: Optional[str] 
     
     Feedback: {feedback if feedback else "None"}
     
-    Required JSON:
-    - incident_time: str
-    - location: str
-    - description: str
-    - fault_split: dict with keys "insured" (int 0-100) and "third_party" (int 0-100)
-    
-    Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
+    Return JSON format: {{"data": {{...}}, "reasoning": "Narrative reconstruction: 1. Located incident at [location]. 2. Established timeline [time]. 3. Analyzed fault based on [evidence] resulting in [split] liability."}}
     """
     try:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
@@ -140,15 +128,7 @@ async def damage_quote_audit_task(state: ClusterState, feedback: Optional[str] =
     Feedback: {feedback if feedback else "None"}
     
     IMPORTANT: Extract the cost breakdown in MYR.
-    Required JSON:
-    - verified_parts: float
-    - verified_labour: float
-    - verified_paint: float
-    - verified_towing: float
-    - verified_total: float (sum of all verified costs)
-    - suspicious_parts: list[str]
-    
-    Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
+    Return JSON format: {{"data": {{...}}, "reasoning": "Assessor audit trail: 1. Reconciled part codes [list]. 2. Flagged [suspicious] for necessity check. 3. Verified labour hours against industry standards. 4. Confirmed total MYR [total]."}}
     """
     try:
         response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)

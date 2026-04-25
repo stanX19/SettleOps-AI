@@ -225,6 +225,7 @@ class SseAgentOutputData(_CaseSseBase):
     agent: AgentId
     section: BlackboardSection
     data: dict[str, Any]
+    logs: Optional[list[str]] = None
 
 
 class SseAgentMessageToAgentData(_CaseSseBase):

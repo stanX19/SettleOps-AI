@@ -318,7 +318,8 @@ def node_sse_wrapper(node_name: str, func):
                     timestamp=now_iso(),
                     agent=agent_id,
                     section=section,
-                    data=data
+                    data=data,
+                    logs=trace_log
                 ))
             
             # Emit Status: COMPLETED or ERROR

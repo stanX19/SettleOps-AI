@@ -111,6 +111,16 @@ export const useCaseStore = create<CaseState>((set) => ({
       [data.section]: data.data
     };
 
+    // Update logs for the agent if provided
+    const newAgents = { ...state.agents };
+    if (data.logs && data.logs.length > 0) {
+      const agentId = data.agent;
+      newAgents[agentId] = {
+        ...(newAgents[agentId] || { status: AgentStatus.IDLE, sub_tasks: {} }),
+        logs: data.logs
+      };
+    }
+
     let nextDocuments = state.documents;
 
     // PROBLEM 1 FIX: If CaseFacts changed, we must update the doc_type/tags in the documents array
@@ -134,7 +144,8 @@ export const useCaseStore = create<CaseState>((set) => ({
 
     return {
       blackboard: nextBlackboard,
-      documents: nextDocuments
+      documents: nextDocuments,
+      agents: newAgents
     };
   }),
 

@@ -34,9 +34,9 @@ def _create_signature_overlay(
     c = canvas.Canvas(buf, pagesize=(page_width, page_height))
 
     if sig_x is None:
-        sig_x = MARGIN + 3 * mm
+        sig_x = MARGIN + 2 * mm
     if sig_y is None:
-        sig_y = page_height - MARGIN - 72 * mm
+        sig_y = 48 * mm
 
     c.setFont("Helvetica-BoldOblique", 14)
     c.setFillColor(colors.HexColor("#00008B"))
@@ -49,9 +49,9 @@ def _create_signature_overlay(
 
     if stamp_path and os.path.isfile(stamp_path):
         if stamp_x is None:
-            stamp_x = page_width - MARGIN - 45 * mm
+            stamp_x = page_width - MARGIN - 42 * mm
         if stamp_y is None:
-            stamp_y = page_height - MARGIN - 96 * mm
+            stamp_y = 32 * mm
 
         c.drawImage(
             stamp_path,
