@@ -38,10 +38,10 @@ export function InputsPane() {
   const isSyncing = status === CaseStatus.RUNNING;
 
   const policeReport = documents.find(d => d.doc_type === "police_report");
-  const adjusterReport = documents.find(d => d.doc_type === "adjuster_report");
-  const policyPdf = documents.find(d => d.doc_type === "policy_pdf");
-  const photos = documents.filter(d => d.doc_type === "photo");
-  const quotation = documents.find(d => d.doc_type === "repair_quotation");
+  const adjusterReport = documents.find(d => d.doc_type === "adjuster_report"); // Note: backend REQUIRED_DOCS may not have this, keeping for backwards compat
+  const policyPdf = documents.find(d => d.doc_type === "policy_covernote");
+  const photos = documents.filter(d => d.doc_type === "car_photo_plate" || d.doc_type === "damage_closeup");
+  const quotation = documents.find(d => d.doc_type === "workshop_quote");
 
   return (
     <div className="pl-6 pr-5 py-4 h-full overflow-y-auto bg-neutral-background custom-scrollbar">

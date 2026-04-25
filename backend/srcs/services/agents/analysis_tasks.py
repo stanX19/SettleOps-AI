@@ -63,6 +63,7 @@ async def liability_narrative_task(state: ClusterState, feedback: Optional[str] 
     - incident_time: str
     - location: str
     - description: str
+    - fault_split: dict with keys "insured" (int 0-100) and "third_party" (int 0-100)
     
     Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
     """

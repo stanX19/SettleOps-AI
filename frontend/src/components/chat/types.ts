@@ -1,9 +1,13 @@
 export type DocKey =
+  | "car_photo_plate"
+  | "damage_closeup"
+  | "driver_license"
+  | "road_tax_reg"
+  | "nric"
+  | "policy_covernote"
   | "police_report"
-  | "policy_pdf"
-  | "repair_quotation"
-  | "photos"
-  | "adjuster_report";
+  | "workshop_quote"
+  | "unknown";
 
 export interface DocSlot {
   key: DocKey;
@@ -16,53 +20,73 @@ export interface DocSlot {
 
 export const DOC_SLOTS: DocSlot[] = [
   {
-    key: "police_report",
-    label: "Police Report",
-    accept: "application/pdf",
-    multiple: false,
-    required: true,
-    hint: "Official police report PDF",
-  },
-  {
-    key: "policy_pdf",
-    label: "Insurance Policy",
-    accept: "application/pdf",
-    multiple: false,
-    required: true,
-    hint: "Policy schedule PDF",
-  },
-  {
-    key: "repair_quotation",
-    label: "Repair Quotation",
-    accept: "application/pdf",
-    multiple: false,
-    required: true,
-    hint: "Workshop repair quotation PDF",
-  },
-  {
-    key: "photos",
-    label: "Damage Photos",
-    accept: "image/jpeg,image/png",
+    key: "car_photo_plate",
+    label: "Vehicle Photo (Plate)",
+    accept: "image/*",
     multiple: true,
     required: true,
-    hint: "At least one photo of the damage",
+    hint: "Photo of the vehicle showing the license plate",
   },
   {
-    key: "adjuster_report",
-    label: "Adjuster Report",
+    key: "damage_closeup",
+    label: "Damage Close-up",
+    accept: "image/*",
+    multiple: true,
+    required: true,
+    hint: "Close-up photos of the damaged areas",
+  },
+  {
+    key: "driver_license",
+    label: "Driver's License",
+    accept: "image/*,application/pdf",
+    multiple: false,
+    required: true,
+    hint: "Copy of the driver's license",
+  },
+  {
+    key: "road_tax_reg",
+    label: "Road Tax / Registration",
+    accept: "image/*,application/pdf",
+    multiple: false,
+    required: true,
+    hint: "Road tax or vehicle registration card",
+  },
+  {
+    key: "nric",
+    label: "NRIC / ID",
+    accept: "image/*,application/pdf",
+    multiple: false,
+    required: true,
+    hint: "NRIC or identity document",
+  },
+  {
+    key: "policy_covernote",
+    label: "Policy Covernote",
     accept: "application/pdf",
     multiple: false,
-    required: false,
-    hint: "Loss adjuster report (optional)",
+    required: true,
+    hint: "Insurance policy covernote",
+  },
+  {
+    key: "police_report",
+    label: "Police Report",
+    accept: "application/pdf,image/*",
+    multiple: false,
+    required: true,
+    hint: "Official police report",
+  },
+  {
+    key: "workshop_quote",
+    label: "Workshop Quotation",
+    accept: "application/pdf,image/*",
+    multiple: false,
+    required: true,
+    hint: "Repair estimate or workshop quotation",
   },
 ];
 
 export interface UploadedDocs {
-  police_report?: File;
-  policy_pdf?: File;
-  repair_quotation?: File;
-  photos: File[];
-  adjuster_report?: File;
+  files: File[];
 }
 
 export interface ChatAttachment {
@@ -75,22 +99,16 @@ export interface ChatMessage {
   role: "user" | "bot";
   text: string;
   attachments?: ChatAttachment[];
-  missingDocs?: DocKey[];
+  missingDocs?: string[]; // Backend returns strings
 }
 
-export function getMissingRequired(docs: UploadedDocs): DocKey[] {
-  const missing: DocKey[] = [];
-  if (!docs.police_report) missing.push("police_report");
-  if (!docs.policy_pdf) missing.push("policy_pdf");
-  if (!docs.repair_quotation) missing.push("repair_quotation");
-  if (docs.photos.length === 0) missing.push("photos");
-  return missing;
-}
-
-export function isReadyToSubmit(docs: UploadedDocs): boolean {
-  return getMissingRequired(docs).length === 0;
-}
-
-export function getSlot(key: DocKey): DocSlot {
-  return DOC_SLOTS.find((s) => s.key === key)!;
+export function getSlot(key: string): DocSlot {
+  return DOC_SLOTS.find((s) => s.key === key) || {
+    key: "unknown" as DocKey,
+    label: "Document",
+    accept: "*/*",
+    multiple: true,
+    required: false,
+    hint: "Additional evidence document"
+  };
 }

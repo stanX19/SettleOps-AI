@@ -110,85 +110,132 @@ function BlackboardSkeleton() {
 export function BlackboardPane() {
   const blackboard = useCaseStore(state => state.blackboard);
   const status = useCaseStore(state => state.status);
-  const isSyncing = status === "running";
+  const isSyncing = status === "running" || status === "escalated" || status === "awaiting_docs";
   const [mode, setMode] = React.useState<'blackboard' | 'chat'>('blackboard');
 
-  const renderCaseFacts = (data: any) => (
-    <OutputCard title="Case Facts" icon={<FileKey className="w-4 h-4" />} status="success">
-      <Field label="Summary" value={data.summary || "Extracting..."} />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Incident Date" value={data.incident_date} />
-        <Field label="Location" value={data.location} />
-      </div>
-      <div className="mt-2 p-2 bg-neutral-background/50 rounded border border-neutral-border/50">
-        <span className="text-[9px] text-neutral-text-tertiary font-bold uppercase tracking-wider block mb-1">Vehicles Involved</span>
-        {data.vehicles?.map((v: any, i: number) => (
-          <div key={i} className="flex items-center justify-between py-1 border-b border-neutral-border last:border-0">
-            <span className="text-xs text-neutral-text-primary font-bold">{v.plate}</span>
-            <span className="text-[10px] text-neutral-text-secondary">{v.model}</span>
+  const renderCaseFacts = (data: any) => {
+    const tagged = data.tagged_documents ? Object.values(data.tagged_documents) : [];
+    const missing = data.missing_documents || [];
+    
+    return (
+      <OutputCard title="Intake Validation" icon={<FileKey className="w-4 h-4" />} status="success">
+        <Field label="Processed Documents" value={tagged.length} />
+        {missing.length > 0 && (
+          <div className="mt-2 p-2 bg-semantic-danger/10 rounded border border-semantic-danger/20">
+            <span className="text-[9px] text-semantic-danger font-bold uppercase tracking-wider block mb-1">Missing</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {missing.map((m: string) => <Tag key={m}>{m}</Tag>)}
+            </div>
           </div>
-        ))}
-      </div>
-    </OutputCard>
-  );
+        )}
+        {tagged.length > 0 && (
+          <div className="mt-2">
+            <span className="text-[9px] text-neutral-text-tertiary font-bold uppercase tracking-wider block mb-1">Tags Found</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {tagged.map((t: string, i: number) => <Tag key={i}>{t}</Tag>)}
+            </div>
+          </div>
+        )}
+      </OutputCard>
+    );
+  };
 
   const renderPolicyVerdict = (data: any) => (
     <OutputCard title="Policy Verdict" icon={<ShieldCheck className="w-4 h-4" />} status="success">
-      <Field label="Status" value={<Badge variant={data.is_covered ? "success" : "distructive"}>{data.is_covered ? "Covered" : "Rejected"}</Badge>} />
-      <Field label="Claim Type" value={data.claim_type} />
-      <div className="flex flex-wrap gap-1 mt-1">
-        {data.tags?.map((t: string) => <Tag key={t}>{t}</Tag>)}
+      <Field label="Claim Type" value={<Badge variant="secondary">{data.claim_type || "N/A"}</Badge>} />
+      <div className="grid grid-cols-2 gap-3 mt-2">
+        <Field label="Max Payout" value={data.max_payout_myr != null ? `RM ${data.max_payout_myr.toLocaleString()}` : "N/A"} />
+        <Field label="Excess" value={data.excess_myr != null ? `RM ${data.excess_myr.toLocaleString()}` : "N/A"} />
       </div>
+      <Field label="Depreciation" value={data.depreciation_percent != null ? `${data.depreciation_percent}%` : "N/A"} />
     </OutputCard>
   );
 
-  const renderLiabilityVerdict = (data: any) => (
-    <OutputCard title="Liability Verdict" icon={<Scale className="w-4 h-4" />} status="success">
-      <Field label="Fault Split" value={<LiabilityBar claimant={data.claimant_fault_pct} thirdParty={data.third_party_fault_pct} />} />
-      <Field label="Reasoning" value={<div className="text-[11px] italic text-neutral-text-secondary">{data.reasoning}</div>} />
-    </OutputCard>
-  );
+  const renderLiabilityVerdict = (data: any) => {
+    const insured = data.fault_split?.insured || 0;
+    const thirdParty = data.fault_split?.third_party || 0;
+    
+    return (
+      <OutputCard title="Liability Verdict" icon={<Scale className="w-4 h-4" />} status="success">
+        {data.fault_split && (
+          <Field label="Fault Split" value={<LiabilityBar claimant={insured} thirdParty={thirdParty} />} />
+        )}
+        <Field label="Incident Details" value={
+          <div className="text-[11px] text-neutral-text-primary mt-1">
+            <div><span className="font-semibold">Time:</span> {data.incident_time || "N/A"}</div>
+            <div><span className="font-semibold">Location:</span> {data.location || "N/A"}</div>
+            <div className="italic text-neutral-text-secondary mt-1">{data.description || "No narrative found."}</div>
+          </div>
+        } />
+        <Field label="Point of Impact" value={
+          <div className="flex items-center space-x-2 mt-1">
+            <Badge variant="outline">{data.poi_location || "N/A"}</Badge>
+            <span className="text-[10px] text-neutral-text-tertiary">Severity: {data.damage_severity || "N/A"}</span>
+          </div>
+        } />
+      </OutputCard>
+    );
+  };
 
   const renderFraudAssessment = (data: any) => (
-    <OutputCard title="Fraud Assessment" icon={<AlertTriangle className="w-4 h-4" />} status={data.risk_score > 0.5 ? "danger" : "success"}>
+    <OutputCard title="Fraud Assessment" icon={<AlertTriangle className="w-4 h-4" />} status={data.suspicion_score > 0.5 ? "danger" : "success"}>
       <div className="flex items-baseline justify-between">
-        <Field label="Risk Score" value={<span className="text-lg font-mono">{data.risk_score?.toFixed(2)}</span>} />
-        <Badge variant={data.risk_score > 0.5 ? "distructive" : "success"}>
-          {data.risk_score > 0.5 ? "High Risk" : "Low Risk"}
+        <Field label="Risk Score" value={<span className="text-lg font-mono">{data.suspicion_score?.toFixed(2)}</span>} />
+        <Badge variant={data.suspicion_score > 0.5 ? "distructive" : "success"}>
+          {data.suspicion_score > 0.5 ? "High Risk" : "Low Risk"}
         </Badge>
       </div>
       <div className="flex flex-wrap gap-1 mt-2">
-        {data.flags?.map((f: string) => <Tag key={f}>{f}</Tag>)}
+        {data.red_flags?.map((f: string) => <Tag key={f}>{f}</Tag>)}
       </div>
     </OutputCard>
   );
 
-  const renderPayoutRecommendation = (data: any) => (
-    <OutputCard title="Payout Recommendation" icon={<Landmark className="w-4 h-4" />} status="success">
-      <div className="space-y-1.5">
-        <div className="flex justify-between items-center text-xs">
-          <span className="text-neutral-text-secondary">Base Amount</span>
-          <span className="font-semibold text-neutral-text-primary">RM {data.base_amount?.toLocaleString()}</span>
-        </div>
-        <div className="flex justify-between items-center text-xs">
-          <span className="text-neutral-text-tertiary italic">Adjustments</span>
-          <span className="text-semantic-danger/80">- RM {data.deductions?.toLocaleString()}</span>
-        </div>
-        <div className="border-t border-neutral-border pt-2 mt-2 flex justify-between items-center">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-text-secondary">Final Payout</span>
-          <span className="text-sm font-bold text-brand-primary">RM {data.final_payout?.toLocaleString()}</span>
-        </div>
-      </div>
-    </OutputCard>
-  );
+  const renderPayoutRecommendation = (data: any) => {
+    const breakdown = data.payout_breakdown;
+    const isEscalated = data.status === "escalated" || data.recommended_action === "escalate";
+    
+    return (
+      <OutputCard title="Payout Recommendation" icon={<Landmark className="w-4 h-4" />} status={isEscalated ? "warning" : "success"}>
+        {breakdown ? (
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-neutral-text-secondary">Repair Estimate</span>
+              <span className="font-semibold text-neutral-text-primary">RM {breakdown.repair_estimate_myr?.toLocaleString() || 0}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-neutral-text-tertiary italic">Depreciation</span>
+              <span className="text-semantic-danger/80">- RM {breakdown.depreciation_deducted_myr?.toLocaleString() || 0}</span>
+            </div>
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-neutral-text-tertiary italic">Excess</span>
+              <span className="text-semantic-danger/80">- RM {breakdown.excess_deducted_myr?.toLocaleString() || 0}</span>
+            </div>
+            <div className="border-t border-neutral-border pt-2 mt-2 flex justify-between items-center">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-text-secondary">Final Payout</span>
+              <span className="text-sm font-bold text-brand-primary">RM {breakdown.final_payout_myr?.toLocaleString() || 0}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="text-[11px] text-neutral-text-secondary italic">
+            {data.rationale || "Calculating final payout..."}
+          </div>
+        )}
+      </OutputCard>
+    );
+  };
 
   const renderDamageResult = (data: any) => (
-    <OutputCard title="Damage Assessment" icon={<Wrench className="w-4 h-4" />} status="success">
-      <Field label="Assessment" value={data.assessment || "Analyzing damage..."} />
-      <Field label="Repair Estimate" value={data.total_estimate != null ? `RM ${data.total_estimate.toLocaleString()}` : "N/A"} />
-      <div className="flex flex-wrap gap-1 mt-1">
-        {data.parts_replaced?.map((p: string) => <Tag key={p}>{p}</Tag>)}
-      </div>
+    <OutputCard title="Damage Assessment" icon={<Wrench className="w-4 h-4" />} status={data.suspicious_parts?.length > 0 ? "warning" : "success"}>
+      <Field label="Verified Estimate" value={data.verified_total != null ? `RM ${data.verified_total.toLocaleString()}` : "N/A"} />
+      {data.suspicious_parts?.length > 0 && (
+        <div className="mt-2">
+          <span className="text-[9px] text-semantic-warning font-bold uppercase tracking-wider block mb-1">Suspicious Parts</span>
+          <div className="flex flex-wrap gap-1 mt-1">
+            {data.suspicious_parts.map((p: string) => <Tag key={p}>{p}</Tag>)}
+          </div>
+        </div>
+      )}
     </OutputCard>
   );
 

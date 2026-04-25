@@ -78,6 +78,27 @@ def _ocr_fallback(path: str) -> dict[str, Any]:
         }
 
 
+def _compress_image_to_base64(path: str, max_size: int = 1920) -> str:
+    """Read an image, resize it if too large, convert to JPEG, and return as base64."""
+    import io
+    from PIL import Image as PILImage
+
+    with PILImage.open(path) as img:
+        # Convert to RGB to ensure compatibility with JPEG
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        
+        # Resize if max dimension exceeds max_size
+        if max(img.width, img.height) > max_size:
+            ratio = max_size / float(max(img.width, img.height))
+            new_size = (int(img.width * ratio), int(img.height * ratio))
+            img = img.resize(new_size, PILImage.Resampling.LANCZOS)
+            
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=85)
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
 async def _gemini_vision_once(
     model_name: str,
     mime_type: str,
@@ -131,13 +152,10 @@ async def _extract_image_async(path: str) -> dict[str, Any]:
 
     if gemini_keys:
         try:
-            ext = Path(path).suffix.lower()
-            mime_type = _IMAGE_MIME.get(ext, "image/jpeg")
-            # Upload routes cap images at 5 MB before extraction. This direct
-            # read is acceptable under that contract and keeps Gemini payload
-            # construction simple.
-            image_bytes = await asyncio.to_thread(Path(path).read_bytes)
-            image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+            # Compress the image to dramatically reduce base64 size and prevent timeouts
+            image_b64 = await asyncio.to_thread(_compress_image_to_base64, path)
+            mime_type = "image/jpeg"
+
             timeout_seconds = float(
                 getattr(settings, "GEMINI_VISION_TIMEOUT_SECONDS", _GEMINI_KEY_TIMEOUT)
                 or _GEMINI_KEY_TIMEOUT

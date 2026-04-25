@@ -136,6 +136,9 @@ def require_case(case_id: str) -> CaseState:
 def _document_info_for(state: CaseState) -> list[DocumentInfo]:
     docs: list[DocumentInfo] = []
     base = f"/api/v1/cases/{state.case_id}/documents"
+    
+    # Use tagged mapping if available to set the correct public doc_type
+    tagged_docs = (state.case_facts or {}).get("tagged_documents", {})
 
     def add(doc_type: str, path: Optional[str]) -> None:
         if path:
@@ -149,9 +152,11 @@ def _document_info_for(state: CaseState) -> list[DocumentInfo]:
 
     if state.uploaded_document_paths:
         for i, path in enumerate(state.uploaded_document_paths):
+            # Map index-based uploads to their tagged roles (defaulting to "uploaded")
+            public_doc_type = tagged_docs.get(str(i), "uploaded")
             docs.append(
                 DocumentInfo(
-                    doc_type="uploaded",
+                    doc_type=public_doc_type,
                     filename=os.path.basename(path),
                     url=f"{base}/uploaded/{i}",
                     index=i,

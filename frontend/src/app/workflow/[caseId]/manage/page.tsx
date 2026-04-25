@@ -85,27 +85,8 @@ export default function ManageCasePage({ params }: PageProps) {
     setError(null);
 
     try {
-      // Heuristic mapping
-      const mapped: any = {
-        photos: []
-      };
-
-      files.forEach(f => {
-        const name = f.name.toLowerCase();
-        if (name.includes("police") && !mapped.police_report) {
-          mapped.police_report = f.file;
-        } else if ((name.includes("policy") || name.includes("cover")) && !mapped.policy_pdf) {
-          mapped.policy_pdf = f.file;
-        } else if ((name.includes("quote") || name.includes("quot") || name.includes("repair")) && !mapped.repair_quotation) {
-          mapped.repair_quotation = f.file;
-        } else if (name.includes("adjuster") && !mapped.adjuster_report) {
-          mapped.adjuster_report = f.file;
-        } else {
-          mapped.photos.push(f.file);
-        }
-      });
-
-      await api.submitDocuments(caseId, mapped);
+      const documentFiles = files.map(f => f.file);
+      await api.submitDocuments(caseId, documentFiles);
       
       // Redirect to main workflow view
       router.push(`/workflow/${caseId}`);

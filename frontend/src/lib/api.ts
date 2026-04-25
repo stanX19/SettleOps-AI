@@ -11,11 +11,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let errorDetail = "Unknown error";
+    // Clone the response so we can read it twice (json then text)
+    const cloned = response.clone();
     try {
       const error = await response.json();
       errorDetail = error.detail || JSON.stringify(error);
     } catch (e) {
-      errorDetail = await response.text() || response.statusText;
+      errorDetail = await cloned.text() || response.statusText;
     }
     console.error(`[API Error] ${response.status} ${response.url}:`, errorDetail);
     throw new Error(errorDetail);
@@ -101,25 +103,11 @@ export const api = {
    */
   async submitDocuments(
     caseId: string,
-    files: {
-      police_report?: File;
-      policy_pdf?: File;
-      repair_quotation?: File;
-      photos?: File[];
-      adjuster_report?: File;
-    }
+    documents: File[]
   ): Promise<{ case_id: string; status: CaseStatus }> {
     const form = new FormData();
-    if (files.police_report) form.append("police_report", files.police_report);
-    if (files.policy_pdf) form.append("policy_pdf", files.policy_pdf);
-    if (files.repair_quotation) form.append("repair_quotation", files.repair_quotation);
-    if (files.photos) {
-      for (const photo of files.photos) {
-        form.append("photos", photo);
-      }
-    }
-    if (files.adjuster_report) {
-      form.append("adjuster_report", files.adjuster_report);
+    for (const doc of documents) {
+      form.append("documents", doc);
     }
 
     const res = await fetch(`${API_BASE}/api/v1/cases/${caseId}/documents`, {
@@ -133,14 +121,8 @@ export const api = {
    * Legacy wrapper: Submit a new case with required documents.
    * Now performs draft creation then document submission.
    */
-  async createCase(files: {
-    police_report: File;
-    policy_pdf: File;
-    repair_quotation: File;
-    photos: File[];
-    adjuster_report?: File;
-  }): Promise<{ case_id: string }> {
+  async createCase(documents: File[]): Promise<{ case_id: string }> {
     const draft = await this.initiateDraftCase();
-    return this.submitDocuments(draft.case_id, files);
+    return this.submitDocuments(draft.case_id, documents);
   },
 };
