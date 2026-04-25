@@ -39,12 +39,12 @@ function AttachmentPreviewCard({
   const isImage = item.file.type.startsWith("image/");
 
   return (
-    <div className="group relative flex w-56 shrink-0 items-center gap-3 rounded-xl border border-neutral-border bg-neutral-background p-2 pr-8 text-left shadow-sm">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-surface">
+    <div className="group relative flex w-44 shrink-0 items-center gap-2 rounded-xl border border-neutral-border bg-neutral-surface p-1.5 pr-7 text-left shadow-sm">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-background">
         {isImage ? (
-          <ImageIcon className="h-5 w-5 text-semantic-info" />
+          <ImageIcon className="h-4 w-4 text-semantic-info" />
         ) : (
-          <FileText className="h-5 w-5 text-semantic-danger" />
+          <FileText className="h-4 w-4 text-semantic-danger" />
         )}
       </div>
 
@@ -109,9 +109,9 @@ export function ChatInput({
   const canSend = !disabled && !isSubmitting && (value.trim().length > 0 || stagedFiles.length > 0);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-neutral-border bg-neutral-surface/35 shadow-card transition-colors focus-within:border-brand-primary">
+    <div className="flex flex-col w-full gap-3">
       {stagedFiles.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto px-5 pt-5 pb-2">
+        <div className="flex gap-3 overflow-x-auto pb-1 px-1 custom-scrollbar">
           {stagedFiles.map((item) => (
             <AttachmentPreviewCard
               key={`${item.key}-${item.file.name}-${item.fileIndex}`}
@@ -121,6 +121,8 @@ export function ChatInput({
           ))}
         </div>
       )}
+
+      <div className="overflow-hidden rounded-2xl border border-neutral-border bg-neutral-surface/35 shadow-card transition-colors focus-within:border-brand-primary">
 
       <textarea
         ref={textareaRef}
@@ -167,6 +169,7 @@ export function ChatInput({
           )}
         </button>
       </div>
+    </div>
     </div>
   );
 }

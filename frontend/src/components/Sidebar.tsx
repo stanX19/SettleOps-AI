@@ -17,7 +17,7 @@ export function Sidebar() {
   return (
     <aside className="w-[60px] h-full bg-neutral-surface border-r border-neutral-border flex flex-col items-center py-4 flex-shrink-0 z-20">
       <Link href="/chat">
-        <div className="w-10 h-10 flex items-center justify-center mb-8 cursor-pointer">
+        <div className="w-9 h-9 flex items-center justify-center mb-8 cursor-pointer">
           <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-contain" />
         </div>
       </Link>

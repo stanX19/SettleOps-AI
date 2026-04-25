@@ -217,11 +217,9 @@ export default function ManageCasePage({ params }: PageProps) {
                 </table>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-12 text-center h-full">
-                  <div className="w-16 h-16 bg-neutral-background border border-neutral-border rounded-full flex items-center justify-center mb-4">
-                    <Upload className="w-8 h-8 text-neutral-text-tertiary opacity-20" />
-                  </div>
+                  <Upload className="w-8 h-8 text-white opacity-40 mb-4" />
                   <h4 className="text-neutral-text-primary font-medium mb-1">No evidence uploaded yet</h4>
-                  <p className="text-xs text-neutral-text-tertiary max-w-[240px]">
+                  <p className="text-xs text-neutral-text-tertiary max-w-[480px]">
                     Upload relevant PDF documents or images (Police Report, Policy, Quote) to begin the settlement orchestration.
                   </p>
                   <Button variant="ghost" onClick={handleUploadClick} className="mt-4 text-brand-primary">
@@ -250,11 +248,9 @@ export default function ManageCasePage({ params }: PageProps) {
             </div>
 
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-neutral-background/10 overflow-y-auto">
-              <div className="w-12 h-12 bg-neutral-background border border-neutral-border rounded-full flex items-center justify-center mb-4">
-                <FileText className="w-6 h-6 text-neutral-text-tertiary opacity-20" />
-              </div>
+              <FileText className="w-6 h-6 text-white opacity-40 mb-4" />
               <h4 className="text-neutral-text-primary font-medium mb-1 text-sm">Final report hasn't generated</h4>
-              <p className="text-[11px] text-neutral-text-tertiary max-w-[180px]">
+              <p className="text-[11px] text-neutral-text-tertiary max-w-[320px]">
                 Complete the workflow orchestration to generate the final settlement report.
               </p>
             </div>

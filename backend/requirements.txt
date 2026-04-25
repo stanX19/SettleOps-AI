@@ -26,3 +26,4 @@ markitdown[all]
 pytesseract
 Pillow
 pytest
+websockets>=13.0

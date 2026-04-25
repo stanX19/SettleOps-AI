@@ -12,6 +12,7 @@ import {
 } from "@/components/chat/types";
 import { ChatMessageBubble, BotTypingIndicator } from "@/components/chat/ChatMessage";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { ArrowDown } from "lucide-react";
 
 type SingleFileDocKey = Exclude<DocKey, "photos">;
 const PDF_DOC_ORDER: SingleFileDocKey[] = ["police_report", "policy_pdf", "repair_quotation", "adjuster_report"];
@@ -111,6 +112,7 @@ export default function ChatPage() {
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stagedDocs, setStagedDocs] = useState<Partial<Record<DocKey, File[]>>>({});
+  const [showScrollButton, setShowScrollButton] = useState(false);
 
   const threadRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -118,10 +120,26 @@ export default function ChatPage() {
   const hasUserMessages = messages.some((m) => m.role === "user");
 
   useEffect(() => {
-    if (threadRef.current) {
-      threadRef.current.scrollTop = threadRef.current.scrollHeight;
-    }
+    const el = threadRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages, isBotTyping]);
+
+  const handleScroll = useCallback(() => {
+    if (!threadRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = threadRef.current;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setShowScrollButton(!isAtBottom);
+  }, []);
+
+  const scrollToBottom = () => {
+    if (threadRef.current) {
+      threadRef.current.scrollTo({
+        top: threadRef.current.scrollHeight,
+        behavior: "smooth"
+      });
+    }
+  };
 
   const addBotReply = useCallback((msg: ChatMessage) => {
     setIsBotTyping(true);
@@ -298,7 +316,11 @@ export default function ChatPage() {
       {hasUserMessages && (
         <div className="flex flex-col h-full bg-neutral-background">
           {/* Scrollable thread */}
-          <div ref={threadRef} className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar">
+          <div
+            ref={threadRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar"
+          >
             <div
               className="mx-auto flex w-full min-w-0 flex-col gap-6"
               style={{ maxWidth: "42rem" }}
@@ -311,8 +333,18 @@ export default function ChatPage() {
           </div>
 
           {/* Sticky input bar at bottom */}
-          <div className="bg-transparent px-4 py-4">
+          <div className="bg-transparent px-4 py-4 relative">
             <div className="mx-auto w-full min-w-0" style={{ maxWidth: "42rem" }}>
+              {/* Scroll to bottom button */}
+              {showScrollButton && (
+                <button
+                  onClick={scrollToBottom}
+                  className="absolute -top-8 left-1/2 -translate-x-1/2 p-2 rounded-full bg-neutral-surface border-1 border-white text-neutral-text-primary hover:bg-neutral-background transition-all animate-in fade-in slide-in-from-bottom-2 z-30"
+                  aria-label="Scroll to bottom"
+                >
+                  <ArrowDown className="w-4 h-4" />
+                </button>
+              )}
               <InputFooter {...inputFooterProps} />
             </div>
           </div>

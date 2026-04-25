@@ -35,7 +35,7 @@ export function ChatMessageBubble({ message, onUploadForDoc }: ChatMessageProps)
                 return (
                   <div
                     key={`${att.key}-${file.name}-${index}`}
-                    className="flex max-w-56 items-center gap-2 rounded-xl border border-neutral-border bg-neutral-surface px-3 py-2 text-left shadow-sm"
+                    className="flex w-44 items-center gap-2 rounded-xl border border-neutral-border bg-neutral-surface px-2 py-1.5 text-left shadow-sm"
                   >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-neutral-background">
                       {isImage ? (
