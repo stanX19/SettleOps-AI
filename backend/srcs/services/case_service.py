@@ -68,7 +68,7 @@ from srcs.services.case_store import (
 from srcs.services.sse_service import SseService
 
 logger = logging.getLogger(__name__)
-from srcs.schemas.state import ClaimWorkflowState
+from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes
 from srcs.services.workflow_engine import (
     run_workflow_with_sse,
     resume_workflow_with_sse as resume_workflow_with_sse_engine,
@@ -162,13 +162,19 @@ def _document_info_for(state: CaseState) -> list[DocumentInfo]:
     if state.uploaded_document_paths:
         for i, path in enumerate(state.uploaded_document_paths):
             # Map index-based uploads to their tagged roles (defaulting to "uploaded")
-            public_doc_type = tagged_docs.get(str(i), "uploaded")
+            raw_tags = tagged_docs.get(str(i), "uploaded")
+            if isinstance(raw_tags, list):
+                public_doc_type = raw_tags[0] if raw_tags else "uploaded"
+            else:
+                public_doc_type = raw_tags
+
             docs.append(
                 DocumentInfo(
                     doc_type=public_doc_type,
                     filename=os.path.basename(path),
                     url=f"{base}/uploaded/{i}",
                     index=i,
+                    tags=raw_tags if isinstance(raw_tags, list) else [raw_tags]
                 )
             )
     else:
@@ -427,10 +433,10 @@ def build_repair_approval_data(state: CaseState) -> RepairApprovalData:
         workshop_address=facts.get("workshop_address") or "N/A",
         workshop_phone=facts.get("workshop_phone") or "N/A",
         costs=CostBreakdown(
-            parts=float(breakdown.get("repair_estimate_myr") or 0.0),
-            labour=0.0, # Breakdown logic can be refined later if agents extract it
-            paint=0.0,
-            towing=0.0,
+            parts=float(breakdown.get("verified_parts") or 0.0),
+            labour=float(breakdown.get("verified_labour") or 0.0),
+            paint=float(breakdown.get("verified_paint") or 0.0),
+            towing=float(breakdown.get("verified_towing") or 0.0),
             misc=0.0
         ),
         approved_by="MyClaim Agentic Engine",
@@ -752,8 +758,22 @@ async def run_pipeline(case_id: str) -> None:
         initial_workflow_state = _to_workflow_state(state)
         
         # Execute the Agentic Graph
-        await run_workflow_with_sse(case_id, initial_workflow_state)
+        final_state_wrapper = await run_workflow_with_sse(case_id, initial_workflow_state)
 
+        # 2. Check for interrupts (HITL or Missing Docs)
+        # If the graph has 'next' nodes, it means it hit an interrupt point.
+        if final_state_wrapper and final_state_wrapper.next:
+            async with CaseStore.lock(case_id):
+                if WorkflowNodes.WAIT_FOR_DOCS in final_state_wrapper.next:
+                    transition_status(state, CaseStatus.AWAITING_DOCS)
+                elif WorkflowNodes.DECISION_GATE in final_state_wrapper.next:
+                    # Case reached auditor decision point, awaiting officer action
+                    transition_status(state, CaseStatus.AWAITING_APPROVAL)
+                
+                state.current_agent = None
+            return
+
+        # 3. Normal completion (Reached END)
         # Sync back final artifacts (SSE for this will be separate or handled by frontend refresh)
         await generate_artifacts(state)
 
@@ -917,9 +937,20 @@ async def resume_workflow_with_sse(
 
         # 5. Execute Resumption
         from srcs.services.workflow_engine import resume_workflow_with_sse as resume_workflow_with_sse_engine
-        await resume_workflow_with_sse_engine(case_id, updates)
+        final_state_wrapper = await resume_workflow_with_sse_engine(case_id, updates)
 
-        # 6. Finalize
+        # 6. Check for interrupts (HITL or Missing Docs)
+        if final_state_wrapper and final_state_wrapper.next:
+            async with CaseStore.lock(case_id):
+                if WorkflowNodes.WAIT_FOR_DOCS in final_state_wrapper.next:
+                    transition_status(state, CaseStatus.AWAITING_DOCS)
+                elif WorkflowNodes.DECISION_GATE in final_state_wrapper.next:
+                    transition_status(state, CaseStatus.AWAITING_APPROVAL)
+                
+                state.current_agent = None
+            return
+
+        # 7. Normal completion
         await generate_artifacts(state)
 
         async with CaseStore.lock(case_id):

@@ -20,12 +20,14 @@ import {
   Wrench,
   Mic,
   Volume2,
-  Square
+  Square,
+  Edit3
 } from "lucide-react"
 import { useCaseStore } from "@/stores/case-store"
 import { BlackboardSection, CaseStatus, OfficerMessageInfo } from "@/lib/types"
 import { api } from "@/lib/api"
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer"
+import { Button } from "@/components/primitives/Button"
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -118,9 +120,12 @@ export function BlackboardPane() {
   const [isSending, setIsSending] = useState(false);
   const [isChallengeMode, setIsChallengeMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isEditingPayout, setIsEditingPayout] = useState(false);
+  const [overrideData, setOverrideData] = useState<any>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({}); // msg_id -> tts_url
   const isSyncing = status === CaseStatus.RUNNING;
+  const isAwaitingApproval = status === CaseStatus.AWAITING_APPROVAL || status === CaseStatus.ESCALATED;
 
   // SSE for Chatbot (AI Strategist)
   useEffect(() => {
@@ -307,6 +312,118 @@ export function BlackboardPane() {
     const isEscalated = data.status === "escalated" || data.recommended_action === "escalate";
     const missingFields: string[] = data.missing_fields || [];
     
+    const handleSaveOverride = async () => {
+      if (!caseId || !overrideData) return;
+      setIsSending(true);
+      try {
+        // Recalculate final payout based on overrides
+        const total = (overrideData.verified_parts || 0) + (overrideData.verified_labour || 0) + (overrideData.verified_paint || 0) + (overrideData.verified_towing || 0);
+        const depr = total * ((overrideData.depreciation_percent || 0) / 100);
+        const adjusted = total - depr;
+        const final = Math.max(adjusted - (overrideData.excess_deducted_myr || 0), 0);
+
+        const updatedBreakdown = {
+          ...overrideData,
+          repair_estimate_myr: total,
+          depreciation_deducted_myr: depr,
+          liability_adjusted_myr: adjusted,
+          final_payout_myr: final,
+        };
+
+        const updatedPayout = {
+          ...data,
+          payout_breakdown: updatedBreakdown,
+          status: "approved_manual",
+          rationale: "Manual override by officer."
+        };
+
+        await api.updateBlackboardSection(caseId, BlackboardSection.PAYOUT_RECOMMENDATION, updatedPayout);
+        // Update local store
+        useCaseStore.getState().handleAgentOutput({
+          section: BlackboardSection.PAYOUT_RECOMMENDATION,
+          data: updatedPayout
+        });
+        setIsEditingPayout(false);
+      } catch (err) {
+        console.error("Failed to save override:", err);
+      } finally {
+        setIsSending(false);
+      }
+    };
+
+    if (isEditingPayout && overrideData) {
+      return (
+        <OutputCard title="Manual Payout Override" icon={<Edit3 className="w-4 h-4" />} status="warning">
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Parts (RM)</label>
+                <input 
+                  type="number" 
+                  value={overrideData.verified_parts} 
+                  onChange={e => setOverrideData({...overrideData, verified_parts: parseFloat(e.target.value)})}
+                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Labour (RM)</label>
+                <input 
+                  type="number" 
+                  value={overrideData.verified_labour} 
+                  onChange={e => setOverrideData({...overrideData, verified_labour: parseFloat(e.target.value)})}
+                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Paint (RM)</label>
+                <input 
+                  type="number" 
+                  value={overrideData.verified_paint} 
+                  onChange={e => setOverrideData({...overrideData, verified_paint: parseFloat(e.target.value)})}
+                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Towing (RM)</label>
+                <input 
+                  type="number" 
+                  value={overrideData.verified_towing} 
+                  onChange={e => setOverrideData({...overrideData, verified_towing: parseFloat(e.target.value)})}
+                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Excess (RM)</label>
+                <input 
+                  type="number" 
+                  value={overrideData.excess_deducted_myr} 
+                  onChange={e => setOverrideData({...overrideData, excess_deducted_myr: parseFloat(e.target.value)})}
+                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Depreciation (%)</label>
+                <input 
+                  type="number" 
+                  value={overrideData.depreciation_percent || 0} 
+                  onChange={e => setOverrideData({...overrideData, depreciation_percent: parseFloat(e.target.value)})}
+                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
+                />
+              </div>
+            </div>
+            <div className="flex space-x-2 pt-2">
+              <Button size="sm" variant="default" className="flex-1 bg-brand-primary text-black" onClick={handleSaveOverride} disabled={isSending}>
+                {isSending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save Changes"}
+              </Button>
+              <Button size="sm" variant="secondary" className="flex-1" onClick={() => setIsEditingPayout(false)} disabled={isSending}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </OutputCard>
+      );
+    }
+
     // Human-readable labels for missing fields
     const fieldLabels: Record<string, string> = {
       "excess_myr": "Policy Excess (deductible amount the insured must pay)",
@@ -373,6 +490,28 @@ export function BlackboardPane() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-text-secondary">Final Payout</span>
               <span className="text-sm font-bold text-brand-primary">RM {breakdown.final_payout_myr?.toLocaleString() || 0}</span>
             </div>
+            
+            {isAwaitingApproval && !isEditingPayout && (
+              <div className="pt-3 border-t border-neutral-border/50 mt-3">
+                <button 
+                  onClick={() => {
+                    setOverrideData({
+                      verified_parts: breakdown.verified_parts || 0,
+                      verified_labour: breakdown.verified_labour || 0,
+                      verified_paint: breakdown.verified_paint || 0,
+                      verified_towing: breakdown.verified_towing || 0,
+                      excess_deducted_myr: breakdown.excess_deducted_myr || 0,
+                      depreciation_percent: 0 // Default to re-calculate
+                    });
+                    setIsEditingPayout(true);
+                  }}
+                  className="w-full py-1.5 border border-brand-primary/30 text-brand-primary rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-brand-primary/10 transition-colors flex items-center justify-center"
+                >
+                  <Edit3 className="w-3 h-3 mr-2" />
+                  Override Calculations
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="text-[11px] text-neutral-text-secondary italic">

@@ -13,9 +13,21 @@ export function ActionBar() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
 
-  if (!caseId || ![CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED].includes(status)) {
+  if (!caseId || ![CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS].includes(status)) {
     return null;
   }
+
+  const handleResume = async () => {
+    try {
+      setIsSubmitting(true);
+      // We use the documents upload endpoint with no new files to trigger a resume/re-validation
+      await api.submitDocuments(caseId, []);
+    } catch (error) {
+      console.error("Failed to resume workflow:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleApprove = async () => {
     setIsSignatureModalOpen(true);
@@ -74,24 +86,38 @@ export function ActionBar() {
       </div>
 
       <div className="flex space-x-3">
-        <Button 
-          variant="secondary" 
-          className="border-neutral-border text-neutral-text-primary h-9 rounded-md px-4 py-2 text-sm font-medium hover:bg-neutral-background"
-          disabled={isSubmitting}
-          onClick={() => useCaseStore.getState().setBlackboardMode('chat')}
-        >
-          <Edit3 className="w-4 h-4 mr-2 text-brand-primary" />
-          Modify
-        </Button>
-        <Button 
-          variant="default" 
-          className="h-9 rounded-md px-6 py-2 text-sm font-semibold bg-brand-primary hover:bg-brand-primary/90 text-neutral-white shadow-lg shadow-brand-primary/20"
-          onClick={handleApprove}
-          disabled={isSubmitting || isConfirmingDecline}
-        >
-          {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
-          Approve Settlement
-        </Button>
+        {status === CaseStatus.AWAITING_DOCS ? (
+          <Button 
+            variant="default" 
+            className="h-9 rounded-md px-6 py-2 text-sm font-semibold bg-brand-primary hover:bg-brand-primary/90 text-neutral-white shadow-lg shadow-brand-primary/20"
+            onClick={handleResume}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+            Resume Pipeline
+          </Button>
+        ) : (
+          <>
+            <Button 
+              variant="secondary" 
+              className="border-neutral-border text-neutral-text-primary h-9 rounded-md px-4 py-2 text-sm font-medium hover:bg-neutral-background"
+              disabled={isSubmitting}
+              onClick={() => useCaseStore.getState().setBlackboardMode('chat')}
+            >
+              <Edit3 className="w-4 h-4 mr-2 text-brand-primary" />
+              Modify
+            </Button>
+            <Button 
+              variant="default" 
+              className="h-9 rounded-md px-6 py-2 text-sm font-semibold bg-brand-primary hover:bg-brand-primary/90 text-neutral-white shadow-lg shadow-brand-primary/20"
+              onClick={handleApprove}
+              disabled={isSubmitting || isConfirmingDecline}
+            >
+              {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+              Approve Settlement
+            </Button>
+          </>
+        )}
       </div>
 
       <SignatureModal 

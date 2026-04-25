@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/primitives/Button';
-import { Settings } from 'lucide-react';
+import { Settings, AlertCircle } from 'lucide-react';
 import { useCaseStore } from '@/stores/case-store';
 import { AgentId, AgentStatus, CaseStatus } from '@/lib/types';
 import { useParams } from 'next/navigation';
@@ -341,11 +341,15 @@ export function WorkflowPane() {
           <h2 className="text-lg font-semibold text-neutral-text-primary">Live Orchestration</h2>
           <div className="text-sm font-mono text-neutral-text-secondary mt-1 flex items-center">
             Workflow:
-            <span className={`ml-2 flex items-center ${caseStatus === CaseStatus.RUNNING ? 'text-brand-primary' :
-              caseStatus === CaseStatus.AWAITING_APPROVAL ? 'text-semantic-success' : 'text-neutral-text-tertiary'
+            <span className={`ml-2 flex items-center ${
+              caseStatus === CaseStatus.RUNNING ? 'text-brand-primary' :
+              caseStatus === CaseStatus.AWAITING_APPROVAL ? 'text-semantic-success' : 
+              caseStatus === CaseStatus.AWAITING_DOCS ? 'text-semantic-danger' :
+              'text-neutral-text-tertiary'
               }`}>
               {caseStatus === CaseStatus.RUNNING && <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse mr-2"></span>}
-              {(caseStatus || '').toUpperCase()}
+              {caseStatus === CaseStatus.AWAITING_DOCS && <AlertCircle className="w-3.5 h-3.5 mr-2" />}
+              {(caseStatus || '').toUpperCase().replace('_', ' ')}
             </span>
           </div>
         </div>

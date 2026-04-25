@@ -41,15 +41,19 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
     prompt = f"""
     You are an insurance intake specialist. Categorize the following NEW documents into these 8 required slots:
     {", ".join(REQUIRED_DOCS)}
-    If a document does not fit or is ambiguous, use "unknown".
+    
+    IMPORTANT: A single document can belong to MULTIPLE categories. 
+    For example, a photo of a car damage that also clearly shows the license plate should be tagged as BOTH "car_photo_plate" and "damage_closeup".
+    
+    If a document does not fit any category, use "unknown".
     Use the document content first, then filename and doc_type_hint as supporting clues.
     Photo/image snippets may be AI vision descriptions rather than literal OCR text.
 
     Documents:
     {new_docs_to_process}
 
-    Return a JSON object mapping the document index (as string) to the category.
-    Example: {{"0": "police_report", "1": "car_photo_plate"}}
+    Return a JSON object mapping the document index (as string) to a LIST of categories.
+    Example: {{"0": ["police_report"], "1": ["car_photo_plate", "damage_closeup"]}}
     """
 
     try:
@@ -60,22 +64,28 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
         sanitized_tags = {}
         new_indices = []
         for key, value in tagged.items():
-            if value not in REQUIRED_DOCS and value != "unknown":
+            # Support both single strings (legacy/stubborn LLM) and lists
+            tags_list = [value] if isinstance(value, str) else value if isinstance(value, list) else []
+            
+            valid_tags = [t for t in tags_list if t in REQUIRED_DOCS or t == "unknown"]
+            if not valid_tags:
                 continue
+                
             try:
                 index = int(key)
             except (TypeError, ValueError):
                 continue
             if index < 0 or index >= len(docs):
                 continue
-            sanitized_tags[str(index)] = value
+            sanitized_tags[str(index)] = valid_tags
             new_indices.append(index)
+        
         merged_tags = {**existing_tags, **sanitized_tags}
         
         return {
             "case_facts": {"tagged_documents": merged_tags},
             "processed_indices": new_indices,
-            "trace_log": [f"[Intake] Tagged {len(sanitized_tags)} new documents."]
+            "trace_log": [f"[Intake] Tagged {len(sanitized_tags)} new documents (multi-tag support enabled)."]
         }
     except Exception as e:
         return {
@@ -85,7 +95,14 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
 def validation_gate(state: ClaimWorkflowState) -> dict[str, Any]:
     """Deterministic check to ensure all 8 required document types are present."""
     tagged_docs = state.get("case_facts", {}).get("tagged_documents", {})
-    found_types = set(tagged_docs.values())
+    
+    # Flatten all tags from all documents
+    found_types = set()
+    for tags in tagged_docs.values():
+        if isinstance(tags, list):
+            found_types.update(tags)
+        else:
+            found_types.add(tags)
     
     missing = [doc_type for doc_type in REQUIRED_DOCS if doc_type not in found_types]
     

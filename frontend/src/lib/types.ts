@@ -63,6 +63,7 @@ export interface DocumentInfo {
   filename: string;
   url: string;
   index?: number; // populated for photos
+  tags?: string[];
 }
 
 export interface ArtifactInfo {

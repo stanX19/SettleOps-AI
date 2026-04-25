@@ -1,7 +1,7 @@
 import { useCaseStore } from "../stores/case-store";
 import { CaseSseEventName } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
 
 export class SseClient {
   private eventSource: EventSource | null = null;
@@ -50,7 +50,7 @@ export class SseClient {
     });
 
     this.eventSource.onerror = (error) => {
-      console.error("SSE Connection Error:", error);
+      console.error("SSE Connection Error for case:", this.caseId, "State:", this.eventSource?.readyState, error);
       this.disconnect();
       // Auto-reconnect could be implemented here with a timeout
     };

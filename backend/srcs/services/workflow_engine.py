@@ -72,7 +72,7 @@ def build_workflow() -> StateGraph:
     # 1. Intake Phase
     builder.add_node("ingest_tagging", node_sse_wrapper("ingest_tagging", ingest_tagging))
     builder.add_node("entity_extraction", node_sse_wrapper("entity_extraction", entity_extraction_node))
-    builder.add_node("validation_gate", validation_gate)
+    builder.add_node("validation_gate", node_sse_wrapper("validation_gate", validation_gate))
     builder.add_node("wait_for_docs", wait_for_docs_node)
     
     # 2. Analysis Phase (Clusters)
@@ -98,7 +98,14 @@ def build_workflow() -> StateGraph:
     # 4. Refinement & Decision Phase
     builder.add_node(WorkflowNodes.DECISION_GATE, decision_gate_logic)
     builder.add_node(WorkflowNodes.REFINER, node_sse_wrapper(WorkflowNodes.REFINER, refiner_node))
-    builder.add_node(WorkflowNodes.REPORT_GENERATOR, lambda x: {"status": "completed"})
+    async def run_report_gen(state):
+        case = CaseStore.get(state["case_id"])
+        if case:
+            from srcs.services.case_service import generate_artifacts
+            await generate_artifacts(case)
+        return {"status": "completed"}
+
+    builder.add_node(WorkflowNodes.REPORT_GENERATOR, node_sse_wrapper(WorkflowNodes.REPORT_GENERATOR, run_report_gen))
 
     # -- Edges & Routing ------------------------------------------------------
     
@@ -160,6 +167,7 @@ def build_workflow() -> StateGraph:
 _NODE_TO_AGENT = {
     "ingest_tagging": AgentId.INTAKE,
     "entity_extraction": AgentId.INTAKE,
+    "validation_gate": AgentId.INTAKE,
     WorkflowNodes.POLICY_CLUSTER: AgentId.POLICY,
     WorkflowNodes.LIABILITY_CLUSTER: AgentId.LIABILITY,
     WorkflowNodes.DAMAGE_CLUSTER: AgentId.DAMAGE,
@@ -171,6 +179,7 @@ _NODE_TO_AGENT = {
 _NODE_TO_SECTION = {
     "ingest_tagging": BlackboardSection.CASE_FACTS,
     "entity_extraction": BlackboardSection.CASE_FACTS,
+    "validation_gate": BlackboardSection.CASE_FACTS,
     WorkflowNodes.POLICY_CLUSTER: BlackboardSection.POLICY_VERDICT,
     WorkflowNodes.LIABILITY_CLUSTER: BlackboardSection.LIABILITY_VERDICT,
     WorkflowNodes.DAMAGE_CLUSTER: BlackboardSection.DAMAGE_RESULT,
@@ -243,6 +252,7 @@ async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkf
         chatbox_enabled=display_status in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS),
         topology=TOPOLOGY
     ))
+    return final_state_wrapper
 
 async def resume_workflow_with_sse(case_id: str, updates: dict):
     """Resumes a suspended graph thread with new state updates."""
@@ -253,7 +263,7 @@ async def resume_workflow_with_sse(case_id: str, updates: dict):
     await graph.aupdate_state(config, updates)
     
     # Resume execution (passing None to signal resumption of existing thread)
-    await run_workflow_with_sse(case_id, None)
+    return await run_workflow_with_sse(case_id, None)
 
 def node_sse_wrapper(node_name: str, func):
     """Wraps a node to automatically emit SSE status and data updates."""

@@ -162,4 +162,13 @@ export const api = {
     });
     return handleResponse(res);
   },
+
+  async updateBlackboardSection(caseId: string, section: string, data: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/api/v1/cases/${caseId}/blackboard/${section}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return handleResponse(res);
+  },
 };

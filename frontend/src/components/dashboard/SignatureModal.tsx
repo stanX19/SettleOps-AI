@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/primitives/Button";
 import { api } from "@/lib/api";
+import { BlackboardSection } from "@/lib/types";
+import { useCaseStore } from "@/stores/case-store";
 
 interface SignatureModalProps {
   isOpen: boolean;
@@ -26,6 +28,9 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
   const [designation, setDesignation] = useState("Claims Management Department");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+
+  const payoutBreakdown = useCaseStore(state => state.blackboard[BlackboardSection.PAYOUT_RECOMMENDATION]?.payout_breakdown);
+  const finalPayout = payoutBreakdown?.final_payout_myr || 0;
 
   if (!isOpen) return null;
 
@@ -86,7 +91,7 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
             <>
               <div className="bg-brand-primary/5 border border-brand-primary/10 p-4 rounded-lg mb-6">
                 <p className="text-[11px] text-neutral-text-secondary leading-relaxed">
-                  By signing this document, you are confirming that all agent findings have been verified and the final settlement amount of <strong>RM 4,500.00</strong> is approved for payout.
+                  By signing this document, you are confirming that all agent findings have been verified and the final settlement amount of <strong>RM {finalPayout.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> is approved for payout.
                 </p>
               </div>
 

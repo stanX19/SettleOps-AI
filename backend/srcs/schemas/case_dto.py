@@ -92,6 +92,7 @@ class DocumentInfo(BaseModel):
     filename: str
     url: str
     index: Optional[int] = None  # populated for photos
+    tags: list[str] = []
 
 
 class ArtifactInfo(BaseModel):

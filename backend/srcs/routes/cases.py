@@ -598,6 +598,28 @@ async def approve_case(case_id: str, background: BackgroundTasks) -> ApproveResp
     return ApproveResponse(status=state.status, pdf_ready=current_artifacts_ready(state))
 
 
+@router.patch("/{case_id}/blackboard/{section}")
+async def update_blackboard_section(
+    case_id: str, 
+    section: str, 
+    body: dict[str, Any]
+) -> dict[str, Any]:
+    state = require_case(case_id)
+    try:
+        sec_enum = BlackboardSection(section)
+    except ValueError:
+        raise api_error(400, ErrorCode.INVALID_STATUS, f"Invalid blackboard section: {section}")
+
+    async with CaseStore.lock(case_id):
+        # Update the blackboard section using the internal setter
+        state.set_section_data(sec_enum, body)
+        # Clear any existing artifacts so they are regenerated with new data
+        for rec in state.artifacts:
+            rec.superseded = True
+        
+    return {"status": "success", "section": section, "data": body}
+
+
 # -- Officer: decline --------------------------------------------------------
 
 @router.post("/{case_id}/decline", response_model=DeclineResponse)

@@ -61,6 +61,10 @@ def payout_node(state: ClaimWorkflowState) -> dict[str, Any]:
         "recommended_action": "approve" if final_payout > 0 else "decline",
         "payout_breakdown": {
             "repair_estimate_myr": round(verified_total, 2),
+            "verified_parts": round(float(damage.get("verified_parts") or 0.0), 2),
+            "verified_labour": round(float(damage.get("verified_labour") or 0.0), 2),
+            "verified_paint": round(float(damage.get("verified_paint") or 0.0), 2),
+            "verified_towing": round(float(damage.get("verified_towing") or 0.0), 2),
             "depreciation_deducted_myr": round(depreciation_deducted, 2),
             "liability_adjusted_myr": round(liability_adjusted, 2),
             "excess_deducted_myr": round(excess, 2),

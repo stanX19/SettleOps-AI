@@ -137,8 +137,13 @@ async def damage_quote_audit_task(state: ClusterState, feedback: Optional[str] =
     
     Feedback: {feedback if feedback else "None"}
     
+    IMPORTANT: Extract the cost breakdown in MYR.
     Required JSON:
-    - verified_total: float
+    - verified_parts: float
+    - verified_labour: float
+    - verified_paint: float
+    - verified_towing: float
+    - verified_total: float (sum of all verified costs)
     - suspicious_parts: list[str]
     
     Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
