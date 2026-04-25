@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/primitives/Button';
-import { Settings } from 'lucide-react';
+import { Settings, AlertCircle } from 'lucide-react';
 import { useCaseStore } from '@/stores/case-store';
 import { AgentId, AgentStatus, CaseStatus } from '@/lib/types';
 import { useParams } from 'next/navigation';
@@ -102,6 +102,8 @@ const Y_CLUSTER = 220;
 const Y_PAYOUT = 520;
 const Y_AUDITOR = 700;
 
+import { AgentDetailsModal } from './AgentDetailsModal';
+
 export function WorkflowPane() {
   const params = useParams();
   const caseId = params?.caseId as string;
@@ -110,6 +112,12 @@ export function WorkflowPane() {
   const caseStatus = useCaseStore(state => state.status);
   const agents = useCaseStore(state => state.agents);
   const topology = useCaseStore(state => state.topology);
+  const setSelectedAgentId = useCaseStore(state => state.setSelectedAgentId);
+  const setBlackboardMode = useCaseStore(state => state.setBlackboardMode);
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedAgentForModal, setSelectedAgentForModal] = useState<AgentId | null>(null);
 
   // 1. Calculate the initial layout (nodes and edges)
   const { initialNodes, initialEdges } = useMemo(() => {
@@ -316,8 +324,41 @@ export function WorkflowPane() {
     }));
   }, [agents, setNodes, setEdges]);
 
+  const onNodeClick = (_: React.MouseEvent, node: Node) => {
+    // If it's a top-level agent or cluster ID that exists in agents store
+    let agentId: AgentId | null = null;
+    if (agents[node.id]) {
+      agentId = node.id as AgentId;
+    } else {
+      // Check if it's an aggregator or subtask by finding the parent
+      for (const [parentId, parentState] of Object.entries(agents)) {
+        if (node.id === `${parentId}-aggregator` || (parentState.sub_tasks && parentState.sub_tasks[node.id])) {
+          agentId = parentId as AgentId;
+          break;
+        }
+      }
+    }
+
+    if (agentId) {
+      setSelectedAgentForModal(agentId);
+      setModalOpen(true);
+    }
+  };
+
   return (
     <div className="flex-1 w-full h-full relative border-r border-neutral-border">
+      {/* Agent Details Modal */}
+      <AgentDetailsModal 
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        agentId={selectedAgentForModal}
+        agentInfo={selectedAgentForModal ? agents[selectedAgentForModal] : null}
+        onSelectForChat={(id) => {
+          setSelectedAgentId(id);
+          setBlackboardMode('chat');
+        }}
+      />
+
       {/* Error Overlay for failed fetches */}
       {!topology && caseStatus === CaseStatus.SUBMITTED && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-neutral-background/80 backdrop-blur-sm p-4">
@@ -341,11 +382,15 @@ export function WorkflowPane() {
           <h2 className="text-lg font-semibold text-neutral-text-primary">Live Orchestration</h2>
           <div className="text-sm font-mono text-neutral-text-secondary mt-1 flex items-center">
             Workflow:
-            <span className={`ml-2 flex items-center ${caseStatus === CaseStatus.RUNNING ? 'text-brand-primary' :
-              caseStatus === CaseStatus.AWAITING_APPROVAL ? 'text-semantic-success' : 'text-neutral-text-tertiary'
+            <span className={`ml-2 flex items-center ${
+              caseStatus === CaseStatus.RUNNING ? 'text-brand-primary' :
+              caseStatus === CaseStatus.AWAITING_APPROVAL ? 'text-semantic-success' : 
+              caseStatus === CaseStatus.AWAITING_DOCS ? 'text-semantic-danger' :
+              'text-neutral-text-tertiary'
               }`}>
               {caseStatus === CaseStatus.RUNNING && <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse mr-2"></span>}
-              {(caseStatus || '').toUpperCase()}
+              {caseStatus === CaseStatus.AWAITING_DOCS && <AlertCircle className="w-3.5 h-3.5 mr-2" />}
+              {(caseStatus || '').toUpperCase().replace('_', ' ')}
             </span>
           </div>
         </div>
@@ -370,6 +415,7 @@ export function WorkflowPane() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
+        onNodeClick={onNodeClick}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         className="bg-neutral-background"

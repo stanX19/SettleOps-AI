@@ -76,6 +76,7 @@ class ChatRequest(BaseModel):
     """Request body for sending a chat message."""
     topic_id: str
     message: str
+    agent_id: Optional[str] = None
 
 
 class ChatMessageResponse(BaseModel):

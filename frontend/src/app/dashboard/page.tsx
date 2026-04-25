@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   Filter,
@@ -11,79 +11,78 @@ import {
   Clock,
   User,
   ArrowUpRight,
-  Plus
+  Plus,
+  Loader2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { api } from "@/lib/api";
+import { CaseListItem, CaseStatus } from "@/lib/types";
 
-interface Claim {
-  id: string;
-  claimant: string;
-  vehicle: string;
-  policy: string;
-  lossDate: string;
-  status: "In Progress" | "Pending Review" | "Awaiting Docs" | "Completed" | "Escalated";
-  priority: "Low" | "Medium" | "High" | "Critical";
-  assigned: string;
+type DisplayStatus = "In Progress" | "Pending Review" | "Awaiting Docs" | "Completed" | "Escalated" | "Draft" | "Failed";
+
+function mapCaseStatus(status: CaseStatus): DisplayStatus {
+  switch (status) {
+    case CaseStatus.RUNNING:
+    case CaseStatus.SUBMITTED:
+      return "In Progress";
+    case CaseStatus.AWAITING_APPROVAL:
+      return "Pending Review";
+    case CaseStatus.AWAITING_DOCS:
+      return "Awaiting Docs";
+    case CaseStatus.APPROVED:
+      return "Completed";
+    case CaseStatus.ESCALATED:
+      return "Escalated";
+    case CaseStatus.DECLINED:
+    case CaseStatus.FAILED:
+      return "Failed";
+    case CaseStatus.DRAFT:
+      return "Draft";
+    default:
+      return "In Progress";
+  }
 }
 
-const mockClaims: Claim[] = [
-  {
-    id: "CLM-29384",
-    claimant: "Alex Rivers",
-    vehicle: "2022 Tesla Model 3",
-    policy: "POL-88219",
-    lossDate: "2h ago",
-    status: "In Progress",
-    priority: "High",
-    assigned: "JD"
-  },
-  {
-    id: "CLM-29385",
-    claimant: "Sarah Chen",
-    vehicle: "2021 BMW X5",
-    policy: "POL-77102",
-    lossDate: "5h ago",
-    status: "Pending Review",
-    priority: "Medium",
-    assigned: "SK"
-  },
-  {
-    id: "CLM-29386",
-    claimant: "Michael Brown",
-    vehicle: "2023 Ford F-150",
-    policy: "POL-99384",
-    lossDate: "1d ago",
-    status: "Awaiting Docs",
-    priority: "Low",
-    assigned: "JD"
-  },
-  {
-    id: "CLM-29387",
-    claimant: "Elena Rodriguez",
-    vehicle: "2020 Honda CR-V",
-    policy: "POL-11203",
-    lossDate: "3d ago",
-    status: "Completed",
-    priority: "Medium",
-    assigned: "AR"
-  },
-  {
-    id: "CLM-29388",
-    claimant: "David Kim",
-    vehicle: "2024 Porsche Taycan",
-    policy: "POL-55421",
-    lossDate: "45m ago",
-    status: "Escalated",
-    priority: "Critical",
-    assigned: "SK"
-  },
-];
+function mapPriority(status: CaseStatus): "Low" | "Medium" | "High" | "Critical" {
+  if (status === CaseStatus.ESCALATED) return "Critical";
+  if (status === CaseStatus.AWAITING_APPROVAL) return "High";
+  if (status === CaseStatus.RUNNING) return "Medium";
+  return "Low";
+}
+
+function formatTimeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [cases, setCases] = useState<CaseListItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchCases = async () => {
+      try {
+        const data = await api.listCases();
+        setCases(data);
+      } catch (err) {
+        console.error("Failed to fetch cases:", err);
+        setError("Could not load cases from backend. Showing empty state.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchCases();
+  }, []);
+
   const handleNewClaim = async () => {
     try {
-      const { api } = await import("@/lib/api");
       const { case_id } = await api.initiateDraftCase();
       router.push(`/workflow/${case_id}/manage`);
     } catch (err) {
@@ -113,89 +112,87 @@ export default function DashboardPage() {
 
       {/* Stats Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <StatCard label="Total Claims" value="124" trend="+12%" />
-        <StatCard label="Pending Review" value="18" trend="-2" warning />
-        <StatCard label="Avg. Cycle Time" value="4.2d" trend="-0.5d" success />
-        <StatCard label="Fraud Flagged" value="3" trend="+1" danger />
+        <StatCard label="Total Claims" value={String(cases.length)} trend="" />
+        <StatCard label="Pending Review" value={String(cases.filter(c => c.status === CaseStatus.AWAITING_APPROVAL).length)} trend="" warning />
+        <StatCard label="In Progress" value={String(cases.filter(c => c.status === CaseStatus.RUNNING).length)} trend="" />
+        <StatCard label="Escalated" value={String(cases.filter(c => c.status === CaseStatus.ESCALATED).length)} trend="" danger />
       </div>
 
       {/* Claims Table */}
       <div className="bg-neutral-surface border border-neutral-border rounded-lg overflow-hidden shadow-sm">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-neutral-background/50 border-b border-neutral-border">
-              <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Case ID</th>
-              <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Claimant & Vehicle</th>
-              <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Policy</th>
-              <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Loss Date</th>
-              <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Status</th>
-              <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Priority</th>
-              <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Assigned</th>
-              <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-neutral-border">
-            {mockClaims.map((claim) => (
-              <tr
-                key={claim.id}
-                onClick={() => router.push(`/workflow/${claim.id}`)}
-                className="hover:bg-neutral-background/30 transition-colors group cursor-pointer"
-              >
-                <td className="px-4 py-4">
-                  <div className="flex items-center space-x-2">
-                    <span className="font-mono text-xs font-medium text-brand-primary">{claim.id}</span>
-                    <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-neutral-text-tertiary" />
-                  </div>
-                </td>
-                <td className="px-4 py-4">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-medium text-neutral-text-primary">{claim.claimant}</span>
-                    <span className="text-xs text-neutral-text-tertiary">{claim.vehicle}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-4 text-sm text-neutral-text-secondary">
-                  {claim.policy}
-                </td>
-                <td className="px-4 py-4 text-sm text-neutral-text-secondary">
-                  <div className="flex items-center space-x-1.5">
-                    <Clock className="w-3.5 h-3.5 text-neutral-text-tertiary" />
-                    <span>{claim.lossDate}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-4">
-                  <StatusBadge status={claim.status} />
-                </td>
-                <td className="px-4 py-4">
-                  <PriorityIndicator priority={claim.priority} />
-                </td>
-                <td className="px-4 py-4">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-6 h-6 rounded-full bg-neutral-background border border-neutral-border flex items-center justify-center text-[10px] font-bold text-neutral-text-secondary">
-                      {claim.assigned}
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-4 text-right">
-                  <button
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-1 hover:bg-neutral-background rounded-md transition-colors text-neutral-text-tertiary hover:text-neutral-text-primary"
-                  >
-                    <MoreHorizontal className="w-4 h-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Pagination Mock */}
-        <div className="px-4 py-3 bg-neutral-background/20 border-t border-neutral-border flex items-center justify-between">
-          <span className="text-xs text-neutral-text-tertiary">Showing 1-5 of 124 claims</span>
-          <div className="flex space-x-2">
-            <button className="px-2 py-1 text-xs border border-neutral-border rounded disabled:opacity-50" disabled>Prev</button>
-            <button className="px-2 py-1 text-xs border border-neutral-border rounded hover:bg-neutral-background">Next</button>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="w-6 h-6 animate-spin text-brand-primary" />
+            <span className="ml-3 text-sm text-neutral-text-secondary">Loading claims…</span>
           </div>
-        </div>
+        ) : cases.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <AlertCircle className="w-8 h-8 text-neutral-text-tertiary mb-3 opacity-40" />
+            <p className="text-sm text-neutral-text-secondary mb-1">
+              {error || "No claims found."}
+            </p>
+            <p className="text-xs text-neutral-text-tertiary">Create a new claim to get started.</p>
+          </div>
+        ) : (
+          <>
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-neutral-background/50 border-b border-neutral-border">
+                  <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Case ID</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Submitted</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Current Agent</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Priority</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-border">
+                {cases.map((c) => (
+                  <tr
+                    key={c.case_id}
+                    onClick={() => router.push(`/workflow/${c.case_id}`)}
+                    className="hover:bg-neutral-background/30 transition-colors group cursor-pointer"
+                  >
+                    <td className="px-4 py-4">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-mono text-xs font-medium text-brand-primary">{c.case_id}</span>
+                        <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-neutral-text-tertiary" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 text-sm text-neutral-text-secondary">
+                      <div className="flex items-center space-x-1.5">
+                        <Clock className="w-3.5 h-3.5 text-neutral-text-tertiary" />
+                        <span>{formatTimeAgo(c.submitted_at)}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 text-sm text-neutral-text-secondary">
+                      <span className="font-mono text-xs">{c.current_agent || "—"}</span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <StatusBadge status={mapCaseStatus(c.status)} />
+                    </td>
+                    <td className="px-4 py-4">
+                      <PriorityIndicator priority={mapPriority(c.status)} />
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <button
+                        onClick={(e) => e.stopPropagation()}
+                        className="p-1 hover:bg-neutral-background rounded-md transition-colors text-neutral-text-tertiary hover:text-neutral-text-primary"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Pagination */}
+            <div className="px-4 py-3 bg-neutral-background/20 border-t border-neutral-border flex items-center justify-between">
+              <span className="text-xs text-neutral-text-tertiary">Showing {cases.length} claim{cases.length !== 1 ? "s" : ""}</span>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -226,32 +223,36 @@ function StatCard({ label, value, trend, warning, danger, success }: {
   );
 }
 
-function StatusBadge({ status }: { status: Claim["status"] }) {
-  const styles = {
+function StatusBadge({ status }: { status: DisplayStatus }) {
+  const styles: Record<DisplayStatus, string> = {
     "In Progress": "bg-semantic-info/10 text-semantic-info border-semantic-info/20",
     "Pending Review": "bg-semantic-warning/10 text-semantic-warning border-semantic-warning/20",
     "Awaiting Docs": "bg-neutral-text-tertiary/10 text-neutral-text-secondary border-neutral-text-tertiary/20",
     "Completed": "bg-semantic-success/10 text-semantic-success border-semantic-success/20",
     "Escalated": "bg-semantic-danger/10 text-semantic-danger border-semantic-danger/20",
+    "Draft": "bg-neutral-text-tertiary/10 text-neutral-text-tertiary border-neutral-text-tertiary/20",
+    "Failed": "bg-semantic-danger/10 text-semantic-danger border-semantic-danger/20",
   };
 
-  const icons = {
+  const icons: Record<DisplayStatus, React.ReactNode> = {
     "In Progress": <Clock className="w-3 h-3 mr-1" />,
     "Pending Review": <AlertCircle className="w-3 h-3 mr-1" />,
     "Awaiting Docs": <Clock className="w-3 h-3 mr-1" />,
     "Completed": <CheckCircle2 className="w-3 h-3 mr-1" />,
     "Escalated": <AlertCircle className="w-3 h-3 mr-1" />,
+    "Draft": <Clock className="w-3 h-3 mr-1" />,
+    "Failed": <AlertCircle className="w-3 h-3 mr-1" />,
   };
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${styles[status]}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium border ${styles[status] || styles["In Progress"]}`}>
       {icons[status]}
       {status}
     </span>
   );
 }
 
-function PriorityIndicator({ priority }: { priority: Claim["priority"] }) {
+function PriorityIndicator({ priority }: { priority: "Low" | "Medium" | "High" | "Critical" }) {
   const dots = {
     "Low": 1,
     "Medium": 2,
@@ -282,3 +283,4 @@ function PriorityIndicator({ priority }: { priority: Claim["priority"] }) {
     </div>
   );
 }
+

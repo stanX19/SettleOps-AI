@@ -25,11 +25,11 @@
 
   --font-sans: "Inter", "Roboto", sans-serif;
 
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
+  --spacing-u-xs: 4px;
+  --spacing-u-sm: 8px;
+  --spacing-u-md: 16px;
+  --spacing-u-lg: 24px;
+  --spacing-u-xl: 32px;
 }
 
 :root {

@@ -109,7 +109,7 @@ class SpeechService:
                             f.write(chunk)
 
             await asyncio.to_thread(_call)
-            return f"/media/tts/{filename}"
+            return f"/uploads/tts/{filename}"
         except Exception as exc:
             traceback.print_exc()
             print(f"ElevenLabs TTS Error: {exc}")

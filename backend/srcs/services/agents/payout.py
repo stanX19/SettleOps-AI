@@ -10,23 +10,27 @@ def payout_node(state: ClaimWorkflowState) -> dict[str, Any]:
     liability = state.get("liability_results", {})
     policy = state.get("policy_results", {})
 
-    # 0. Escalation Protocol: Check for missing critical data
-    # In a production system, these would be required fields from the previous nodes.
-    if policy.get("excess_myr") is None or damage.get("verified_total") is None:
-        missing_fields = []
-        if not policy.get("excess_myr"): missing_fields.append("excess_myr")
-        if not damage.get("verified_total"): missing_fields.append("verified_total")
-
+    # 0. Escalation Protocol: Only hard-escalate when verified_total is missing.
+    # excess_myr defaults to 0.0 (no deductible) — safer for claimant, auditor can flag.
+    if damage.get("verified_total") is None:
         return {
             "status": "escalated",
             "payout_results": {
                 "recommended_action": "escalate",
                 "status": "escalated",
-                "rationale": f"Missing critical financial data: {', '.join(missing_fields)}.",
+                "rationale": (
+                    "Missing verified damage total from workshop quotation. "
+                    "The damage extraction task failed to identify a total repair cost or a breakdown of parts and labour. "
+                    "Cannot calculate payout without a base damage estimate."
+                ),
+                "missing_fields": ["verified_total"],
                 "payout_breakdown": None,
                 "confidence": 1.0
             },
-            "trace_log": [f"[Payout] ESCALATION: Missing {', '.join(missing_fields)}. Pausing for human intervention."]
+            "trace_log": [
+                f"[Payout] ESCALATION: Missing verified_total. Damage results keys: {list(damage.keys())}",
+                "[Payout] Pausing for human intervention or document re-upload."
+            ]
         }
 
     # 1. Extraction with Guard Clauses
@@ -64,6 +68,10 @@ def payout_node(state: ClaimWorkflowState) -> dict[str, Any]:
         "recommended_action": "approve" if final_payout > 0 else "decline",
         "payout_breakdown": {
             "repair_estimate_myr": round(verified_total, 2),
+            "verified_parts": round(float(damage.get("verified_parts") or 0.0), 2),
+            "verified_labour": round(float(damage.get("verified_labour") or 0.0), 2),
+            "verified_paint": round(float(damage.get("verified_paint") or 0.0), 2),
+            "verified_towing": round(float(damage.get("verified_towing") or 0.0), 2),
             "depreciation_deducted_myr": round(depreciation_deducted, 2),
             "liability_adjusted_myr": round(liability_adjusted, 2),
             "excess_deducted_myr": round(excess, 2),

@@ -118,5 +118,9 @@ def decision_router(state: ClaimWorkflowState) -> str:
         # Routing back to the gate preserves the HITL pause.
         return WorkflowNodes.DECISION_GATE
         
-    # 4. Completion: All checks passed or approved
-    return WorkflowNodes.REPORT_GENERATOR
+    # 4. Completion: All checks passed. 
+    # BUT we wait for human approval before generating the final report.
+    if human_decision and human_decision.get("action") in (WorkflowAction.APPROVE, WorkflowAction.FORCE_APPROVE):
+        return WorkflowNodes.REPORT_GENERATOR
+        
+    return WorkflowNodes.DECISION_GATE

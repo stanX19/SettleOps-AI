@@ -33,21 +33,23 @@ export default function ManageCasePage({ params }: PageProps) {
   const router = useRouter();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [status, setStatus] = useState<CaseStatus>(CaseStatus.DRAFT);
+  const [snapshot, setSnapshot] = useState<any>(null);
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch actual status on mount
   useEffect(() => {
-    const fetchStatus = async () => {
+    const fetchSnapshot = async () => {
       try {
-        const snapshot = await api.getCaseSnapshot(caseId);
-        setStatus(snapshot.status);
+        const snap = await api.getCaseSnapshot(caseId);
+        setSnapshot(snap);
+        setStatus(snap.status);
       } catch (err) {
-        console.error("Failed to fetch case status:", err);
+        console.error("Failed to fetch case snapshot:", err);
       }
     };
-    fetchStatus();
+    fetchSnapshot();
   }, [caseId]);
 
   const handleUploadClick = () => {
@@ -85,27 +87,8 @@ export default function ManageCasePage({ params }: PageProps) {
     setError(null);
 
     try {
-      // Heuristic mapping
-      const mapped: any = {
-        photos: []
-      };
-
-      files.forEach(f => {
-        const name = f.name.toLowerCase();
-        if (name.includes("police") && !mapped.police_report) {
-          mapped.police_report = f.file;
-        } else if ((name.includes("policy") || name.includes("cover")) && !mapped.policy_pdf) {
-          mapped.policy_pdf = f.file;
-        } else if ((name.includes("quote") || name.includes("quot") || name.includes("repair")) && !mapped.repair_quotation) {
-          mapped.repair_quotation = f.file;
-        } else if (name.includes("adjuster") && !mapped.adjuster_report) {
-          mapped.adjuster_report = f.file;
-        } else {
-          mapped.photos.push(f.file);
-        }
-      });
-
-      await api.submitDocuments(caseId, mapped);
+      const documentFiles = files.map(f => f.file);
+      await api.submitDocuments(caseId, documentFiles);
       
       // Redirect to main workflow view
       router.push(`/workflow/${caseId}`);
@@ -241,19 +224,45 @@ export default function ManageCasePage({ params }: PageProps) {
                 <h3 className="text-sm font-semibold text-neutral-text-primary">Final Report Preview</h3>
               </div>
               <div className="flex items-center space-x-2">
-                <Button variant="ghost" size="sm" className="h-8 text-[11px]" disabled>
-                  <Upload className="w-3 h-3 mr-1" /> Download PDF
-                </Button>
+                {snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded) && (
+                  <a 
+                    href={snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded).url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                  >
+                    <Button variant="ghost" size="sm" className="h-8 text-[11px] text-brand-primary hover:text-brand-primary/80">
+                      <Upload className="w-3 h-3 mr-1 rotate-180" /> Download PDF
+                    </Button>
+                  </a>
+                )}
               </div>
             </div>
 
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-neutral-background/10 overflow-y-auto">
-              <FileText className="w-6 h-6 text-white opacity-40 mb-4" />
-              <h4 className="text-neutral-text-primary font-medium mb-1 text-sm">Final report hasn't generated</h4>
-              <p className="text-[11px] text-neutral-text-tertiary max-w-[320px]">
-                Complete the workflow orchestration to generate the final settlement report.
-              </p>
-            </div>
+            {(() => {
+              const pdfArtifact = snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded);
+              
+              if (pdfArtifact) {
+                return (
+                  <div className="flex-1 w-full h-full bg-neutral-background">
+                    <iframe 
+                      src={pdfArtifact.url} 
+                      className="w-full h-full border-none"
+                      title="Settlement Report Preview"
+                    />
+                  </div>
+                );
+              }
+
+              return (
+                <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-neutral-background/10 overflow-y-auto">
+                  <FileText className="w-6 h-6 text-white opacity-40 mb-4" />
+                  <h4 className="text-neutral-text-primary font-medium mb-1 text-sm">Final report hasn't generated</h4>
+                  <p className="text-[11px] text-neutral-text-tertiary max-w-[320px]">
+                    Complete the workflow orchestration to generate the final settlement report.
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>

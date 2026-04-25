@@ -16,6 +16,7 @@ from typing import Any
 from markitdown import MarkItDown
 
 from srcs.config import get_settings
+from srcs.services.agents.rotating_llm import rotating_llm
 
 _md = MarkItDown()
 logger = logging.getLogger(__name__)
@@ -78,157 +79,70 @@ def _ocr_fallback(path: str) -> dict[str, Any]:
         }
 
 
-async def _gemini_vision_once(
-    model_name: str,
-    mime_type: str,
-    image_b64: str,
-    api_key: str,
-) -> str:
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    from langchain_core.messages import HumanMessage
+def _compress_image_to_base64(path: str, max_size: int = 1920) -> str:
+    """Read an image, resize it if too large, convert to JPEG, and return as base64."""
+    import io
+    from PIL import Image as PILImage
 
-    llm = ChatGoogleGenerativeAI(
-        model=model_name,
-        google_api_key=api_key,
-        temperature=0.0,
-        max_retries=0,
-    )
-    message = HumanMessage(
-        content=[
-            {"type": "text", "text": _IMAGE_PROMPT},
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:{mime_type};base64,{image_b64}"},
-            },
-        ]
-    )
-    result = await llm.ainvoke([message])
-    return result.content if isinstance(result.content, str) else str(result.content)
-
-
-def _vision_model_candidates(model_name: str) -> list[str]:
-    candidates = [model_name, "gemini-2.5-flash", "gemini-2.0-flash"]
-    return list(dict.fromkeys(model for model in candidates if model))
+    with PILImage.open(path) as img:
+        # Convert to RGB to ensure compatibility with JPEG
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+        
+        # Resize if max dimension exceeds max_size
+        if max(img.width, img.height) > max_size:
+            ratio = max_size / float(max(img.width, img.height))
+            new_size = (int(img.width * ratio), int(img.height * ratio))
+            img = img.resize(new_size, PILImage.Resampling.LANCZOS)
+            
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=85)
+        return base64.b64encode(buffer.getvalue()).decode("utf-8")
 
 
 async def _extract_image_async(path: str) -> dict[str, Any]:
-    """Use Gemini vision first, then fall back to OCR."""
+    """Use Unified RotatingLLM for vision, then fall back to OCR."""
+    from langchain_core.messages import HumanMessage
+
     try:
-        settings = get_settings()
+        # 1. Compress image to prevent base64 payload bloat
+        image_b64 = await asyncio.to_thread(_compress_image_to_base64, path)
+        mime_type = "image/jpeg"
+
+        # 2. Construct multi-modal message
+        message = HumanMessage(
+            content=[
+                {"type": "text", "text": _IMAGE_PROMPT},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{mime_type};base64,{image_b64}"},
+                },
+            ]
+        )
+
+        # 3. Use unified rotating_llm
+        response = await rotating_llm.send_message(
+            [message], 
+            temperature=0.0,
+            use_cache=True
+        )
+
+        if response.status == "ok":
+            return {
+                "text": response.text,
+                "method": "rotating_llm_vision",
+                "model": response.model,
+                "path": path,
+            }
+        
+        # If LLM failed, fallback to OCR
+        logger.warning(f"RotatingLLM vision failed for {path}: {response.text}")
+        return await asyncio.to_thread(_ocr_fallback, path)
+
     except Exception as exc:
-        fallback = await asyncio.to_thread(_ocr_fallback, path)
-        fallback.setdefault("gemini_error", _error_summary(exc))
-        return fallback
+        logger.error(f"Error in image extraction for {path}: {exc}")
+        return await asyncio.to_thread(_ocr_fallback, path)
 
-    single_key = getattr(settings, "GEMINI_API_KEY", "")
-    primary_keys = [single_key] if single_key else []
-    fallback_keys = list(settings.GEMINI_API_KEY_LIST)
-    configured_keys = primary_keys + fallback_keys
-
-    gemini_keys = list(
-        dict.fromkeys(key.strip() for key in configured_keys if key and key.strip())
-    )
-
-    if gemini_keys:
-        try:
-            ext = Path(path).suffix.lower()
-            mime_type = _IMAGE_MIME.get(ext, "image/jpeg")
-            # Upload routes cap images at 5 MB before extraction. This direct
-            # read is acceptable under that contract and keeps Gemini payload
-            # construction simple.
-            image_bytes = await asyncio.to_thread(Path(path).read_bytes)
-            image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-            timeout_seconds = float(
-                getattr(settings, "GEMINI_VISION_TIMEOUT_SECONDS", _GEMINI_KEY_TIMEOUT)
-                or _GEMINI_KEY_TIMEOUT
-            )
-            batch_size = max(
-                1,
-                int(
-                    getattr(settings, "GEMINI_VISION_BATCH_SIZE", _GEMINI_BATCH_SIZE)
-                    or _GEMINI_BATCH_SIZE
-                ),
-            )
-            max_keys = max(
-                1,
-                int(
-                    getattr(settings, "GEMINI_VISION_MAX_KEYS", _MAX_GEMINI_KEYS)
-                    or _MAX_GEMINI_KEYS
-                ),
-            )
-
-            # Keep GEMINI_API_KEY first when present; shuffle the rest to spread usage.
-            primary_key = single_key.strip() if single_key else ""
-            if primary_key and primary_key in gemini_keys:
-                remaining_keys = [key for key in gemini_keys if key != primary_key]
-                random.shuffle(remaining_keys)
-                gemini_keys = [primary_key, *remaining_keys][:max_keys]
-            else:
-                random.shuffle(gemini_keys)
-                gemini_keys = gemini_keys[:max_keys]
-            errors: list[str] = []
-
-            for model_name in _vision_model_candidates(settings.GEMINI_MODEL_NAME):
-                for start in range(0, len(gemini_keys), batch_size):
-                    batch = gemini_keys[start : start + batch_size]
-                    tasks = [
-                        asyncio.create_task(
-                            asyncio.wait_for(
-                                _gemini_vision_once(
-                                    model_name,
-                                    mime_type,
-                                    image_b64,
-                                    key,
-                                ),
-                                timeout=timeout_seconds,
-                            )
-                        )
-                        for key in batch
-                    ]
-                    try:
-                        for task in asyncio.as_completed(tasks):
-                            try:
-                                text = await task
-                                for other in tasks:
-                                    if not other.done():
-                                        other.cancel()
-                                await asyncio.gather(*tasks, return_exceptions=True)
-                                return {
-                                    "text": text,
-                                    "method": "gemini_vision",
-                                    "model": model_name,
-                                    "path": path,
-                                }
-                            except Exception as exc:  # noqa: PERF203
-                                error = _error_summary(exc)
-                                if error not in errors:
-                                    errors.append(error)
-                                logger.warning(
-                                    "Gemini vision extraction failed for %s using %s: %s",
-                                    Path(path).name,
-                                    model_name,
-                                    error[:300],
-                                )
-                    finally:
-                        for task in tasks:
-                            if not task.done():
-                                task.cancel()
-                        await asyncio.gather(*tasks, return_exceptions=True)
-
-            fallback = await asyncio.to_thread(_ocr_fallback, path)
-            if errors:
-                fallback.setdefault("gemini_error", "; ".join(errors[-3:])[:500])
-            return fallback
-        except ImportError as exc:
-            fallback = await asyncio.to_thread(_ocr_fallback, path)
-            fallback.setdefault("gemini_error", _error_summary(exc))
-            return fallback
-        except Exception as exc:
-            fallback = await asyncio.to_thread(_ocr_fallback, path)
-            fallback.setdefault("gemini_error", _error_summary(exc)[:300])
-            return fallback
-
-    return await asyncio.to_thread(_ocr_fallback, path)
 
 
 def _extract_doc_sync(path: str) -> dict[str, Any]:

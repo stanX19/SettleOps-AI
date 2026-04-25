@@ -62,7 +62,7 @@ async def send_message(
     Returns ``{ status: "success", user_message }`` immediately.
     The agent reply is delivered over the SSE stream.
     """
-    user_msg = await ChatService.send_message(db, body.topic_id, body.message)
+    user_msg = await ChatService.send_message(db, body.topic_id, body.message, body.agent_id)
 
     return ChatAcceptedResponse(
         user_message=ChatMessageResponse.model_validate(user_msg),

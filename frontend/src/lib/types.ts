@@ -63,6 +63,7 @@ export interface DocumentInfo {
   filename: string;
   url: string;
   index?: number; // populated for photos
+  tags?: string[];
 }
 
 export interface ArtifactInfo {
@@ -79,6 +80,9 @@ export interface AgentStateInfo {
   started_at?: string;
   completed_at?: string;
   sub_tasks?: Record<string, AgentStateInfo>;
+  purpose?: string;
+  system_prompt?: string;
+  logs?: string[];
 }
 
 export interface OfficerMessageInfo {
