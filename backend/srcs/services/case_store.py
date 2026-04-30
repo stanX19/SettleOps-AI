@@ -147,6 +147,13 @@ class CaseState:
     payout_recommendation: Optional[dict[str, Any]] = None
     audit_result: Optional[dict[str, Any]] = None
 
+    # Per-section citations. Reruns replace the entire list (no append).
+    policy_citations: list[dict[str, Any]] = field(default_factory=list)
+    liability_citations: list[dict[str, Any]] = field(default_factory=list)
+    damage_citations: list[dict[str, Any]] = field(default_factory=list)
+    fraud_citations: list[dict[str, Any]] = field(default_factory=list)
+    auditor_citations: list[dict[str, Any]] = field(default_factory=list)
+
     # Runtime state
     agent_states: dict[AgentId, AgentRuntimeState] = field(
         default_factory=lambda: {a: AgentRuntimeState() for a in AgentId}
@@ -205,6 +212,33 @@ class CaseState:
             self.payout_recommendation = data
         elif section is BlackboardSection.AUDIT_RESULT:
             self.audit_result = data
+
+    def section_citations(
+        self, section: BlackboardSection
+    ) -> list[dict[str, Any]]:
+        return {
+            BlackboardSection.POLICY_VERDICT: self.policy_citations,
+            BlackboardSection.LIABILITY_VERDICT: self.liability_citations,
+            BlackboardSection.DAMAGE_RESULT: self.damage_citations,
+            BlackboardSection.FRAUD_ASSESSMENT: self.fraud_citations,
+            BlackboardSection.AUDIT_RESULT: self.auditor_citations,
+        }.get(section, [])
+
+    def set_section_citations(
+        self, section: BlackboardSection, citations: list[dict[str, Any]]
+    ) -> None:
+        """Replace citations for ``section`` (no append). Reruns stay clean."""
+        normalized = list(citations or [])
+        if section is BlackboardSection.POLICY_VERDICT:
+            self.policy_citations = normalized
+        elif section is BlackboardSection.LIABILITY_VERDICT:
+            self.liability_citations = normalized
+        elif section is BlackboardSection.DAMAGE_RESULT:
+            self.damage_citations = normalized
+        elif section is BlackboardSection.FRAUD_ASSESSMENT:
+            self.fraud_citations = normalized
+        elif section is BlackboardSection.AUDIT_RESULT:
+            self.auditor_citations = normalized
 
 
 # -- Store --------------------------------------------------------------------

@@ -5,17 +5,19 @@ See `docs/api_sse_plan.md` for the authoritative public API contract.
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
 import mimetypes
 import os
 import shutil
-from typing import BinaryIO, Optional
+from typing import Any, BinaryIO, Optional
 
 from fastapi import (
     APIRouter,
     BackgroundTasks,
     File,
     Form,
+    Query,
     Request,
     UploadFile,
 )
@@ -211,6 +213,7 @@ async def _save_case_uploads(
     Optional[str],
 ]:
     upload_dir = case_upload_dir(case_id)
+    saved_paths: list[str] = []
 
     try:
         police_path = None
@@ -220,6 +223,7 @@ async def _save_case_uploads(
                 upload_dir, f"police_report_{_safe_name(police_report.filename)}"
             )
             await _save_upload(police_report, police_path, _PDF_MAX)
+            saved_paths.append(police_path)
             uploaded_document_paths.append(police_path)
 
         policy_path = None
@@ -228,6 +232,7 @@ async def _save_case_uploads(
                 upload_dir, f"policy_pdf_{_safe_name(policy_pdf.filename)}"
             )
             await _save_upload(policy_pdf, policy_path, _PDF_MAX)
+            saved_paths.append(policy_path)
             uploaded_document_paths.append(policy_path)
 
         quote_path = None
@@ -236,6 +241,7 @@ async def _save_case_uploads(
                 upload_dir, f"repair_quotation_{_safe_name(repair_quotation.filename)}"
             )
             await _save_upload(repair_quotation, quote_path, _PDF_MAX)
+            saved_paths.append(quote_path)
             uploaded_document_paths.append(quote_path)
 
         photo_paths: list[str] = []
@@ -244,6 +250,7 @@ async def _save_case_uploads(
             # Dynamic limit based on content type
             limit = _PDF_MAX if p.content_type in _PDF_MIMES else _PHOTO_MAX
             await _save_upload(p, path, limit)
+            saved_paths.append(path)
             photo_paths.append(path)
             uploaded_document_paths.append(path)
 
@@ -254,6 +261,7 @@ async def _save_case_uploads(
                 f"road_tax_{_safe_name(road_tax.filename)}",
             )
             await _save_upload(road_tax, road_tax_path, _PDF_MAX)
+            saved_paths.append(road_tax_path)
             uploaded_document_paths.append(road_tax_path)
 
         adjuster_path: Optional[str] = None
@@ -263,6 +271,7 @@ async def _save_case_uploads(
                 f"adjuster_report_{_safe_name(adjuster_report.filename)}",
             )
             await _save_upload(adjuster_report, adjuster_path, _PDF_MAX)
+            saved_paths.append(adjuster_path)
             uploaded_document_paths.append(adjuster_path)
 
         for i, document in enumerate(documents):
@@ -272,14 +281,26 @@ async def _save_case_uploads(
             )
             limit = _PHOTO_MAX if document.content_type in _PHOTO_MIMES else _PDF_MAX
             await _save_upload(document, path, limit)
+            saved_paths.append(path)
             uploaded_document_paths.append(path)
 
         transcript_path: Optional[str] = None
         if chat_transcript:
             transcript_path = os.path.join(upload_dir, "chat_transcript.txt")
             await asyncio.to_thread(_write_text_file, transcript_path, chat_transcript)
+            saved_paths.append(transcript_path)
     except BaseException:
-        shutil.rmtree(upload_dir, ignore_errors=True)
+        for path in saved_paths:
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+            except OSError as cleanup_exc:
+                logger.warning(
+                    "Failed to remove partial upload %s after request failure: %s",
+                    path,
+                    cleanup_exc,
+                )
         raise
 
     return (
@@ -329,6 +350,36 @@ async def submit_case_documents(
             "Documents can only be submitted for a draft or awaiting_docs case",
         )
 
+    has_new_uploads = bool(
+        police_report
+        or policy_pdf
+        or repair_quotation
+        or road_tax
+        or adjuster_report
+        or photos
+        or documents
+        or chat_transcript
+    )
+
+    if state.status == CaseStatus.AWAITING_DOCS and not has_new_uploads:
+        async with CaseStore.lock(case_id):
+            state = require_case(case_id)
+            if state.status != CaseStatus.AWAITING_DOCS:
+                raise api_error(
+                    409,
+                    ErrorCode.INVALID_STATUS,
+                    "Documents can only be submitted for a draft or awaiting_docs case",
+                )
+            transition_status(state, CaseStatus.RUNNING)
+
+        background.add_task(
+            resume_workflow_with_sse,
+            case_id,
+            operator_name="Operator Jack",
+            action="upload_docs",
+        )
+        return CaseCreateResponse(case_id=case_id, status=state.status)
+
     _validate_case_uploads(
         police_report,
         policy_pdf,
@@ -360,6 +411,14 @@ async def submit_case_documents(
         chat_transcript,
     )
 
+    final_police_path = police_path
+    final_policy_path = policy_path
+    final_quote_path = quote_path
+    final_road_tax_path = road_tax_path
+    final_adjuster_path = adjuster_path
+    final_photo_paths = photo_paths
+    final_uploaded_document_paths = uploaded_document_paths
+
     async with CaseStore.lock(case_id):
         state = require_case(case_id)
         if state.status not in (CaseStatus.DRAFT, CaseStatus.AWAITING_DOCS):
@@ -370,25 +429,55 @@ async def submit_case_documents(
                 "Documents can only be submitted for a draft or awaiting_docs case",
             )
 
-        state.police_report_path = police_path
-        state.policy_pdf_path = policy_path
-        state.repair_quotation_path = quote_path
-        state.road_tax_path = road_tax_path
-        state.adjuster_report_path = adjuster_path
-        state.photo_paths = photo_paths
-        state.uploaded_document_paths = uploaded_document_paths
-        state.chat_transcript = transcript_path
-
         old_status = state.status
+        if old_status == CaseStatus.AWAITING_DOCS:
+            # Preserve existing evidence and append newly uploaded evidence.
+            # The previous behavior replaced paths with the latest request, so
+            # a "resume" action with no files could wipe the in-memory document
+            # list even though files still existed on disk.
+            state.police_report_path = police_path or state.police_report_path
+            state.policy_pdf_path = policy_path or state.policy_pdf_path
+            state.repair_quotation_path = quote_path or state.repair_quotation_path
+            state.road_tax_path = road_tax_path or state.road_tax_path
+            state.adjuster_report_path = adjuster_path or state.adjuster_report_path
+            state.photo_paths = [*state.photo_paths, *photo_paths]
+            state.uploaded_document_paths = [
+                *state.uploaded_document_paths,
+                *uploaded_document_paths,
+            ]
+            state.chat_transcript = transcript_path or state.chat_transcript
+        else:
+            state.police_report_path = police_path
+            state.policy_pdf_path = policy_path
+            state.repair_quotation_path = quote_path
+            state.road_tax_path = road_tax_path
+            state.adjuster_report_path = adjuster_path
+            state.photo_paths = photo_paths
+            state.uploaded_document_paths = uploaded_document_paths
+            state.chat_transcript = transcript_path
+
+        final_police_path = state.police_report_path
+        final_policy_path = state.policy_pdf_path
+        final_quote_path = state.repair_quotation_path
+        final_road_tax_path = state.road_tax_path
+        final_adjuster_path = state.adjuster_report_path
+        final_photo_paths = list(state.photo_paths)
+        final_uploaded_document_paths = list(state.uploaded_document_paths)
+
         transition_status(state, CaseStatus.RUNNING)
 
     # Extract content before pipeline starts. Prefer the generic ordered upload
     # list so tagging, not field names, determines each document's role.
-    if uploaded_document_paths:
-        extractions = await extract_uploaded_documents(uploaded_document_paths)
+    if final_uploaded_document_paths:
+        extractions = await extract_uploaded_documents(final_uploaded_document_paths)
     else:
         extractions = await extract_case_documents(
-            police_path, policy_path, quote_path, road_tax_path, adjuster_path, photo_paths
+            final_police_path,
+            final_policy_path,
+            final_quote_path,
+            final_road_tax_path,
+            final_adjuster_path,
+            final_photo_paths,
         )
     async with CaseStore.lock(case_id):
         state = require_case(case_id)
@@ -483,6 +572,73 @@ _DOC_FIELDS: dict[str, str] = {
 }
 
 
+def _find_pdf_evidence(path: str, excerpt: str | None) -> dict[str, Any]:
+    import fitz
+
+    doc = fitz.open(path)
+    try:
+        page_index = 0
+        matches: list[Any] = []
+
+        if excerpt:
+            for candidate in (excerpt, excerpt.replace("/", " "), excerpt.replace(" ", "")):
+                for candidate_page_index in range(doc.page_count):
+                    candidate_page = doc[candidate_page_index]
+                    matches = candidate_page.search_for(candidate)
+                    if matches:
+                        page_index = candidate_page_index
+                        break
+                if matches:
+                    break
+
+        page = doc[page_index]
+        target_rect = None
+        if matches:
+            target_rect = matches[0]
+            for rect in matches[1:]:
+                target_rect |= rect
+
+        return {
+            "page_index": page_index,
+            "page_width": page.rect.width,
+            "page_height": page.rect.height,
+            "target": {
+                "x0": target_rect.x0,
+                "y0": target_rect.y0,
+                "x1": target_rect.x1,
+                "y1": target_rect.y1,
+            } if target_rect else None,
+        }
+    finally:
+        doc.close()
+
+
+def _render_pdf_evidence_png(path: str, excerpt: str | None) -> bytes:
+    """Render the original PDF page at a consistent full-page scale."""
+    import fitz
+
+    doc = fitz.open(path)
+    try:
+        meta = _find_pdf_evidence(path, excerpt)
+        page = doc[meta["page_index"]]
+        matches = []
+        if excerpt:
+            for candidate in (excerpt, excerpt.replace("/", " "), excerpt.replace(" ", "")):
+                matches = page.search_for(candidate)
+                if matches:
+                    break
+
+        for rect in matches:
+            annot = page.add_highlight_annot(rect)
+            annot.set_colors(stroke=(1, 0.82, 0))
+            annot.update()
+
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
+        return pix.tobytes("png")
+    finally:
+        doc.close()
+
+
 @router.get("/{case_id}/documents/{doc_type}")
 async def get_document(case_id: str, doc_type: str) -> FileResponse:
     state = require_case(case_id)
@@ -496,6 +652,61 @@ async def get_document(case_id: str, doc_type: str) -> FileResponse:
     return FileResponse(path, media_type=media_type or "application/octet-stream")
 
 
+@router.get("/{case_id}/documents/{doc_type}/evidence")
+async def get_document_evidence(
+    case_id: str,
+    doc_type: str,
+    excerpt: Optional[str] = Query(None),
+) -> StreamingResponse:
+    state = require_case(case_id)
+    field = _DOC_FIELDS.get(doc_type)
+    if field is None:
+        raise api_error(404, ErrorCode.INVALID_DOC_TYPE, "Document type not recognized")
+    path = getattr(state, field)
+    if not path or not os.path.exists(path):
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document not uploaded")
+    if os.path.splitext(path)[1].lower() != ".pdf":
+        raise api_error(400, ErrorCode.INVALID_DOC_TYPE, "Evidence preview is only available for PDFs")
+    png = await asyncio.to_thread(_render_pdf_evidence_png, path, excerpt)
+    return StreamingResponse(io.BytesIO(png), media_type="image/png")
+
+
+@router.get("/{case_id}/documents/{doc_type}/evidence/meta")
+async def get_document_evidence_meta(
+    case_id: str,
+    doc_type: str,
+    excerpt: Optional[str] = Query(None),
+) -> dict[str, Any]:
+    state = require_case(case_id)
+    field = _DOC_FIELDS.get(doc_type)
+    if field is None:
+        raise api_error(404, ErrorCode.INVALID_DOC_TYPE, "Document type not recognized")
+    path = getattr(state, field)
+    if not path or not os.path.exists(path):
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document not uploaded")
+    if os.path.splitext(path)[1].lower() != ".pdf":
+        raise api_error(400, ErrorCode.INVALID_DOC_TYPE, "Evidence preview is only available for PDFs")
+    return await asyncio.to_thread(_find_pdf_evidence, path, excerpt)
+
+
+@router.get("/{case_id}/documents/{doc_type}/text")
+async def get_document_text(case_id: str, doc_type: str) -> dict[str, Any]:
+    state = require_case(case_id)
+    field = _DOC_FIELDS.get(doc_type)
+    if field is None:
+        raise api_error(404, ErrorCode.INVALID_DOC_TYPE, "Document type not recognized")
+    path = getattr(state, field)
+    if not path or not os.path.exists(path):
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document not uploaded")
+    extraction = state.document_extractions.get(doc_type, {})
+    return {
+        "filename": os.path.basename(path),
+        "text": extraction.get("text") or "",
+        "method": extraction.get("method", "not_extracted"),
+        "error": extraction.get("error") or extraction.get("gemini_error"),
+    }
+
+
 @router.get("/{case_id}/documents/photo/{index}")
 async def get_photo(case_id: str, index: int) -> FileResponse:
     state = require_case(case_id)
@@ -506,6 +717,23 @@ async def get_photo(case_id: str, index: int) -> FileResponse:
         raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Photo missing on disk")
     media_type, _ = mimetypes.guess_type(path)
     return FileResponse(path, media_type=media_type or "image/jpeg")
+
+
+@router.get("/{case_id}/documents/photo/{index}/text")
+async def get_photo_text(case_id: str, index: int) -> dict[str, Any]:
+    state = require_case(case_id)
+    if index < 0 or index >= len(state.photo_paths):
+        raise api_error(404, ErrorCode.INVALID_DOC_TYPE, "Photo index out of range")
+    path = state.photo_paths[index]
+    if not os.path.exists(path):
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Photo missing on disk")
+    extraction = state.document_extractions.get(f"photo_{index}", {})
+    return {
+        "filename": os.path.basename(path),
+        "text": extraction.get("text") or "",
+        "method": extraction.get("method", "not_extracted"),
+        "error": extraction.get("error") or extraction.get("gemini_error"),
+    }
 
 
 @router.get("/{case_id}/documents/uploaded/{index}")
@@ -522,6 +750,70 @@ async def get_uploaded_document(case_id: str, index: int) -> FileResponse:
         raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document missing on disk")
     media_type, _ = mimetypes.guess_type(path)
     return FileResponse(path, media_type=media_type or "application/octet-stream")
+
+
+@router.get("/{case_id}/documents/uploaded/{index}/evidence")
+async def get_uploaded_document_evidence(
+    case_id: str,
+    index: int,
+    excerpt: Optional[str] = Query(None),
+) -> StreamingResponse:
+    state = require_case(case_id)
+    if index < 0 or index >= len(state.uploaded_document_paths):
+        raise api_error(
+            404,
+            ErrorCode.INVALID_DOC_TYPE,
+            "Uploaded document index out of range",
+        )
+    path = state.uploaded_document_paths[index]
+    if not os.path.exists(path):
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document missing on disk")
+    if os.path.splitext(path)[1].lower() != ".pdf":
+        raise api_error(400, ErrorCode.INVALID_DOC_TYPE, "Evidence preview is only available for PDFs")
+    png = await asyncio.to_thread(_render_pdf_evidence_png, path, excerpt)
+    return StreamingResponse(io.BytesIO(png), media_type="image/png")
+
+
+@router.get("/{case_id}/documents/uploaded/{index}/evidence/meta")
+async def get_uploaded_document_evidence_meta(
+    case_id: str,
+    index: int,
+    excerpt: Optional[str] = Query(None),
+) -> dict[str, Any]:
+    state = require_case(case_id)
+    if index < 0 or index >= len(state.uploaded_document_paths):
+        raise api_error(
+            404,
+            ErrorCode.INVALID_DOC_TYPE,
+            "Uploaded document index out of range",
+        )
+    path = state.uploaded_document_paths[index]
+    if not os.path.exists(path):
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document missing on disk")
+    if os.path.splitext(path)[1].lower() != ".pdf":
+        raise api_error(400, ErrorCode.INVALID_DOC_TYPE, "Evidence preview is only available for PDFs")
+    return await asyncio.to_thread(_find_pdf_evidence, path, excerpt)
+
+
+@router.get("/{case_id}/documents/uploaded/{index}/text")
+async def get_uploaded_document_text(case_id: str, index: int) -> dict[str, Any]:
+    state = require_case(case_id)
+    if index < 0 or index >= len(state.uploaded_document_paths):
+        raise api_error(
+            404,
+            ErrorCode.INVALID_DOC_TYPE,
+            "Uploaded document index out of range",
+        )
+    path = state.uploaded_document_paths[index]
+    if not os.path.exists(path):
+        raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document missing on disk")
+    extraction = state.document_extractions.get(f"uploaded_{index}", {})
+    return {
+        "filename": os.path.basename(path),
+        "text": extraction.get("text") or "",
+        "method": extraction.get("method", "not_extracted"),
+        "error": extraction.get("error") or extraction.get("gemini_error"),
+    }
 
 
 # -- Artifact download -------------------------------------------------------

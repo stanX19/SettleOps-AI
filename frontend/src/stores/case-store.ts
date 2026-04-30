@@ -1,12 +1,9 @@
 import { create } from "zustand";
-import { 
-  CaseSnapshot, 
-  CaseStatus, 
-  AgentId, 
+import {
+  CaseSnapshot,
+  CaseStatus,
+  AgentId,
   AgentStatus,
-  AgentStateInfo,
-  DocumentInfo,
-  ArtifactInfo,
   OfficerMessageInfo,
   SseWorkflowStarted,
   SseAgentStatusChanged,
@@ -47,6 +44,7 @@ const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; sel
   documents: [],
   agents: {},
   blackboard: {},
+  citations: {},
   artifacts: [],
   officer_messages: [],
   auditor_loop_count: 0,
@@ -70,7 +68,7 @@ export const useCaseStore = create<CaseState>((set) => ({
 
   setSelectedAgentId: (id) => set({ selectedAgentId: id }),
 
-  handleWorkflowStarted: (data) => set((state) => ({
+  handleWorkflowStarted: (data) => set(() => ({
     status: CaseStatus.RUNNING,
     current_agent: data.target_agent || null,
   })),
@@ -145,14 +143,23 @@ export const useCaseStore = create<CaseState>((set) => ({
       });
     }
 
+    // Citations are top-level on the event, not nested under data.
+    // Replace (not merge) the section's citations so reruns overwrite cleanly.
+    const incomingCitations = data.citations;
+    const nextCitations =
+      incomingCitations !== undefined
+        ? { ...state.citations, [data.section]: incomingCitations }
+        : state.citations;
+
     return {
       blackboard: nextBlackboard,
       documents: nextDocuments,
-      agents: newAgents
+      agents: newAgents,
+      citations: nextCitations,
     };
   }),
 
-  handleAgentMessageToAgent: (data) => set((state) => ({
+  handleAgentMessageToAgent: (data) => set(() => ({
     auditor_loop_count: data.loop_count,
   })),
 

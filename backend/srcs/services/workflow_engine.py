@@ -51,17 +51,27 @@ async def _run_cluster(graph, cluster_id: str, state: ClaimWorkflowState):
         "case_facts": state["case_facts"],
         "active_challenge": state["active_challenge"],
         "results": state.get(f"{cluster_id}_results", {}),
-        "trace_log": [] # Sub-graph appends to its own fresh log
+        "citations": {},  # fresh per-run; sub-tasks contribute keyed by node_id
+        "trace_log": []
     }
-    
-    # Execute the sub-graph
-    print(f"DEBUG: [_run_cluster] Invoking subgraph for {cluster_id}. input_state keys: {list(input_state.keys())}, case_id: {input_state.get('case_id')}", flush=True)
-    # We use a thread_id that includes the cluster to keep checkpointers separate if needed,
-    # but here we just invoke it directly as a function.
+
+    print(
+        f"DEBUG: [_run_cluster] Invoking subgraph for {cluster_id}. "
+        f"input_state keys: {list(input_state.keys())}, case_id: {input_state.get('case_id')}",
+        flush=True,
+    )
     result = await graph.ainvoke(input_state)
-    
+
+    # Flatten {node_id: [citations]} into a single section-level list.
+    citations_by_node = result.get("citations") or {}
+    flattened: list[dict] = []
+    for node_citations in citations_by_node.values():
+        if isinstance(node_citations, list):
+            flattened.extend(node_citations)
+
     return {
         f"{cluster_id}_results": result["results"],
+        f"{cluster_id}_citations": flattened,
         "trace_log": result["trace_log"]
     }
 
@@ -295,22 +305,36 @@ def node_sse_wrapper(node_name: str, func):
                 if key.endswith("_results") or key == "payout_results" or key == "case_facts":
                     data = val
                     break
-            
+
+            # Citations for this section come from {agent}_citations (e.g.
+            # policy_citations, auditor_citations).
+            citations: list[dict] = []
+            if agent_id:
+                citations_key = f"{agent_id.value.lower()}_citations"
+                raw_citations = result.get(citations_key, [])
+                if isinstance(raw_citations, list):
+                    citations = raw_citations
+
             # Sync to Store & Emit Output
             case = CaseStore.get(case_id)
+            trace_log: list[str] = []
             if case:
                 async with CaseStore.lock(case_id):
                     # 1. Store Blackboard Data
                     if section and data is not None:
                         case.set_section_data(section, data)
-                    
-                    # 2. Store Trace Logs
+
+                    # 2. Store Citations (replace, not append — keeps reruns clean)
+                    if section:
+                        case.set_section_citations(section, citations)
+
+                    # 3. Store Trace Logs
                     trace_log = result.get("trace_log", [])
                     if trace_log and agent_id:
                         rs = case.agent_states.get(agent_id)
                         if rs:
                             rs.logs.extend(trace_log)
-            
+
             # Emit Output SSE
             if section and data is not None:
                 await SseService.emit(case_id, SseAgentOutputData(
@@ -319,9 +343,10 @@ def node_sse_wrapper(node_name: str, func):
                     agent=agent_id,
                     section=section,
                     data=data,
-                    logs=trace_log
+                    logs=trace_log,
+                    citations=citations,
                 ))
-            
+
             # Emit Status: COMPLETED or ERROR
             if agent_id:
                 final_status = AgentStatus.COMPLETED
