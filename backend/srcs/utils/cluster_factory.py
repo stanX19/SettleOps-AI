@@ -95,9 +95,8 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                 else:
                     result = task(state, feedback=feedback)
 
-                # 3.5 Citation gate — raises CitationValidationError on hard failure,
-                # which falls through to the outer except so ERROR SSE is emitted
-                # exactly once via the existing path.
+                # 3.5 Citation gate — CitationValidationError is caught by the
+                # dedicated except block below, which handles SSE + CaseStore update.
                 result, _ = await validate_citations(
                     raw_result=result,
                     state=state,
@@ -131,7 +130,7 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                     "trace_log": [f"[{cluster_id}] {result.get('reasoning', 'No reasoning provided.')}"]
                 }
             except CitationValidationError as e:
-                # Citation gate hard failure — let the generic except handle SSE/CaseStore.
+                # Citation gate hard failure: emit task error status and return a structured error result.
                 if case:
                     async with CaseStore.lock(case_id):
                         sub_rs = case.agent_states[parent_agent_id].sub_tasks[sub_task_name]

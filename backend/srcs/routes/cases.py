@@ -572,25 +572,29 @@ _DOC_FIELDS: dict[str, str] = {
 }
 
 
+def _search_pdf_doc(doc: Any, excerpt: str | None) -> tuple[int, list[Any]]:
+    """Find the page index and highlight rects for an excerpt in an open fitz doc."""
+    page_index = 0
+    matches: list[Any] = []
+    if excerpt:
+        candidates = (excerpt, excerpt.replace("/", " "), excerpt.replace(" ", ""))
+        for candidate in candidates:
+            for pi in range(doc.page_count):
+                m = doc[pi].search_for(candidate)
+                if m:
+                    page_index, matches = pi, m
+                    break
+            if matches:
+                break
+    return page_index, matches
+
+
 def _find_pdf_evidence(path: str, excerpt: str | None) -> dict[str, Any]:
     import fitz
 
     doc = fitz.open(path)
     try:
-        page_index = 0
-        matches: list[Any] = []
-
-        if excerpt:
-            for candidate in (excerpt, excerpt.replace("/", " "), excerpt.replace(" ", "")):
-                for candidate_page_index in range(doc.page_count):
-                    candidate_page = doc[candidate_page_index]
-                    matches = candidate_page.search_for(candidate)
-                    if matches:
-                        page_index = candidate_page_index
-                        break
-                if matches:
-                    break
-
+        page_index, matches = _search_pdf_doc(doc, excerpt)
         page = doc[page_index]
         target_rect = None
         if matches:
@@ -619,14 +623,8 @@ def _render_pdf_evidence_png(path: str, excerpt: str | None) -> bytes:
 
     doc = fitz.open(path)
     try:
-        meta = _find_pdf_evidence(path, excerpt)
-        page = doc[meta["page_index"]]
-        matches = []
-        if excerpt:
-            for candidate in (excerpt, excerpt.replace("/", " "), excerpt.replace(" ", "")):
-                matches = page.search_for(candidate)
-                if matches:
-                    break
+        page_index, matches = _search_pdf_doc(doc, excerpt)
+        page = doc[page_index]
 
         for rect in matches:
             annot = page.add_highlight_annot(rect)
@@ -656,7 +654,7 @@ async def get_document(case_id: str, doc_type: str) -> FileResponse:
 async def get_document_evidence(
     case_id: str,
     doc_type: str,
-    excerpt: Optional[str] = Query(None),
+    excerpt: Optional[str] = Query(None, max_length=500),
 ) -> StreamingResponse:
     state = require_case(case_id)
     field = _DOC_FIELDS.get(doc_type)
@@ -675,7 +673,7 @@ async def get_document_evidence(
 async def get_document_evidence_meta(
     case_id: str,
     doc_type: str,
-    excerpt: Optional[str] = Query(None),
+    excerpt: Optional[str] = Query(None, max_length=500),
 ) -> dict[str, Any]:
     state = require_case(case_id)
     field = _DOC_FIELDS.get(doc_type)
@@ -756,7 +754,7 @@ async def get_uploaded_document(case_id: str, index: int) -> FileResponse:
 async def get_uploaded_document_evidence(
     case_id: str,
     index: int,
-    excerpt: Optional[str] = Query(None),
+    excerpt: Optional[str] = Query(None, max_length=500),
 ) -> StreamingResponse:
     state = require_case(case_id)
     if index < 0 or index >= len(state.uploaded_document_paths):
@@ -778,7 +776,7 @@ async def get_uploaded_document_evidence(
 async def get_uploaded_document_evidence_meta(
     case_id: str,
     index: int,
-    excerpt: Optional[str] = Query(None),
+    excerpt: Optional[str] = Query(None, max_length=500),
 ) -> dict[str, Any]:
     state = require_case(case_id)
     if index < 0 or index >= len(state.uploaded_document_paths):

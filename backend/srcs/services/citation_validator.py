@@ -10,7 +10,6 @@ unverified output.
 from __future__ import annotations
 
 import re
-from difflib import SequenceMatcher
 from typing import Any, Awaitable, Callable, Mapping, Optional
 
 from srcs.logger import logger
@@ -20,9 +19,7 @@ from srcs.schemas.citations import (
     CitationValidationError,
 )
 
-# Public knobs
 MAX_RETRIES = 2
-FUZZY_THRESHOLD = 0.80
 
 # Logical filenames the auditor is allowed to cite when source_type == agent_output.
 KNOWN_AGENT_OUTPUT_FILENAMES = frozenset({
@@ -184,17 +181,13 @@ def _find_excerpt(excerpt: str, content: str) -> Optional[tuple[int, int]]:
 
     Matching cascade (stops at first hit):
     1. Case-insensitive exact substring
-    2. Normalized alphanumeric substring (tolerates OCR spacing/punctuation drift)
-    3. Label-value split — e.g. "No. Pendaftaran: OPS 1111" → find "OPS 1111"
-    4. Fuzzy sliding-window at FUZZY_THRESHOLD (OCR noise tolerance)
+    2. Label-value split — e.g. "No. Pendaftaran: OPS 1111" → find "OPS 1111"
+    3. Normalized alphanumeric substring (tolerates OCR spacing/punctuation drift)
     """
     if not excerpt or not content:
         return None
 
     if _has_ellipsis(excerpt):
-        return None
-
-    if "..." in excerpt or "…" in excerpt:
         return None
 
     lc_excerpt = excerpt.lower()
@@ -207,24 +200,7 @@ def _find_excerpt(excerpt: str, content: str) -> Optional[tuple[int, int]]:
     if label_value_match is not None:
         return label_value_match
 
-    normalized_match = _find_normalized_excerpt(excerpt, content)
-    if normalized_match is not None:
-        return normalized_match
-
-    # Fuzzy fallback — only return offsets when we exact-matched, so don't
-    # populate offsets here. Just return any positive match.
-    excerpt_len = len(excerpt)
-    if excerpt_len < 8 or len(content) < excerpt_len:
-        return None
-
-    step = max(1, excerpt_len // 4)
-    for i in range(0, len(content) - excerpt_len + 1, step):
-        window = content[i:i + excerpt_len + 20]
-        ratio = SequenceMatcher(None, lc_excerpt, window.lower()).ratio()
-        if ratio >= FUZZY_THRESHOLD:
-            return i, i + excerpt_len
-
-    return None
+    return _find_normalized_excerpt(excerpt, content)
 
 
 def _normalize_for_match(value: str) -> tuple[str, list[int]]:
@@ -257,72 +233,13 @@ def _find_normalized_excerpt(excerpt: str, content: str) -> Optional[tuple[int, 
 
 
 def _find_label_value_excerpt(excerpt: str, content: str) -> Optional[tuple[int, int]]:
-    """Label-value split fallback for structured fields split across lines in PDFs.
+    """Value-aware fallback for label/value citations split across PDF lines.
 
-    Handles excerpts like:
-      "No. Pendaftaran: OPS 1111"   → value = "OPS 1111"
-      "Warna / Colour: KUNING / YELLOW" → value = "KUNING / YELLOW"
-      "No. Casis/No. Sin BNR34-305612"  → value token "BNR34-305612"
-
-    Strategy:
-    - Split on the last occurrence of ":" to get a label/value pair.
-    - If no ":", extract the last whitespace-delimited token cluster as a value.
-    - Require the value to be >= MIN_VALUE_LEN characters (avoids single-char false positives).
-    - Try exact case-insensitive match and normalized match on the value only.
-    - Return the offsets of the value within the document content.
-    """
-    MIN_VALUE_LEN = 4
-
-    value: str = ""
-    if ":" in excerpt:
-        _, _, raw_value = excerpt.rpartition(":")
-        value = raw_value.strip()
-    else:
-        # No colon — try the last "word cluster" (e.g. "BNR34-305612" from a slash-joined label)
-        parts = excerpt.replace("/", " ").split()
-        # Walk from the end collecting tokens until we hit something that looks like a label word
-        tokens: list[str] = []
-        for part in reversed(parts):
-            stripped = part.strip(".,;")
-            if len(stripped) >= 3 and any(c.isdigit() for c in stripped):
-                tokens.insert(0, stripped)
-            else:
-                break
-        value = " ".join(tokens)
-
-    if not value or len(value) < MIN_VALUE_LEN:
-        return None
-
-    # Reject if the value itself contains an ellipsis (malformed citation)
-    if "..." in value or "…" in value:
-        return None
-
-    lc_value = value.lower()
-    lc_content = content.lower()
-
-    pos = lc_content.find(lc_value)
-    if pos != -1:
-        return pos, pos + len(value)
-
-    # Normalized fallback on just the value
-    norm_value, _ = _normalize_for_match(value)
-    if len(norm_value) >= MIN_VALUE_LEN:
-        norm_content, content_idx = _normalize_for_match(content)
-        norm_pos = norm_content.find(norm_value)
-        if norm_pos != -1:
-            original_start = content_idx[norm_pos]
-            original_end = content_idx[norm_pos + len(norm_value) - 1] + 1
-            return original_start, original_end
-
-    return None
-
-
-def _find_label_value_excerpt(excerpt: str, content: str) -> Optional[tuple[int, int]]:
-    """Value-aware fallback for reconstructed label/value citations.
-
-    This later definition intentionally supersedes the simpler implementation
-    above. It accepts real source values even when PDF extraction splits labels
-    and values across different lines.
+    Extracts candidate values from structured excerpts like:
+      "No. Pendaftaran: OPS 1111"       → tries "OPS 1111"
+      "Warna / Colour: KUNING / YELLOW" → tries "KUNING / YELLOW"
+      "No. Casis/No. Sin BNR34-305612"  → tries "BNR34-305612"
+    and returns offsets of the first value found in the document content.
     """
     for value in _candidate_values_from_excerpt(excerpt):
         match = _find_value_only(value, content)

@@ -40,24 +40,6 @@ def _assert_no_citations_in_auditor_prompt_payload(payload: dict[str, Any]) -> N
         )
 
 
-def _build_original_evidence_block(state: ClaimWorkflowState) -> str:
-    docs = state.get("documents", []) or []
-    if not docs:
-        return "(no original documents available)"
-
-    blocks: list[str] = []
-    for doc in docs:
-        filename = doc.get("filename", "")
-        source_type = doc.get("source_type", "document")
-        content = doc.get("content", "") or ""
-        if source_type == "image":
-            content = content[:1200]
-        else:
-            content = content[:2500]
-        blocks.append(f"DOCUMENT filename={filename} type={source_type}\n{content}")
-    return "\n\n".join(blocks)
-
-
 def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = None) -> str:
     """Render the auditor prompt against current cluster outputs."""
     case_facts = state.get("case_facts", {})
@@ -66,7 +48,7 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     damage = state.get("damage_results", {})
     fraud = state.get("fraud_results", {})
     payout = state.get("payout_results", {})
-    original_evidence = _build_original_evidence_block(state)
+
     _assert_no_citations_in_auditor_prompt_payload(
         {
             "case_facts": case_facts,
@@ -79,7 +61,6 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     )
 
     citation_block = build_citation_instruction(state, _AUDITOR_NODE_ID)
-
     feedback_block = f"\n    Reviewer feedback: {feedback}\n" if feedback else ""
 
     return f"""
@@ -91,9 +72,6 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     Damage Analysis: {damage}
     Fraud Indicators: {fraud}
     Payout Calculation: {payout}
-
-    Original Evidence Documents:
-    {original_evidence}
 {feedback_block}
     Audit Instructions:
     1. Verify the damage in 'Damage Analysis' matches the 'Point of Impact' in 'Liability Analysis'.
@@ -114,33 +92,18 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
         "citations": [ ... ]
     }}
 
-    CITATION RULES SPECIFIC TO THE AUDITOR:
-    - Default to source_type = "agent_output" when auditing or repeating values from
-      Policy Terms, Liability Analysis, Damage Analysis, Fraud Indicators, or Payout Calculation.
-      These are upstream agent outputs, not verbatim PDF text.
+    CITATION RULES FOR THE AUDITOR:
+    - Always use source_type = "agent_output" when citing values from Policy Terms,
+      Liability Analysis, Damage Analysis, Fraud Indicators, or Payout Calculation.
     - Use these logical filenames for upstream outputs:
-      * "policy_analysis_output" for Policy Terms
+      * "policy_analysis_output"   for Policy Terms
       * "liability_analysis_output" for Liability Analysis
-      * "damage_analysis_output" for Damage Analysis
-      * "fraud_analysis_output" for Fraud Indicators
+      * "damage_analysis_output"   for Damage Analysis
+      * "fraud_analysis_output"    for Fraud Indicators
       * "payout_calculation_output" for Payout Calculation
-    - For agent_output citations, copy a short exact JSON-like fragment from the upstream
-      output shown above, e.g. "verified_total: 56635.2" or "suspicion_score: 0.0".
-    - Do NOT cite derived values such as suspicious_parts, verified_total, max_payout_myr,
-      fault percentages, or payout totals as source_type="text" unless that exact string
-      is visibly present in the original document excerpt.
-    - When you cite an upstream conclusion, use source_type = "agent_output" and one of these
-      logical filenames: "policy_analysis_output", "liability_analysis_output",
-      "damage_analysis_output", "fraud_analysis_output", "payout_calculation_output".
-    - When citing a discrepancy, cite BOTH sides: the upstream agent_output you challenge
-      AND the original evidence (text or image) that contradicts it.
-    - When citing original evidence directly, use source_type = "text" or "image" with the
-      exact filename from the Available Files list.
-    - For original text evidence, cite only short exact substrings from the extracted
-      document text. Do not reconstruct sentence fragments from the case summary.
-    - If the original document is in Malay, the citation excerpt must stay in Malay.
-      Do not translate it to English. For example, cite "Tiada kerosakan dilaporkan
-      pada bahagian hadapan" instead of "No damage was reported to the front".
+    - For each citation, copy a short exact JSON-like fragment from the upstream output,
+      e.g. "verified_total: 56635.2" or "suspicion_score: 0.0".
+    - Every finding in "data" must be backed by at least one agent_output citation.
 
     {citation_block}
     """
