@@ -7,16 +7,11 @@ import {
   ChatMessage,
   DocKey,
   UploadedDocs,
-  getMissingRequired,
   getSlot,
 } from "@/components/chat/types";
 import { ChatMessageBubble, BotTypingIndicator } from "@/components/chat/ChatMessage";
 import { ChatInput } from "@/components/chat/ChatInput";
 import { ArrowDown } from "lucide-react";
-
-type SingleFileDocKey = Exclude<DocKey, "photos">;
-const PDF_DOC_ORDER: SingleFileDocKey[] = ["police_report", "policy_pdf", "repair_quotation", "adjuster_report"];
-const LOGO_SRC = "/logo.png";
 
 // -- Bot helpers ----------------------------------------------------------
 
@@ -51,7 +46,8 @@ function WelcomeHero() {
       style={{ maxWidth: "32rem" }}
     >
       <div className="h-32 w-32">
-        <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-contain" />
+        <img src="/logo_black.svg" alt="SettleOps AI" className="h-full w-full object-contain dark:hidden" />
+        <img src="/logo_white.svg" alt="SettleOps AI" className="h-full w-full object-contain hidden dark:block" />
       </div>
       <h1 className="text-3xl font-semibold text-neutral-text-primary">Start a new claim</h1>
       <p className="w-full text-balance text-base leading-6 text-neutral-text-secondary">
@@ -181,7 +177,7 @@ export default function ChatPage() {
   async function handleSend() {
     const text = inputText.trim();
     const allStagedFiles = Object.values(stagedDocs).flat().filter(Boolean) as File[];
-    
+
     if (!text && allStagedFiles.length === 0) return;
 
     const attachments = (Object.entries(stagedDocs) as [DocKey, File[]][])
@@ -208,7 +204,7 @@ export default function ChatPage() {
           ? `${buildAckMessage(allStagedFiles.length)}\n\nInitiating agentic ingestion...`
           : "Analyzing your claim details..."
       ));
-      
+
       setIsSubmitting(true);
       try {
         const result = await api.createCase(newDocs);

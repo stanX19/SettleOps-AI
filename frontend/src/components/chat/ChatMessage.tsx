@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { ChatMessage as ChatMessageType, DocKey, getSlot } from "./types";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
-const LOGO_SRC = "/logo.png";
+
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -20,7 +20,8 @@ export function ChatMessageBubble({ message, onUploadForDoc }: ChatMessageProps)
       {/* Bot avatar */}
       {isBot && (
         <div className="shrink-0 mt-1 h-8 w-8">
-          <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-contain" />
+          <img src="/logo_black.svg" alt="SettleOps AI" className="h-full w-full object-contain dark:hidden" />
+          <img src="/logo_white.svg" alt="SettleOps AI" className="h-full w-full object-contain hidden dark:block" />
         </div>
       )}
 
@@ -68,9 +69,9 @@ export function ChatMessageBubble({ message, onUploadForDoc }: ChatMessageProps)
               : "bg-brand-primary text-brand-on-primary rounded-tr-sm"
           )}
         >
-          <MarkdownRenderer 
-            content={message.text} 
-            className={cn(isBot ? "text-neutral-text-primary" : "text-brand-on-primary prose-strong:text-brand-on-primary prose-p:text-brand-on-primary")} 
+          <MarkdownRenderer
+            content={message.text}
+            className={cn(isBot ? "text-neutral-text-primary" : "text-brand-on-primary prose-strong:text-brand-on-primary prose-p:text-brand-on-primary")}
           />
         </div>
 
@@ -83,7 +84,7 @@ export function ChatMessageBubble({ message, onUploadForDoc }: ChatMessageProps)
                 <button
                   key={key}
                   type="button"
-                  onClick={() => onUploadForDoc(key)}
+                  onClick={() => onUploadForDoc(key as DocKey)}
                   className="inline-flex items-center gap-1.5 rounded-full border border-brand-primary-light bg-brand-primary-light px-3 py-1.5 text-xs font-medium text-neutral-text-primary hover:bg-brand-primary/20 transition-colors"
                 >
                   <Paperclip className="h-3 w-3" />
@@ -105,7 +106,8 @@ export function BotTypingIndicator() {
   return (
     <div className="flex gap-3 justify-start">
       <div className="shrink-0 mt-1 h-8 w-8 overflow-hidden rounded-full border border-neutral-border bg-neutral-surface shadow-card">
-        <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-cover" />
+        <img src="/logo_black.svg" alt="SettleOps AI" className="h-full w-full object-cover dark:hidden" />
+        <img src="/logo_white.svg" alt="SettleOps AI" className="h-full w-full object-cover hidden dark:block" />
       </div>
       <div className="bg-neutral-surface border border-neutral-border rounded-2xl rounded-tl-sm px-4 py-3">
         <div className="flex gap-1 items-center h-4">
