@@ -3,7 +3,6 @@ from typing import Any, Optional
 from srcs.logger import logger
 from srcs.schemas.citations import CitationValidationError
 from srcs.schemas.state import ClaimWorkflowState
-from srcs.services.agents.analysis_tasks import build_citation_instruction
 from srcs.services.agents.rotating_llm import rotating_llm
 from srcs.services.citation_validator import validate_citations
 
@@ -60,7 +59,6 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
         }
     )
 
-    citation_block = build_citation_instruction(state, _AUDITOR_NODE_ID)
     feedback_block = f"\n    Reviewer feedback: {feedback}\n" if feedback else ""
 
     return f"""
@@ -80,7 +78,28 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     4. Flag obvious fraud patterns (e.g. mismatched story vs. physical evidence).
     5. Validate the payout follows the policy terms.
 
-    Return JSON in this shape:
+    CITATION REQUIREMENT (MANDATORY):
+    Every finding in "data" must be backed by at least one citation.
+    Only cite upstream agent outputs — do NOT cite uploaded documents.
+    Use source_type = "agent_output" for every citation with this schema:
+    {{
+        "filename": "<logical filename from the list below>",
+        "source_type": "agent_output",
+        "excerpt": "<short exact key: value fragment from the upstream output above, e.g. \\"suspicion_score: 0.72\\" or \\"poi_location: left_side\\">",
+        "comment": "<what this value states>",
+        "conclusion": "<which finding in data this supports>",
+        "node_id": "{_AUDITOR_NODE_ID}",
+        "field_path": "<output field, e.g. \\"is_consistent\\" or \\"findings\\">"
+    }}
+
+    Available logical filenames (use only these):
+      - policy_analysis_output
+      - liability_analysis_output
+      - damage_analysis_output
+      - fraud_analysis_output
+      - payout_calculation_output
+
+    Final response shape:
     {{
         "data": {{
             "is_consistent": bool,
@@ -91,21 +110,6 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
         "reasoning": "...",
         "citations": [ ... ]
     }}
-
-    CITATION RULES FOR THE AUDITOR:
-    - Always use source_type = "agent_output" when citing values from Policy Terms,
-      Liability Analysis, Damage Analysis, Fraud Indicators, or Payout Calculation.
-    - Use these logical filenames for upstream outputs:
-      * "policy_analysis_output"   for Policy Terms
-      * "liability_analysis_output" for Liability Analysis
-      * "damage_analysis_output"   for Damage Analysis
-      * "fraud_analysis_output"    for Fraud Indicators
-      * "payout_calculation_output" for Payout Calculation
-    - For each citation, copy a short exact JSON-like fragment from the upstream output,
-      e.g. "verified_total: 56635.2" or "suspicion_score: 0.0".
-    - Every finding in "data" must be backed by at least one agent_output citation.
-
-    {citation_block}
     """
 
 

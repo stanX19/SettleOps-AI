@@ -72,6 +72,7 @@ export function CitationEvidenceModal({
                     </div>
                   ) : isPdf && evidenceUrl ? (
                     <PdfEvidenceImage
+                      key={evidenceUrl}
                       src={evidenceUrl}
                       metaUrl={evidenceMetaUrl}
                       alt={`Highlighted evidence from ${citation.filename}`}

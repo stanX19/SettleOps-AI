@@ -10,6 +10,7 @@ unverified output.
 from __future__ import annotations
 
 import re
+import inspect
 from typing import Any, Awaitable, Callable, Mapping, Optional
 
 from srcs.logger import logger
@@ -30,7 +31,32 @@ KNOWN_AGENT_OUTPUT_FILENAMES = frozenset({
     "payout_calculation_output",
 })
 
-TaskFn = Callable[..., Awaitable[Mapping[str, Any]]]
+TaskFn = Callable[..., Mapping[str, Any] | Awaitable[Mapping[str, Any]]]
+
+
+def _accepts_feedback(task_fn: TaskFn) -> bool:
+    try:
+        signature = inspect.signature(task_fn)
+    except (TypeError, ValueError):
+        return True
+    return any(
+        name == "feedback" or param.kind is inspect.Parameter.VAR_KEYWORD
+        for name, param in signature.parameters.items()
+    )
+
+
+async def _call_task(
+    task_fn: TaskFn,
+    state: Mapping[str, Any],
+    feedback: str,
+) -> Mapping[str, Any]:
+    if _accepts_feedback(task_fn):
+        result = task_fn(state, feedback=feedback)
+    else:
+        result = task_fn(state)
+    if inspect.isawaitable(result):
+        result = await result
+    return result
 
 
 async def validate_citations(
@@ -93,11 +119,7 @@ async def validate_citations(
             "Retrying %s due to citation validation errors (attempt %d/%d)",
             node_id, attempt + 1, MAX_RETRIES,
         )
-        try:
-            current = dict(await task_fn(state, feedback=combined))
-        except TypeError:
-            # Some task functions don't accept feedback kwarg
-            current = dict(await task_fn(state))
+        current = dict(await _call_task(task_fn, state, combined))
 
     # Should not reach here, but be defensive.
     raise CitationValidationError(last_errors or ["unknown"], node_id=node_id)

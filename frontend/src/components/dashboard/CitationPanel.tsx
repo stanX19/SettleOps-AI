@@ -58,9 +58,10 @@ export function CitationPanel({
 
       {/* Panel */}
       <aside
-        role="dialog"
-        aria-label={`${title} citations`}
-        aria-modal="true"
+        role={isOpen ? "dialog" : undefined}
+        aria-label={isOpen ? `${title} citations` : undefined}
+        aria-modal={isOpen ? "true" : undefined}
+        aria-hidden={!isOpen}
         className={`fixed inset-y-0 right-0 z-50 flex w-[22rem] max-w-[100vw] flex-col border-l border-neutral-border bg-neutral-background shadow-2xl transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}

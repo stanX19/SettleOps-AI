@@ -1,6 +1,8 @@
 import asyncio
 from typing import Any, Dict, List, Optional
 
+from srcs.logger import logger
+
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -73,10 +75,9 @@ async def _run_cluster(graph, cluster_id: str, state: ClaimWorkflowState):
     }
     _assert_no_upstream_citations_in_cluster_input(cluster_id, input_state)
 
-    print(
-        f"DEBUG: [_run_cluster] Invoking subgraph for {cluster_id}. "
-        f"input_state keys: {list(input_state.keys())}, case_id: {input_state.get('case_id')}",
-        flush=True,
+    logger.debug(
+        "[_run_cluster] Invoking subgraph for %s. input_state keys: %s, case_id: %s",
+        cluster_id, list(input_state.keys()), input_state.get("case_id"),
     )
     result = await graph.ainvoke(input_state)
 

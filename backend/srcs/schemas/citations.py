@@ -30,6 +30,8 @@ class Citation(BaseModel):
     source_type: CitationSourceType
     excerpt: Optional[str] = Field(
         None,
+        min_length=1,
+        max_length=500,
         description="Verbatim quote from text documents. MUST be null for image citations.",
     )
     comment: str = Field(

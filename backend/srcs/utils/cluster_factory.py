@@ -6,6 +6,7 @@ from srcs.schemas.citations import CitationValidationError
 from srcs.schemas.state import ClusterState
 from srcs.services.citation_validator import validate_citations
 from srcs.services.sse_service import SseService
+from srcs.logger import logger
 from srcs.services.case_store import CaseStore, now_iso
 from srcs.schemas.case_dto import (
     AgentId,
@@ -59,8 +60,8 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
             # 2. Emit WORKING status for sub-task
             case_id = state.get("case_id")
             if not case_id:
-                print("WARNING: [ClusterFactory] Missing case_id in state. Skipping SSE.", flush=True)
-                return result
+                logger.warning("[ClusterFactory] Missing case_id in state. Skipping SSE.")
+                return {}
             
             sub_task_name = task.__name__
             parent_agent_id = AgentId(cluster_id)
@@ -78,7 +79,7 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                     sub_rs.status = AgentStatus.WORKING
                     sub_rs.started_at = now_iso()
 
-            print(f"DEBUG: [ClusterFactory] Emitting WORKING for {sub_task_name} in {cluster_id}", flush=True)
+            logger.debug("[ClusterFactory] Emitting WORKING for %s in %s", sub_task_name, cluster_id)
             await SseService.emit(case_id, SseAgentStatusChangedData(
                 case_id=case_id,
                 timestamp=now_iso(),
@@ -97,6 +98,7 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
 
                 # 3.5 Citation gate — CitationValidationError is caught by the
                 # dedicated except block below, which handles SSE + CaseStore update.
+                # validate_citations._call_task handles sync/async and feedback detection.
                 result, _ = await validate_citations(
                     raw_result=result,
                     state=state,
