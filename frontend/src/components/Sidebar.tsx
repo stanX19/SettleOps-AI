@@ -7,7 +7,7 @@ import { Activity, Briefcase, BarChart2, MessageSquare, Bell } from "lucide-reac
 import { ThemeToggle } from "./ThemeToggle";
 import { useCaseStore } from "@/stores/case-store";
 
-const LOGO_SRC = "/logo.png";
+
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -18,7 +18,8 @@ export function Sidebar() {
     <aside className="w-[60px] h-full bg-neutral-surface border-r border-neutral-border flex flex-col items-center py-4 flex-shrink-0 z-20">
       <Link href="/chat">
         <div className="w-9 h-9 flex items-center justify-center mb-8 cursor-pointer">
-          <img src={LOGO_SRC} alt="SettleOps AI" className="h-full w-full object-contain" />
+          <img src="/logo_black.svg" alt="SettleOps AI" className="h-full w-full object-contain dark:hidden" />
+          <img src="/logo_white.svg" alt="SettleOps AI" className="h-full w-full object-contain hidden dark:block" />
         </div>
       </Link>
 
