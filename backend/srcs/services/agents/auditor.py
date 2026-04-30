@@ -11,6 +11,35 @@ from srcs.services.citation_validator import validate_citations
 _AUDITOR_NODE_ID = "auditor_node"
 
 
+def _find_citation_payload_paths(value: Any, path: str = "payload") -> list[str]:
+    """Find citation payloads that would become auditor reasoning input."""
+    if isinstance(value, dict):
+        paths: list[str] = []
+        for key, item in value.items():
+            child_path = f"{path}.{key}"
+            if key == "citations" or key.endswith("_citations"):
+                paths.append(child_path)
+                continue
+            paths.extend(_find_citation_payload_paths(item, child_path))
+        return paths
+    if isinstance(value, list):
+        paths = []
+        for index, item in enumerate(value):
+            paths.extend(_find_citation_payload_paths(item, f"{path}[{index}]"))
+        return paths
+    return []
+
+
+def _assert_no_citations_in_auditor_prompt_payload(payload: dict[str, Any]) -> None:
+    """Guard against future citation leakage into the auditor prompt."""
+    leaked_paths = _find_citation_payload_paths(payload)
+    if leaked_paths:
+        raise ValueError(
+            "Auditor prompt payload unexpectedly includes citation metadata: "
+            + ", ".join(leaked_paths)
+        )
+
+
 def _build_original_evidence_block(state: ClaimWorkflowState) -> str:
     docs = state.get("documents", []) or []
     if not docs:
@@ -38,6 +67,16 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     fraud = state.get("fraud_results", {})
     payout = state.get("payout_results", {})
     original_evidence = _build_original_evidence_block(state)
+    _assert_no_citations_in_auditor_prompt_payload(
+        {
+            "case_facts": case_facts,
+            "policy_results": policy,
+            "liability_results": liability,
+            "damage_results": damage,
+            "fraud_results": fraud,
+            "payout_results": payout,
+        }
+    )
 
     citation_block = build_citation_instruction(state, _AUDITOR_NODE_ID)
 

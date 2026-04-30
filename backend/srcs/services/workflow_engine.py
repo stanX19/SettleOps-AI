@@ -41,6 +41,23 @@ TOPOLOGY = {
     AgentId.FRAUD.value: ["fraud_assessment_task"],
 }
 
+
+def _assert_no_upstream_citations_in_cluster_input(
+    cluster_id: str, input_state: ClusterState
+) -> None:
+    """Keep citations as audit metadata, not cluster reasoning input."""
+    leaked_keys = [
+        key
+        for key in input_state
+        if key.endswith("_citations") or (key == "citations" and input_state[key])
+    ]
+    if leaked_keys:
+        raise ValueError(
+            f"Cluster '{cluster_id}' input unexpectedly includes citation payloads: "
+            f"{', '.join(leaked_keys)}"
+        )
+
+
 # -- Cluster Definitions -----------------------------------------------------
 
 async def _run_cluster(graph, cluster_id: str, state: ClaimWorkflowState):
@@ -54,6 +71,7 @@ async def _run_cluster(graph, cluster_id: str, state: ClaimWorkflowState):
         "citations": {},  # fresh per-run; sub-tasks contribute keyed by node_id
         "trace_log": []
     }
+    _assert_no_upstream_citations_in_cluster_input(cluster_id, input_state)
 
     print(
         f"DEBUG: [_run_cluster] Invoking subgraph for {cluster_id}. "
