@@ -139,6 +139,11 @@ def _write_text_file(path: str, content: str) -> None:
         f.write(content)
 
 
+def _read_text_file(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
 async def _save_upload(upload: UploadFile, dest_path: str, max_bytes: int) -> int:
     """Stream *upload* to *dest_path*, enforcing *max_bytes*.
 
@@ -697,11 +702,18 @@ async def get_document_text(case_id: str, doc_type: str) -> dict[str, Any]:
     if not path or not os.path.exists(path):
         raise api_error(404, ErrorCode.DOCUMENT_NOT_FOUND, "Document not uploaded")
     extraction = state.document_extractions.get(doc_type, {})
+    text = extraction.get("text") or ""
+    method = extraction.get("method", "not_extracted")
+    error = extraction.get("error") or extraction.get("gemini_error")
+    if doc_type == "chat_transcript" and not text:
+        text = await asyncio.to_thread(_read_text_file, path)
+        method = "direct_file"
+        error = None
     return {
         "filename": os.path.basename(path),
-        "text": extraction.get("text") or "",
-        "method": extraction.get("method", "not_extracted"),
-        "error": extraction.get("error") or extraction.get("gemini_error"),
+        "text": text,
+        "method": method,
+        "error": error,
     }
 
 
