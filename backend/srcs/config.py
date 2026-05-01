@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     # Application Settings
     DEBUG: bool = False
     PORT: int = 8000
-    LLM_LOCALHOST: bool = True
+    LLM_LOCALHOST: bool = False
     LLM_LOCALHOST_URL: str = "http://127.0.0.1:1234/v1"
     USE_LLM_CACHE: bool = True
 

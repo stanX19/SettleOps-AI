@@ -62,6 +62,7 @@ export interface DocumentInfo {
   doc_type: string;
   filename: string;
   url: string;
+  text_url?: string;
   index?: number; // populated for photos
   tags?: string[];
 }
@@ -83,6 +84,28 @@ export interface AgentStateInfo {
   purpose?: string;
   system_prompt?: string;
   logs?: string[];
+}
+
+// -- Citation types ----------------------------------------------------------
+
+export type CitationSourceType = "text" | "image" | "agent_output";
+
+export interface Citation {
+  filename: string;
+  source_type: CitationSourceType;
+  /** Verbatim quote for text/agent_output citations; null for images. */
+  excerpt: string | null;
+  /** What this evidence shows. */
+  comment: string;
+  /** Which agent decision/output field this evidence supports. */
+  conclusion: string;
+  /** Identifier of the agent task that produced this citation. */
+  node_id: string;
+  /** Output field path this citation backs (e.g. "poi_location"). */
+  field_path: string;
+  char_start?: number;
+  char_end?: number;
+  page?: number;
 }
 
 export interface OfficerMessageInfo {
@@ -108,6 +131,8 @@ export interface CaseSnapshot {
   documents: DocumentInfo[];
   agents: Record<string, AgentStateInfo>;
   blackboard: Record<string, any>;
+  /** Citations keyed by BlackboardSection.value (e.g. "PolicyVerdict"). */
+  citations: Partial<Record<BlackboardSection, Citation[]>>;
   artifacts: ArtifactInfo[];
   officer_messages: OfficerMessageInfo[];
   auditor_loop_count: number;
@@ -151,6 +176,9 @@ export interface SseAgentOutput extends SseBasePayload {
   agent: AgentId;
   section: BlackboardSection;
   data: any;
+  logs?: string[];
+  /** Top-level citations array — read from event.citations, not event.data.citations. */
+  citations?: Citation[];
 }
 
 export interface SseAgentMessageToAgent extends SseBasePayload {

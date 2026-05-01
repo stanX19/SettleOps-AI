@@ -36,6 +36,9 @@ _IMAGE_PROMPT = (
     "extract all visible fields as concise structured text.\n"
     "If it is a vehicle damage photo, describe all visible damage with location, "
     "affected parts, and severity.\n"
+    "For every vehicle image, always check whether a vehicle license/registration "
+    "plate is visible. If visible, transcribe the plate exactly and state where it "
+    "appears, for example: 'front license plate visible: ABC1234'.\n"
     "If it is another kind of image, transcribe all visible text exactly.\n"
     "Do not invent information that is not visible in the image."
 )

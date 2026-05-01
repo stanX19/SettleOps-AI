@@ -157,6 +157,7 @@ def _document_info_for(state: CaseState) -> list[DocumentInfo]:
                     doc_type=doc_type,
                     filename=os.path.basename(path),
                     url=f"{base}/{doc_type}",
+                    text_url=f"{base}/{doc_type}/text",
                 )
             )
 
@@ -174,6 +175,7 @@ def _document_info_for(state: CaseState) -> list[DocumentInfo]:
                     doc_type=public_doc_type,
                     filename=os.path.basename(path),
                     url=f"{base}/uploaded/{i}",
+                    text_url=f"{base}/uploaded/{i}/text",
                     index=i,
                     tags=raw_tags if isinstance(raw_tags, list) else [raw_tags]
                 )
@@ -189,6 +191,7 @@ def _document_info_for(state: CaseState) -> list[DocumentInfo]:
                     doc_type="photo",
                     filename=os.path.basename(p),
                     url=f"{base}/photo/{i}",
+                    text_url=f"{base}/photo/{i}/text",
                     index=i,
                 )
             )
@@ -287,6 +290,15 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
             for agent, rs in state.agent_states.items()
         },
         blackboard=_blackboard_for(state),
+        # Citations keyed by exact BlackboardSection.value strings so the
+        # frontend hydrates directly from snapshot.citations[section].
+        citations={
+            BlackboardSection.POLICY_VERDICT.value: list(state.policy_citations),
+            BlackboardSection.LIABILITY_VERDICT.value: list(state.liability_citations),
+            BlackboardSection.DAMAGE_RESULT.value: list(state.damage_citations),
+            BlackboardSection.FRAUD_ASSESSMENT.value: list(state.fraud_citations),
+            BlackboardSection.AUDIT_RESULT.value: list(state.auditor_citations),
+        },
         artifacts=_artifact_info_for(state),
         officer_messages=[
             OfficerMessageInfo(
@@ -743,6 +755,12 @@ def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
         "damage_results": case.damage_result or {},
         "fraud_results": case.fraud_assessment or {},
         "payout_results": case.payout_recommendation or {},
+        "auditor_results": case.audit_result or {},
+        "policy_citations": list(case.policy_citations),
+        "liability_citations": list(case.liability_citations),
+        "damage_citations": list(case.damage_citations),
+        "fraud_citations": list(case.fraud_citations),
+        "auditor_citations": list(case.auditor_citations),
         "trace_log": [],
         "active_challenge": None,
         "status": case.status.value,

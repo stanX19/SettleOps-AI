@@ -91,6 +91,7 @@ class DocumentInfo(BaseModel):
     doc_type: str
     filename: str
     url: str
+    text_url: Optional[str] = None
     index: Optional[int] = None  # populated for photos
     tags: list[str] = []
 
@@ -144,6 +145,8 @@ class CaseSnapshot(BaseModel):
     documents: list[DocumentInfo] = Field(default_factory=list)
     agents: dict[str, AgentStateInfo] = Field(default_factory=dict)
     blackboard: dict[str, Any] = Field(default_factory=dict)
+    # Citations keyed by BlackboardSection.value (e.g. "PolicyVerdict").
+    citations: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     artifacts: list[ArtifactInfo] = Field(default_factory=list)
     officer_messages: list[OfficerMessageInfo] = Field(default_factory=list)
     auditor_loop_count: int = 0
@@ -226,6 +229,9 @@ class SseAgentOutputData(_CaseSseBase):
     section: BlackboardSection
     data: dict[str, Any]
     logs: Optional[list[str]] = None
+    # Top-level citations (not nested under data) so the frontend reads
+    # event.citations directly. Each item conforms to schemas.citations.Citation.
+    citations: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class SseAgentMessageToAgentData(_CaseSseBase):
