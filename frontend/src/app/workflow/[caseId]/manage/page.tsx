@@ -439,6 +439,10 @@ function StatusBadge({ status }: { status: CaseStatus }) {
       label: 'Completed',
       styles: 'bg-semantic-success'
     },
+    [CaseStatus.AWAITING_ADJUSTER]: {
+      label: 'Awaiting Adjuster',
+      styles: 'bg-semantic-warning'
+    },
     [CaseStatus.APPROVED]: {
       label: 'Approved',
       styles: 'bg-blue-600'

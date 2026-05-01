@@ -1,17 +1,12 @@
 from typing import Any, Optional
 
 from srcs.logger import logger
-from srcs.schemas.citations import CitationValidationError
 from srcs.schemas.state import ClaimWorkflowState
 from srcs.services.agents.rotating_llm import rotating_llm
-from srcs.services.citation_validator import validate_citations
-
-
-_AUDITOR_NODE_ID = "auditor_node"
 
 
 def _find_citation_payload_paths(value: Any, path: str = "payload") -> list[str]:
-    """Find citation payloads that would become auditor reasoning input."""
+    """Find citation payloads that would become aggregator reasoning input."""
     if isinstance(value, dict):
         paths: list[str] = []
         for key, item in value.items():
@@ -30,7 +25,7 @@ def _find_citation_payload_paths(value: Any, path: str = "payload") -> list[str]
 
 
 def _assert_no_citations_in_auditor_prompt_payload(payload: dict[str, Any]) -> None:
-    """Guard against future citation leakage into the auditor prompt."""
+    """Guard against citation metadata leaking into final synthesis."""
     leaked_paths = _find_citation_payload_paths(payload)
     if leaked_paths:
         raise ValueError(
@@ -40,13 +35,19 @@ def _assert_no_citations_in_auditor_prompt_payload(payload: dict[str, Any]) -> N
 
 
 def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = None) -> str:
-    """Render the auditor prompt against current cluster outputs."""
+    """Render the final aggregator prompt against validated workflow outputs."""
     case_facts = state.get("case_facts", {})
     policy = state.get("policy_results", {})
     liability = state.get("liability_results", {})
     damage = state.get("damage_results", {})
     fraud = state.get("fraud_results", {})
     payout = state.get("payout_results", {})
+    validation = {
+        "policy": policy.get("_validation", {}),
+        "liability": liability.get("_validation", {}),
+        "damage": damage.get("_validation", {}),
+        "fraud": fraud.get("_validation", {}),
+    }
 
     _assert_no_citations_in_auditor_prompt_payload(
         {
@@ -56,13 +57,17 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
             "damage_results": damage,
             "fraud_results": fraud,
             "payout_results": payout,
+            "cluster_validation": validation,
         }
     )
 
     feedback_block = f"\n    Reviewer feedback: {feedback}\n" if feedback else ""
 
     return f"""
-    You are a Senior Insurance Auditor. Perform a cross-consistency check on this claim.
+    You are the final Aggregator for an insurance claim workflow.
+    Synthesize the validated outputs into a concise final review for a human officer.
+    Do not perform a new adversarial validation pass. The cluster Validator results below
+    already records citation/verdict mistakes and unresolved issues.
 
     Case Facts (Tagged Documents): {case_facts.get('tagged_documents', {})}
     Policy Terms: {policy}
@@ -70,45 +75,18 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     Damage Analysis: {damage}
     Fraud Indicators: {fraud}
     Payout Calculation: {payout}
+    Cluster Validation Results: {validation}
 {feedback_block}
-    Audit Instructions:
-    1. Verify the damage in 'Damage Analysis' matches the 'Point of Impact' in 'Liability Analysis'.
-    2. Check that the workshop quote aligns with the damage analysis.
-    3. If suspicion_score > 0.5, you MUST mark is_consistent=False and explain why.
-    4. Flag obvious fraud patterns (e.g. mismatched story vs. physical evidence).
-    5. Validate the payout follows the policy terms.
-
-    CITATION REQUIREMENT (MANDATORY):
-    Every finding in "data" must be backed by at least one citation.
-    Only cite upstream agent outputs — do NOT cite uploaded documents.
-    Use source_type = "agent_output" for every citation with this schema:
-    {{
-        "filename": "<logical filename from the list below>",
-        "source_type": "agent_output",
-        "excerpt": "<short exact key: value fragment from the upstream output above, e.g. \\"suspicion_score: 0.72\\" or \\"poi_location: left_side\\">",
-        "comment": "<what this value states>",
-        "conclusion": "<which finding in data this supports>",
-        "node_id": "{_AUDITOR_NODE_ID}",
-        "field_path": "<output field, e.g. \\"is_consistent\\" or \\"findings\\">"
-    }}
-
-    Available logical filenames (use only these):
-      - policy_analysis_output
-      - liability_analysis_output
-      - damage_analysis_output
-      - fraud_analysis_output
-      - payout_calculation_output
-
     Final response shape:
     {{
         "data": {{
-            "is_consistent": bool,
-            "findings": "string describing discrepancies or 'None'",
-            "suggested_action": "approve" | "challenge",
-            "target_cluster": "policy" | "liability" | "damage" | "fraud" | "none"
+            "summary": "short final claim summary",
+            "final_recommendation": "approve" | "escalate" | "decline",
+            "validation_status": "valid" | "issues_found" | "unresolved",
+            "unresolved_issues": ["string"],
+            "human_review_notes": "string"
         }},
-        "reasoning": "...",
-        "citations": [ ... ]
+        "reasoning": "brief synthesis rationale"
     }}
     """
 
@@ -116,97 +94,77 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
 async def _auditor_llm_call(
     state: ClaimWorkflowState, feedback: Optional[str] = None
 ) -> dict[str, Any]:
-    """Single LLM round-trip; the validator may invoke this multiple times."""
+    """Single LLM round-trip for final synthesis."""
     prompt = _build_auditor_prompt(state, feedback=feedback)
     response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
     raw = response.json_data if response.json_data else {}
-    if not isinstance(raw, dict):
-        raw = {}
-    raw.setdefault("citations", [])
-    return raw
+    return raw if isinstance(raw, dict) else {}
 
 
 async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
-    """AI Auditor node: cross-consistency check between results."""
+    """Final aggregator node: synthesize validated results for human review."""
     if state.get("status") == "escalated":
         return {
+            "active_challenge": None,
             "trace_log": [
-                "[Auditor] Workflow is ESCALATED. Skipping audit until critical data is provided."
-            ]
+                "[Auditor] Workflow is ESCALATED. Skipping final synthesis until critical data is provided."
+            ],
         }
 
-    policy = state.get("policy_results", {})
-    liability = state.get("liability_results", {})
-    damage = state.get("damage_results", {})
-    fraud = state.get("fraud_results", {})
-    payout = state.get("payout_results", {})
+    cluster_results = {
+        "policy": state.get("policy_results", {}) or {},
+        "liability": state.get("liability_results", {}) or {},
+        "damage": state.get("damage_results", {}) or {},
+        "fraud": state.get("fraud_results", {}) or {},
+    }
+    invalid_clusters = {
+        name: result.get("_validation", {})
+        for name, result in cluster_results.items()
+        if result.get("_validation", {}).get("is_valid", True) is False
+    }
+    unresolved = bool(invalid_clusters)
 
     try:
         raw = await _auditor_llm_call(state)
-        validated, _ = await validate_citations(
-            raw_result=raw,
-            state=state,
-            task_fn=_auditor_llm_call,
-            feedback=None,
-            node_id=_AUDITOR_NODE_ID,
-        )
-    except CitationValidationError as e:
-        logger.warning("[Auditor] Citation gate failed: %s", e)
+        synthesis = raw.get("data", {}) if isinstance(raw.get("data"), dict) else raw
+    except Exception as e:
+        logger.exception("[Auditor] LLM call failed: %s", e)
         return {
             "auditor_results": {
                 "status": "error",
-                "is_consistent": False,
-                "findings": f"Citation gate failed: {e}",
-                "suggested_action": "challenge",
-                "target_cluster": "none",
+                "summary": f"Auditor error: {e}",
+                "final_recommendation": "escalate",
+                "validation_status": "unresolved",
+                "unresolved_issues": [f"Auditor error: {e}"],
+                "human_review_notes": "Final synthesis could not be generated.",
             },
             "auditor_citations": [],
             "status": "inconsistent",
             "active_challenge": None,
-            "trace_log": [f"[Auditor] Citation validation failed: {e}"],
+            "trace_log": [f"[Auditor] Error during synthesis: {e}"],
         }
-    except Exception as e:
-        logger.exception("[Auditor] LLM call failed: %s", e)
-        return {
-            "auditor_results": {"status": "error", "findings": f"Auditor error: {e}"},
-            "auditor_citations": [],
-            "trace_log": [f"[Auditor] Error during audit: {e}"],
-        }
-
-    audit_data = validated.get("data", {}) if isinstance(validated.get("data"), dict) else {}
-
-    has_errors = any(
-        isinstance(res, dict) and res.get("status") == "error"
-        for res in (policy, liability, damage, fraud, payout)
-    )
-
-    is_consistent = bool(audit_data.get("is_consistent", True)) and not has_errors
-    findings = audit_data.get("findings", "No issues found.")
-    if has_errors:
-        findings = "Audit failed due to technical error in one or more analysis clusters."
-
-    status = "awaiting_approval" if is_consistent else "inconsistent"
-
-    citations = list(validated.get("citations") or [])
-    # Annotate node_id defensively in case the LLM omitted it.
-    for c in citations:
-        if isinstance(c, dict) and not c.get("node_id"):
-            c["node_id"] = _AUDITOR_NODE_ID
 
     auditor_results = {
-        "is_consistent": is_consistent,
-        "findings": findings,
-        "suggested_action": audit_data.get("suggested_action", "approve"),
-        "target_cluster": audit_data.get("target_cluster", "none"),
+        "summary": synthesis.get("summary", "Final synthesis complete."),
+        "final_recommendation": synthesis.get(
+            "final_recommendation", "escalate" if unresolved else "approve"
+        ),
+        "validation_status": synthesis.get(
+            "validation_status", "issues_found" if unresolved else "valid"
+        ),
+        "unresolved_issues": synthesis.get(
+            "unresolved_issues", list(invalid_clusters.values()) if unresolved else []
+        ),
+        "human_review_notes": synthesis.get("human_review_notes", ""),
     }
 
     return {
         "auditor_results": auditor_results,
-        "auditor_citations": citations,
-        "status": status,
-        "active_challenge": None,  # Clear challenge after rerun + audit
+        "auditor_citations": [],
+        "status": "inconsistent" if unresolved else "awaiting_approval",
+        "active_challenge": None,
         "trace_log": [
-            f"[Auditor] Audit complete. Consistent: {is_consistent}. Findings: {findings}"
+            f"[Auditor] Final synthesis complete. Validation valid: {not unresolved}."
         ],
     }
 
@@ -220,26 +178,22 @@ def decision_gate_logic(state: ClaimWorkflowState) -> dict[str, Any]:
 
 
 def decision_router(state: ClaimWorkflowState) -> str:
-    """Decision Router: Logic to route based on active_challenge or auditor findings."""
+    """Decision Router: human approval/refiner routing after final aggregation."""
     from srcs.schemas.state import WorkflowNodes, MAX_ITERATIONS, WorkflowAction
 
-    # 0. Human Authority: If operator forced approval, bypass all logic
     human_decision = state.get("human_decision")
     if human_decision and human_decision.get("action") == WorkflowAction.FORCE_APPROVE:
         return WorkflowNodes.REPORT_GENERATOR
 
-    # 1. Escalation: If critical data is missing, stay at decision gate for human input
     if state.get("status") == "escalated":
         return WorkflowNodes.DECISION_GATE
 
     active_challenge = state.get("active_challenge")
     iteration = active_challenge.get("iteration", 0) if active_challenge else 0
 
-    # 1. Circuit Breaker: Prevent infinite surgical loops
     if iteration > MAX_ITERATIONS:
         return WorkflowNodes.REPORT_GENERATOR
 
-    # 2. Surgical Rerun: If human/refiner provided a specific challenge
     if active_challenge:
         target = active_challenge.get("target_cluster")
         mapping = {
@@ -250,16 +204,12 @@ def decision_router(state: ClaimWorkflowState) -> str:
         }
         return mapping.get(target, WorkflowNodes.REFINER)
 
-    # 3. Refinement Loop: If human provided NEW feedback via Chat Agent
     if state.get("latest_user_message"):
         return WorkflowNodes.REFINER
 
-    # 4. If Auditor found an autonomous issue but we haven't challenged it yet,
-    # we stop at the Decision Gate (this router runs after the interrupt).
     if state.get("status") == "inconsistent":
         return WorkflowNodes.DECISION_GATE
 
-    # 5. Completion: All checks passed, but we wait for human approval before generating the final report.
     if human_decision and human_decision.get("action") in (
         WorkflowAction.APPROVE,
         WorkflowAction.FORCE_APPROVE,

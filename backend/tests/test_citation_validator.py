@@ -249,6 +249,100 @@ def test_label_value_citation_matches_split_road_tax_combined_values():
     asyncio.run(run())
 
 
+def test_table_row_citation_tolerates_split_pdf_columns():
+    state = {
+        "documents": [
+            {
+                "filename": "uploaded_6_08_workshop_quotation.pdf",
+                "source_type": "document",
+                "content": (
+                    "No\nDescription\nQty\nAmount\n"
+                    "1\nFront Bumper\n1\nRM 658.00\n"
+                    "2\nFront Bumper Bracket\n1\nRM 120.00\n"
+                ),
+            }
+        ]
+    }
+    result = {
+        "data": {"verified_total": 778.0},
+        "citations": [
+            {
+                "filename": "uploaded_6_08_workshop_quotation.pdf",
+                "source_type": "text",
+                "excerpt": "1 Front Bumper 658.00",
+                "comment": "Front bumper line item amount.",
+                "conclusion": "Supports verified parts cost.",
+                "node_id": "damage_quote_audit_task",
+                "field_path": "verified_parts",
+            }
+        ],
+    }
+
+    async def run():
+        validated, _ = await validate_citations(
+            raw_result=result,
+            state=state,
+            task_fn=await _same_result_task(result),
+            feedback=None,
+            node_id="damage_quote_audit_task",
+        )
+        citation = validated["citations"][0]
+        matched = state["documents"][0]["content"][citation["char_start"]:citation["char_end"]]
+        assert "Front Bumper" in matched
+        assert "658.00" in matched
+
+    asyncio.run(run())
+
+
+def test_table_row_citation_tolerates_column_oriented_pdf_extraction():
+    state = {
+        "documents": [
+            {
+                "filename": "uploaded_3_08_workshop_quotation_case2.pdf",
+                "source_type": "document",
+                "content": (
+                    "No.\nDescription\nQty\nUnit Price (RM)\nAmount (RM)\n"
+                    "1\n2\n3\n"
+                    "Front Left Door Shell — Genuine OEM Toyota (Hilux Rogue)\n"
+                    "Rear Left Door Shell — Genuine OEM Toyota (Hilux Rogue)\n"
+                    "Front Left Door Inner Panel & Retainer Complete Assembly\n"
+                    "1\n1\n1\n"
+                    "18,500.00\n17,200.00\n12,800.00\n"
+                    "18,500.00\n17,200.00\n12,800.00\n"
+                ),
+            }
+        ]
+    }
+    result = {
+        "data": {"verified_parts": 18500.0},
+        "citations": [
+            {
+                "filename": "uploaded_3_08_workshop_quotation_case2.pdf",
+                "source_type": "text",
+                "excerpt": "Front Left Door Shell — Genuine OEM Toyota (Hilux Rogue) 18,500.00",
+                "comment": "Front left door shell quoted amount.",
+                "conclusion": "Supports verified parts cost.",
+                "node_id": "damage_quote_audit_task",
+                "field_path": "verified_parts",
+            }
+        ],
+    }
+
+    async def run():
+        validated, _ = await validate_citations(
+            raw_result=result,
+            state=state,
+            task_fn=await _same_result_task(result),
+            feedback=None,
+            node_id="damage_quote_audit_task",
+        )
+        citation = validated["citations"][0]
+        matched = state["documents"][0]["content"][citation["char_start"]:citation["char_end"]]
+        assert "Front Left Door Shell" in matched
+
+    asyncio.run(run())
+
+
 def test_valid_image_citation_passes():
     result = {
         "data": {"poi_location": "front"},
@@ -380,5 +474,35 @@ def test_agent_output_citation_passes_for_known_output():
             node_id="auditor_node",
         )
         assert validated["citations"][0]["source_type"] == "agent_output"
+
+    asyncio.run(run())
+
+
+def test_reference_citation_passes_for_known_mcp_document():
+    result = {
+        "data": {"benchmark_range": "OEM front fender benchmark"},
+        "citations": [
+            {
+                "filename": "parts_pricing_guide",
+                "source_type": "reference",
+                "excerpt": "Front fender | 250 – 450 | 500 – 800 | 900 – 1,500",
+                "comment": "Benchmark guide row for front fender pricing.",
+                "conclusion": "Supports benchmark comparison.",
+                "node_id": "pricing_validation_task",
+                "field_path": "flagged_items[0].benchmark_range",
+            }
+        ],
+    }
+
+    async def run():
+        validated, _ = await validate_citations(
+            raw_result=result,
+            state=_state(),
+            task_fn=await _same_result_task(result),
+            feedback=None,
+            node_id="pricing_validation_task",
+        )
+        assert validated["citations"][0]["source_type"] == "reference"
+        assert validated["citations"][0]["char_start"] is not None
 
     asyncio.run(run())

@@ -8,6 +8,8 @@ class WorkflowNodes(str, Enum):
     LIABILITY_CLUSTER = "liability_cluster"
     DAMAGE_CLUSTER = "damage_cluster"
     FRAUD_CLUSTER = "fraud_cluster"
+    ADJUSTER_REQUEST = "adjuster_request"
+    WAIT_FOR_ADJUSTER = "wait_for_adjuster"
     REFINER = "refiner"
     REPORT_GENERATOR = "report_generator"
     DECISION_GATE = "decision_gate"
@@ -78,6 +80,7 @@ class ClaimWorkflowState(TypedDict):
     damage_results: Annotated[dict[str, Any], dict_merge]
     fraud_results: Annotated[dict[str, Any], dict_merge]
     payout_results: Annotated[dict[str, Any], dict_merge]
+    adjuster_results: Annotated[dict[str, Any], dict_merge]
     auditor_results: Annotated[dict[str, Any], dict_merge]
 
     # Per-section citations. Reruns of a section replace its list (no append).
@@ -92,6 +95,7 @@ class ClaimWorkflowState(TypedDict):
     
     # Routing & Loop Controls
     active_challenge: Optional[ChallengeState]
+    auditor_loop_count: int
     status: str 
     
     # HITL & Auditing
