@@ -127,7 +127,7 @@ export default function DashboardPage() {
           </div>
         ) : cases.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
-            <AlertCircle className="w-8 h-8 text-neutral-text-tertiary mb-3 opacity-40" />
+            <img src="/empty-box.png" alt="Empty Box" className="w-28 h-28 mb-3 opacity-60" />
             <p className="text-sm text-neutral-text-secondary mb-1">
               {error || "No claims found."}
             </p>

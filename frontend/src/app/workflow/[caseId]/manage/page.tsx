@@ -89,7 +89,7 @@ export default function ManageCasePage({ params }: PageProps) {
     try {
       const documentFiles = files.map(f => f.file);
       await api.submitDocuments(caseId, documentFiles);
-      
+
       // Redirect to main workflow view
       router.push(`/workflow/${caseId}`);
     } catch (err: any) {
@@ -123,16 +123,16 @@ export default function ManageCasePage({ params }: PageProps) {
               <StatusBadge status={status} />
             </div>
             <div className="mt-1 flex items-center space-x-2">
-              <span className="text-xs font-mono text-brand-primary bg-brand-primary/10 px-2 py-0.5 rounded uppercase">{caseId}</span>
+              <span className="text-xs font-mono text-neutral-800 dark:text-brand-primary bg-black/5 dark:bg-brand-primary/10 border border-black/10 dark:border-transparent px-2 py-0.5 rounded uppercase font-medium">{caseId}</span>
             </div>
           </div>
         </div>
 
         <div className="flex items-center space-x-3">
-          <Button 
+          <Button
             onClick={handleStartWorkflow}
             disabled={isStarting || files.length === 0}
-            variant="outline" 
+            variant="outline"
             className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all disabled:opacity-50"
           >
             {isStarting ? (
@@ -165,7 +165,7 @@ export default function ManageCasePage({ params }: PageProps) {
 
           {/* Document Management Hub */}
           <div className="bg-neutral-surface border border-neutral-border rounded-lg shadow-sm flex flex-col h-full overflow-hidden">
-            <div className="p-6 border-b border-neutral-border flex items-center justify-between flex-shrink-0">
+            <div className="px-6 py-4 border-b border-neutral-border flex items-center justify-between flex-shrink-0 bg-neutral-background/30">
               <div className="flex items-center space-x-2">
                 <FileText className="w-5 h-5 text-brand-primary" />
                 <h2 className="text-lg font-semibold text-neutral-text-primary">Document Evidence Slots</h2>
@@ -200,7 +200,7 @@ export default function ManageCasePage({ params }: PageProps) {
                 </table>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-12 text-center h-full">
-                  <Upload className="w-8 h-8 text-white opacity-40 mb-4" />
+                  <Upload className="w-8 h-8 text-neutral-text-tertiary opacity-60 mb-4" />
                   <h4 className="text-neutral-text-primary font-medium mb-1">No evidence uploaded yet</h4>
                   <p className="text-xs text-neutral-text-tertiary max-w-[480px]">
                     Upload relevant PDF documents or images (Police Report, Policy, Quote) to begin the settlement orchestration.
@@ -225,9 +225,9 @@ export default function ManageCasePage({ params }: PageProps) {
               </div>
               <div className="flex items-center space-x-2">
                 {snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded) && (
-                  <a 
-                    href={snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded).url} 
-                    target="_blank" 
+                  <a
+                    href={snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded).url}
+                    target="_blank"
                     rel="noopener noreferrer"
                   >
                     <Button variant="ghost" size="sm" className="h-8 text-[11px] text-brand-primary hover:text-brand-primary/80">
@@ -240,12 +240,12 @@ export default function ManageCasePage({ params }: PageProps) {
 
             {(() => {
               const pdfArtifact = snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded);
-              
+
               if (pdfArtifact) {
                 return (
                   <div className="flex-1 w-full h-full bg-neutral-background">
-                    <iframe 
-                      src={pdfArtifact.url} 
+                    <iframe
+                      src={pdfArtifact.url}
                       className="w-full h-full border-none"
                       title="Settlement Report Preview"
                     />
@@ -255,9 +255,9 @@ export default function ManageCasePage({ params }: PageProps) {
 
               return (
                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-neutral-background/10 overflow-y-auto">
-                  <FileText className="w-6 h-6 text-white opacity-40 mb-4" />
-                  <h4 className="text-neutral-text-primary font-medium mb-1 text-sm">Final report hasn't generated</h4>
-                  <p className="text-[11px] text-neutral-text-tertiary max-w-[320px]">
+                  <FileText className="w-8 h-8 text-neutral-text-tertiary opacity-60 mb-4" />
+                  <h4 className="text-neutral-text-primary font-medium mb-1">Final report hasn't generated</h4>
+                  <p className="text-xs text-neutral-text-tertiary max-w-[320px]">
                     Complete the workflow orchestration to generate the final settlement report.
                   </p>
                 </div>

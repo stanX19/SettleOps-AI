@@ -370,7 +370,7 @@ export function WorkflowPane() {
             <p className="text-sm text-neutral-text-secondary mb-4">
               We're having trouble fetching the case topology. Please ensure the backend is running and reachable, then try again.
             </p>
-            <Button onClick={() => window.location.reload()} variant="primary" size="sm">
+            <Button onClick={() => window.location.reload()} variant="default" size="sm">
               Retry Connection
             </Button>
           </div>
@@ -397,12 +397,12 @@ export function WorkflowPane() {
 
         <div className="pointer-events-auto flex items-center space-x-2">
           <Link href={`/workflow/${caseId}/manage`}>
-            <Button variant="secondary" size="sm" className="bg-neutral-surface shadow-card border border-neutral-border flex items-center space-x-2">
+            <Button variant="secondary" className="h-8 px-3 py-0 text-xs bg-neutral-surface shadow-card border border-neutral-border flex items-center space-x-2">
               <Settings className="w-3.5 h-3.5" />
               <span>Manage Hub</span>
             </Button>
           </Link>
-          <div className="px-3 py-1.5 text-[11px] bg-neutral-surface shadow-card border border-neutral-border rounded-md text-neutral-text-tertiary flex items-center">
+          <div className="h-8 px-3 text-[11px] font-semibold tracking-wide uppercase bg-neutral-surface shadow-card border border-neutral-border rounded-md text-neutral-text-tertiary flex items-center">
             <div className={`w-2 h-2 rounded-full mr-2 ${caseStatus === CaseStatus.RUNNING ? 'bg-brand-primary animate-pulse' : 'bg-neutral-border'}`}></div>
             SSE LIVE
           </div>
