@@ -99,33 +99,49 @@ body {
   }
 }
 
-/* Thin modern scrollbar */
-.custom-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
-.custom-scrollbar:hover {
-  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+/* Global Thin Modern Scrollbar */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-}
-
-.custom-scrollbar::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
+*::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 9999px;
 }
 
-.custom-scrollbar:hover::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+*:hover::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.3);
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
+*:hover::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.5);
+}
+
+/* Hide scrollbar arrows/buttons globally */
+*::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Firefox fallback */
+@supports (-moz-appearance: none) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  *:hover {
+    scrollbar-color: rgba(150, 150, 150, 0.3) transparent;
+  }
 }

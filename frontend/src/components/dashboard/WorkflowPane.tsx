@@ -71,7 +71,7 @@ function ClusterNode({ data }: NodeProps) {
   const { label, isWorking } = data as { label: string, isWorking?: boolean };
   
   return (
-    <div className={`bg-neutral-surface/5 border border-dashed rounded-xl w-full h-full relative group transition-all duration-500 ${
+    <div className={`bg-neutral-surface/60 dark:bg-neutral-surface/20 border border-dashed rounded-xl w-full h-full relative group transition-all duration-500 ${
       isWorking ? 'border-brand-primary/50 shadow-[0_0_20px_rgba(var(--color-brand-primary-rgb),0.15)] bg-brand-primary/5' : 'border-neutral-border/50'
     }`}>
       <Handle type="target" position={Position.Top} className="opacity-0" />
@@ -346,7 +346,7 @@ export function WorkflowPane() {
   };
 
   return (
-    <div className="flex-1 w-full h-full relative border-r border-neutral-border">
+    <div className="flex-1 w-full h-full relative">
       {/* Agent Details Modal */}
       <AgentDetailsModal 
         isOpen={modalOpen}

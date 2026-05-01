@@ -17,8 +17,20 @@ const roboto = Roboto({
 });
 
 export const metadata: Metadata = {
-  title: "Claims Engine",
+  title: "SettleOps AI",
   description: "Next-gen claims engine operating system",
+  icons: [
+    {
+      rel: "icon",
+      url: "/logo_black.svg",
+      media: "(prefers-color-scheme: light)",
+    },
+    {
+      rel: "icon",
+      url: "/logo_white.svg",
+      media: "(prefers-color-scheme: dark)",
+    },
+  ],
 };
 
 export default function RootLayout({

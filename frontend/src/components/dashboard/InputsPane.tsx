@@ -6,26 +6,45 @@ import { FileText, Image as ImageIcon, ChevronDown, ChevronRight, CheckCircle2, 
 import { Badge } from "@/components/primitives/Badge";
 import { Button } from "@/components/primitives/Button";
 import { useCaseStore } from "@/stores/case-store";
-import { CaseStatus, BlackboardSection } from "@/lib/types";
+import { CaseStatus, BlackboardSection, AgentId, SseAgentOutput } from "@/lib/types";
+import { api } from "@/lib/api";
+
+const DocumentSkeleton = () => (
+  <div className="relative overflow-hidden p-3 rounded-md bg-neutral-background border border-neutral-border/50">
+    <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-neutral-text-primary/5 to-transparent dark:via-neutral-text-primary/10" />
+    <div className="flex items-center space-x-3 mb-3">
+      <div className="w-6 h-6 rounded bg-neutral-border/60 shrink-0" />
+      <div className="h-2.5 bg-neutral-border/60 rounded w-1/3" />
+    </div>
+    <div className="space-y-2 mb-3">
+      <div className="h-2 bg-neutral-border/40 rounded w-full" />
+      <div className="h-2 bg-neutral-border/40 rounded w-4/5" />
+    </div>
+    <div className="flex justify-between items-center pt-2 border-t border-neutral-border/30">
+      <div className="h-2 bg-neutral-border/40 rounded w-1/4" />
+      <div className="h-2 bg-neutral-border/40 rounded w-1/5" />
+    </div>
+  </div>
+);
 
 function CollapsibleSection({ title, icon, count, children, defaultOpen = true }: any) {
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <Card className="mb-4 overflow-hidden border-neutral-border shadow-none">
+    <Card className="mb-4 overflow-hidden border-neutral-border shadow-none bg-neutral-background">
       <div
-        className="px-4 py-3 bg-neutral-surface flex items-center justify-between cursor-pointer hover:bg-neutral-background transition-colors"
+        className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-neutral-border/30 transition-colors"
         onClick={() => setIsOpen(!isOpen)}
       >
         <div className="flex items-center space-x-2">
           <div className="text-brand-primary">{icon}</div>
           <span className="font-semibold text-sm text-neutral-text-primary">{title}</span>
-          {count > 0 && <Badge variant="secondary" className="ml-2 bg-neutral-background border border-neutral-border text-neutral-text-secondary">{count}</Badge>}
+          {count > 0 && <Badge variant="secondary" className="ml-2 bg-neutral-surface border border-neutral-border text-neutral-text-secondary">{count}</Badge>}
         </div>
         {isOpen ? <ChevronDown className="w-4 h-4 text-neutral-text-tertiary" /> : <ChevronRight className="w-4 h-4 text-neutral-text-tertiary" />}
       </div>
       {isOpen && (
-        <div className="px-4 pb-4 bg-neutral-surface border-t border-neutral-border pt-4 max-h-[240px] overflow-y-auto custom-scrollbar">
+        <div className="px-4 pb-4 border-t border-neutral-border pt-4 max-h-[240px] overflow-y-auto custom-scrollbar">
           {children}
         </div>
       )}
@@ -58,9 +77,12 @@ export function InputsPane() {
       await api.updateBlackboardSection(caseId, BlackboardSection.CASE_FACTS, updatedFacts);
       // Update local store immediately for snappiness
       useCaseStore.getState().handleAgentOutput({
+        agent: AgentId.INTAKE,
+        case_id: caseId,
+        timestamp: new Date().toISOString(),
         section: BlackboardSection.CASE_FACTS,
         data: updatedFacts
-      });
+      } as SseAgentOutput);
     } catch (err) {
       console.error("Failed to update tag:", err);
     }
@@ -113,7 +135,7 @@ export function InputsPane() {
   const others = documents.filter(d => !["police_report", "adjuster_report", "policy_covernote", "car_photo_plate", "damage_closeup", "workshop_quote"].includes(d.doc_type));
 
   return (
-    <div className="pl-6 pr-5 py-4 h-full overflow-y-auto bg-neutral-background custom-scrollbar">
+    <div className="pl-6 pr-5 py-4 h-full overflow-y-auto bg-neutral-surface custom-scrollbar">
       <div className="flex flex-col mb-6 space-y-1">
         <h2 className="text-lg font-semibold text-neutral-text-primary flex items-center">
           Case Assets
@@ -192,7 +214,7 @@ export function InputsPane() {
           )}
 
           {!policeReport && !adjusterReport && (
-            <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No reports uploaded</div>
+            isSyncing ? <DocumentSkeleton /> : <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No reports uploaded</div>
           )}
         </div>
       </CollapsibleSection>
@@ -217,7 +239,7 @@ export function InputsPane() {
             <TagSelector docIndex={policyPdf.index} currentTags={policyPdf.tags || [policyPdf.doc_type]} />
           </div>
         ) : (
-          <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No policy document</div>
+          isSyncing ? <DocumentSkeleton /> : <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No policy document</div>
         )}
       </CollapsibleSection>
 
@@ -248,7 +270,7 @@ export function InputsPane() {
             )}
           </div>
         ) : (
-          <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No photographs</div>
+          isSyncing ? <DocumentSkeleton /> : <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No photographs</div>
         )}
       </CollapsibleSection>
 
@@ -270,7 +292,7 @@ export function InputsPane() {
             <TagSelector docIndex={quotation.index} currentTags={quotation.tags || [quotation.doc_type]} />
           </div>
         ) : (
-          <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No quotation</div>
+          isSyncing ? <DocumentSkeleton /> : <div className="text-[10px] text-neutral-text-tertiary italic text-center py-2">No quotation</div>
         )}
       </CollapsibleSection>
 
@@ -297,9 +319,11 @@ export function InputsPane() {
             ))}
           </div>
         ) : (
-          <div className="text-[10px] text-neutral-text-tertiary italic text-center py-4">
-            No additional evidence detected
-          </div>
+          isSyncing ? <DocumentSkeleton /> : (
+            <div className="text-[10px] text-neutral-text-tertiary italic text-center py-4">
+              No additional evidence detected
+            </div>
+          )
         )}
       </CollapsibleSection>
     </div>

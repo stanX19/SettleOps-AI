@@ -24,7 +24,7 @@ import {
   Edit3
 } from "lucide-react"
 import { useCaseStore } from "@/stores/case-store"
-import { BlackboardSection, CaseStatus, OfficerMessageInfo } from "@/lib/types"
+import { BlackboardSection, CaseStatus, OfficerMessageInfo, AgentId, SseAgentOutput } from "@/lib/types"
 import { api } from "@/lib/api"
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer"
 import { Button } from "@/components/primitives/Button"
@@ -114,13 +114,13 @@ function BlackboardSkeleton() {
 }
 
 export function BlackboardPane() {
-  const { 
-    blackboard, 
-    status, 
-    officer_messages, 
-    addOfficerMessage, 
-    artifacts, 
-    blackboard_mode: mode, 
+  const {
+    blackboard,
+    status,
+    officer_messages,
+    addOfficerMessage,
+    artifacts,
+    blackboard_mode: mode,
     setBlackboardMode: setMode,
     selectedAgentId,
     setSelectedAgentId
@@ -214,9 +214,9 @@ export function BlackboardPane() {
   };
 
   const renderCaseFacts = (data: any) => {
-    const tagged = data.tagged_documents ? Object.values(data.tagged_documents) : [];
+    const tagged = data.tagged_documents ? Object.values(data.tagged_documents) as string[] : [];
     const missing = data.missing_documents || [];
-    
+
     return (
       <OutputCard title="Intake Validation" icon={<FileKey className="w-4 h-4" />} status="success">
         <Field label="Processed Documents" value={tagged.length} />
@@ -254,7 +254,7 @@ export function BlackboardPane() {
   const renderLiabilityVerdict = (data: any) => {
     const insured = data.fault_split?.insured || 0;
     const thirdParty = data.fault_split?.third_party || 0;
-    
+
     return (
       <OutputCard title="Liability Verdict" icon={<Scale className="w-4 h-4" />} status="success">
         {data.fault_split && (
@@ -295,7 +295,7 @@ export function BlackboardPane() {
     const breakdown = data.payout_breakdown;
     const isEscalated = data.status === "escalated" || data.recommended_action === "escalate";
     const missingFields: string[] = data.missing_fields || [];
-    
+
     const handleSaveOverride = async () => {
       if (!caseId || !overrideData) return;
       setIsSending(true);
@@ -324,9 +324,12 @@ export function BlackboardPane() {
         await api.updateBlackboardSection(caseId, BlackboardSection.PAYOUT_RECOMMENDATION, updatedPayout);
         // Update local store
         useCaseStore.getState().handleAgentOutput({
+          agent: AgentId.PAYOUT,
+          case_id: caseId,
+          timestamp: new Date().toISOString(),
           section: BlackboardSection.PAYOUT_RECOMMENDATION,
           data: updatedPayout
-        });
+        } as SseAgentOutput);
         setIsEditingPayout(false);
       } catch (err) {
         console.error("Failed to save override:", err);
@@ -342,55 +345,55 @@ export function BlackboardPane() {
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Parts (RM)</label>
-                <input 
-                  type="number" 
-                  value={overrideData.verified_parts} 
-                  onChange={e => setOverrideData({...overrideData, verified_parts: parseFloat(e.target.value)})}
+                <input
+                  type="number"
+                  value={overrideData.verified_parts}
+                  onChange={e => setOverrideData({ ...overrideData, verified_parts: parseFloat(e.target.value) })}
                   className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Labour (RM)</label>
-                <input 
-                  type="number" 
-                  value={overrideData.verified_labour} 
-                  onChange={e => setOverrideData({...overrideData, verified_labour: parseFloat(e.target.value)})}
+                <input
+                  type="number"
+                  value={overrideData.verified_labour}
+                  onChange={e => setOverrideData({ ...overrideData, verified_labour: parseFloat(e.target.value) })}
                   className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Paint (RM)</label>
-                <input 
-                  type="number" 
-                  value={overrideData.verified_paint} 
-                  onChange={e => setOverrideData({...overrideData, verified_paint: parseFloat(e.target.value)})}
+                <input
+                  type="number"
+                  value={overrideData.verified_paint}
+                  onChange={e => setOverrideData({ ...overrideData, verified_paint: parseFloat(e.target.value) })}
                   className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Towing (RM)</label>
-                <input 
-                  type="number" 
-                  value={overrideData.verified_towing} 
-                  onChange={e => setOverrideData({...overrideData, verified_towing: parseFloat(e.target.value)})}
+                <input
+                  type="number"
+                  value={overrideData.verified_towing}
+                  onChange={e => setOverrideData({ ...overrideData, verified_towing: parseFloat(e.target.value) })}
                   className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Excess (RM)</label>
-                <input 
-                  type="number" 
-                  value={overrideData.excess_deducted_myr} 
-                  onChange={e => setOverrideData({...overrideData, excess_deducted_myr: parseFloat(e.target.value)})}
+                <input
+                  type="number"
+                  value={overrideData.excess_deducted_myr}
+                  onChange={e => setOverrideData({ ...overrideData, excess_deducted_myr: parseFloat(e.target.value) })}
                   className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Depreciation (%)</label>
-                <input 
-                  type="number" 
-                  value={overrideData.depreciation_percent || 0} 
-                  onChange={e => setOverrideData({...overrideData, depreciation_percent: parseFloat(e.target.value)})}
+                <input
+                  type="number"
+                  value={overrideData.depreciation_percent || 0}
+                  onChange={e => setOverrideData({ ...overrideData, depreciation_percent: parseFloat(e.target.value) })}
                   className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
                 />
               </div>
@@ -422,7 +425,7 @@ export function BlackboardPane() {
               <AlertTriangle className="w-4 h-4 text-semantic-danger flex-shrink-0" />
               <span className="text-xs font-bold text-semantic-danger uppercase tracking-wider">Escalated — Missing Data</span>
             </div>
-            
+
             <p className="text-[11px] text-neutral-text-secondary leading-relaxed">
               {data.rationale || "The payout engine cannot compute a final amount because required data is missing from upstream analysis."}
             </p>
@@ -453,7 +456,7 @@ export function BlackboardPane() {
         </OutputCard>
       );
     }
-    
+
     return (
       <OutputCard title="Payout Recommendation" icon={<Landmark className="w-4 h-4" />} status="success">
         {breakdown ? (
@@ -474,10 +477,10 @@ export function BlackboardPane() {
               <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-text-secondary">Final Payout</span>
               <span className="text-sm font-bold text-brand-primary">RM {breakdown.final_payout_myr?.toLocaleString() || 0}</span>
             </div>
-            
+
             {isAwaitingApproval && !isEditingPayout && (
               <div className="pt-3 border-t border-neutral-border/50 mt-3">
-                <button 
+                <button
                   onClick={() => {
                     setOverrideData({
                       verified_parts: breakdown.verified_parts || 0,
@@ -552,7 +555,7 @@ export function BlackboardPane() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-neutral-background overflow-hidden border-l border-neutral-border">
+    <div className="flex flex-col h-full bg-neutral-surface overflow-hidden">
       {/* Mode Toggle Header */}
       <div className="px-6 py-4 border-b border-neutral-border flex-shrink-0">
         <div className="flex items-center justify-between">
@@ -616,8 +619,8 @@ export function BlackboardPane() {
                 </div>
               ) : (
                 officer_messages.map((msg) => (
-                  <div 
-                    key={msg.message_id} 
+                  <div
+                    key={msg.message_id}
                     className={`flex items-start space-x-3 ${msg.role === 'officer' ? 'justify-end' : ''}`}
                   >
                     {msg.role !== 'officer' && (
@@ -625,20 +628,18 @@ export function BlackboardPane() {
                         <Bot className="w-3.5 h-3.5 text-black" />
                       </div>
                     )}
-                    
-                    <div className={`p-2.5 rounded-xl max-w-[85%] shadow-sm ${
-                      msg.role === 'officer' 
-                        ? 'bg-brand-primary/10 rounded-tr-none' 
+
+                    <div className={`p-2.5 rounded-xl max-w-[85%] shadow-sm ${msg.role === 'officer'
+                        ? 'bg-brand-primary/10 rounded-tr-none'
                         : 'bg-neutral-surface border border-neutral-border rounded-tl-none'
-                    }`}>
+                      }`}>
                       <MarkdownRenderer
                         content={msg.message}
-                        className={`text-[11px] leading-relaxed ${
-                          msg.role === 'officer' ? 'text-neutral-text-primary' : 'text-neutral-text-primary'
-                        }`}
+                        className={`text-[11px] leading-relaxed ${msg.role === 'officer' ? 'text-neutral-text-primary' : 'text-neutral-text-primary'
+                          }`}
                       />
-                      {msg.role === 'assistant' && audio_urls[msg.message] && (
-                        <button 
+                      {msg.role === 'system' && audio_urls[msg.message] && (
+                        <button
                           onClick={() => playAudio(audio_urls[msg.message])}
                           className="mt-2 p-1 rounded-md bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary transition-colors flex items-center space-x-1"
                         >
@@ -678,14 +679,14 @@ export function BlackboardPane() {
                 >
                   Challenge Analysis
                 </button>
-                
+
                 {selectedAgentId && (
                   <div className="flex items-center gap-1.5 ml-auto animate-in fade-in slide-in-from-right-2">
                     <span className="text-[9px] text-neutral-text-tertiary font-bold uppercase tracking-widest">Targeting:</span>
                     <Badge variant="outline" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/30 text-[9px] px-1.5 py-0 capitalize flex items-center gap-1">
                       <Bot className="w-2.5 h-2.5" />
                       {selectedAgentId}
-                      <button 
+                      <button
                         onClick={(e) => { e.stopPropagation(); setSelectedAgentId(null); }}
                         className="ml-1 hover:text-white transition-colors"
                       >
@@ -695,7 +696,7 @@ export function BlackboardPane() {
                   </div>
                 )}
               </div>
-              <form 
+              <form
                 onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
                 className="relative"
               >
@@ -708,7 +709,7 @@ export function BlackboardPane() {
                   className={`w-full bg-neutral-surface border rounded-lg pl-3 pr-20 py-2.5 text-xs text-neutral-text-primary focus:outline-none transition-colors disabled:opacity-50 ${isChallengeMode ? 'border-semantic-warning/50 focus:border-semantic-warning' : 'border-neutral-border focus:border-brand-primary/50'}`}
                 />
                 <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center space-x-1">
-                  <button 
+                  <button
                     type="button"
                     onClick={isRecording ? handleStopRecording : handleStartRecording}
                     disabled={isSending}
@@ -716,7 +717,7 @@ export function BlackboardPane() {
                   >
                     {isRecording ? <Square className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     disabled={isSending || isRecording || !message.trim()}
                     className={`p-1.5 rounded-md transition-colors shadow-sm disabled:opacity-50 ${isChallengeMode ? 'bg-semantic-warning text-black hover:bg-semantic-warning/90' : 'bg-brand-primary text-black hover:bg-brand-primary/90'}`}

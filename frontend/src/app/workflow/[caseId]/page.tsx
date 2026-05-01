@@ -87,7 +87,7 @@ export default function WorkflowCasePage({ params }: PageProps) {
         </div>
 
         {/* Middle Pane: Workflow */}
-        <div className="flex-1 h-full border-r border-neutral-border bg-neutral-background flex flex-col relative overflow-hidden">
+        <div className="flex-1 h-full bg-neutral-background flex flex-col relative overflow-hidden">
           <WorkflowPane />
         </div>
 
