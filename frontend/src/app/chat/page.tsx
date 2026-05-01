@@ -256,7 +256,7 @@ export default function ChatPage() {
             className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar"
           >
             <div
-              className="mx-auto flex w-full min-w-0 flex-col gap-6"
+              className="mx-auto flex w-full min-w-0 flex-col gap-4"
               style={{ maxWidth: "42rem" }}
             >
               {messages.map((msg) => (

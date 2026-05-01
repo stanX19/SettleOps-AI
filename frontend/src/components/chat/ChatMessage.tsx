@@ -63,7 +63,7 @@ export function ChatMessageBubble({ message, onUploadForDoc }: ChatMessageProps)
         {/* Bubble */}
         <div
           className={cn(
-            "rounded-2xl px-4 py-3 text-sm leading-relaxed",
+            "rounded-2xl px-3.5 py-2 text-sm leading-snug",
             isBot
               ? "bg-neutral-surface border border-neutral-border text-neutral-text-primary rounded-tl-sm"
               : "bg-brand-primary text-brand-on-primary rounded-tr-sm"
@@ -105,16 +105,14 @@ export function ChatMessageBubble({ message, onUploadForDoc }: ChatMessageProps)
 export function BotTypingIndicator() {
   return (
     <div className="flex gap-3 justify-start">
-      <div className="shrink-0 mt-1 h-8 w-8 overflow-hidden rounded-full border border-neutral-border bg-neutral-surface shadow-card">
-        <img src="/logo_black.svg" alt="SettleOps AI" className="h-full w-full object-cover dark:hidden" />
-        <img src="/logo_white.svg" alt="SettleOps AI" className="h-full w-full object-cover hidden dark:block" />
+      <div className="shrink-0 mt-1 h-8 w-8">
+        <img src="/logo_black.svg" alt="SettleOps AI" className="h-full w-full object-contain dark:hidden" />
+        <img src="/logo_white.svg" alt="SettleOps AI" className="h-full w-full object-contain hidden dark:block" />
       </div>
-      <div className="bg-neutral-surface border border-neutral-border rounded-2xl rounded-tl-sm px-4 py-3">
-        <div className="flex gap-1 items-center h-4">
-          <span className="h-2 w-2 rounded-full bg-neutral-text-tertiary animate-bounce [animation-delay:0ms]" />
-          <span className="h-2 w-2 rounded-full bg-neutral-text-tertiary animate-bounce [animation-delay:150ms]" />
-          <span className="h-2 w-2 rounded-full bg-neutral-text-tertiary animate-bounce [animation-delay:300ms]" />
-        </div>
+      <div className="flex gap-1 items-center h-8 mt-1 px-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-neutral-text-tertiary animate-bounce [animation-delay:0ms]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-neutral-text-tertiary animate-bounce [animation-delay:150ms]" />
+        <span className="h-1.5 w-1.5 rounded-full bg-neutral-text-tertiary animate-bounce [animation-delay:300ms]" />
       </div>
     </div>
   );
