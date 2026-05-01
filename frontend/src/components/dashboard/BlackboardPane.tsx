@@ -21,13 +21,17 @@ import {
   Mic,
   Volume2,
   Square,
-  Edit3
+  Edit3,
+  BookOpen,
+  Gavel
 } from "lucide-react"
 import { useCaseStore } from "@/stores/case-store"
-import { BlackboardSection, CaseStatus, OfficerMessageInfo } from "@/lib/types"
+import { BlackboardSection, CaseStatus, Citation, OfficerMessageInfo } from "@/lib/types"
 import { api } from "@/lib/api"
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer"
 import { Button } from "@/components/primitives/Button"
+import { CitationPanel } from "@/components/dashboard/CitationPanel"
+import { CitationEvidenceModal } from "@/components/dashboard/CitationEvidenceModal"
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -52,19 +56,48 @@ function LiabilityBar({ claimant, thirdParty }: { claimant: number, thirdParty: 
   )
 }
 
-function OutputCard({ title, icon, children, status }: { title: string, icon: React.ReactNode, children: React.ReactNode, status?: 'success' | 'warning' | 'danger' }) {
+function OutputCard({
+  title,
+  icon,
+  children,
+  status,
+  citationCount,
+  onCitationClick,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  status?: 'success' | 'warning' | 'danger';
+  citationCount?: number;
+  onCitationClick?: () => void;
+}) {
   let headerColor = "text-neutral-text-primary";
   if (status === "warning") headerColor = "text-semantic-warning";
   if (status === "danger") headerColor = "text-semantic-danger";
 
+  const showBadge = citationCount !== undefined && citationCount > 0 && onCitationClick;
+
   return (
     <div className="bg-neutral-surface border border-neutral-border rounded-md shadow-card mb-4 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="bg-neutral-background px-3 py-2 border-b border-neutral-border flex items-center justify-between">
+      <div className="bg-neutral-background px-3 py-2 border-b border-neutral-border flex items-center justify-between gap-2">
         <div className={`flex items-center text-sm font-semibold ${headerColor}`}>
           <span className="mr-2 opacity-80">{icon}</span>
           {title}
         </div>
-        <CheckCircle2 className="w-4 h-4 text-semantic-success opacity-80" />
+        <div className="flex items-center gap-2">
+          {showBadge && (
+            <button
+              onClick={onCitationClick}
+              className="flex items-center gap-1 rounded-sm border border-brand-primary/30 bg-brand-primary/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/15"
+              title={`${citationCount} citation${citationCount === 1 ? '' : 's'}`}
+              aria-label={`View ${citationCount} citation${citationCount === 1 ? '' : 's'}`}
+            >
+              <BookOpen className="h-2.5 w-2.5" />
+              {citationCount}
+            </button>
+          )}
+          <CheckCircle2 className="w-4 h-4 text-semantic-success opacity-80" />
+        </div>
       </div>
       <div className="p-3">
         {children}
@@ -113,19 +146,29 @@ function BlackboardSkeleton() {
   )
 }
 
+const SECTION_TITLES: Partial<Record<BlackboardSection, string>> = {
+  [BlackboardSection.POLICY_VERDICT]: "Policy Verdict",
+  [BlackboardSection.LIABILITY_VERDICT]: "Liability Verdict",
+  [BlackboardSection.DAMAGE_RESULT]: "Damage Assessment",
+  [BlackboardSection.FRAUD_ASSESSMENT]: "Fraud Assessment",
+  [BlackboardSection.AUDIT_RESULT]: "Auditor Findings",
+};
+
 export function BlackboardPane() {
-  const { 
-    blackboard, 
-    status, 
-    officer_messages, 
-    addOfficerMessage, 
-    artifacts, 
-    blackboard_mode: mode, 
+  const {
+    blackboard,
+    status,
+    officer_messages,
+    addOfficerMessage,
+    artifacts,
+    blackboard_mode: mode,
     setBlackboardMode: setMode,
     selectedAgentId,
     setSelectedAgentId
   } = useCaseStore();
   const caseId = useCaseStore(state => state.case_id);
+  const citations = useCaseStore(state => state.citations);
+  const documents = useCaseStore(state => state.documents);
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isChallengeMode, setIsChallengeMode] = useState(false);
@@ -133,9 +176,17 @@ export function BlackboardPane() {
   const [isEditingPayout, setIsEditingPayout] = useState(false);
   const [overrideData, setOverrideData] = useState<any>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  const [activeCitationSection, setActiveCitationSection] = useState<BlackboardSection | null>(null);
+  const [activeEvidenceCitation, setActiveEvidenceCitation] = useState<Citation | null>(null);
   const audio_urls = useCaseStore(state => state.audio_urls);
   const isSyncing = status === CaseStatus.RUNNING;
   const isAwaitingApproval = status === CaseStatus.AWAITING_APPROVAL || status === CaseStatus.ESCALATED;
+
+  const sectionCitationCount = (section: BlackboardSection) =>
+    (citations?.[section] ?? []).length;
+  const openCitations = (section: BlackboardSection) => setActiveCitationSection(section);
+  const activeCitations = activeCitationSection ? (citations?.[activeCitationSection] ?? []) : [];
+  const activeTitle = activeCitationSection ? (SECTION_TITLES[activeCitationSection] ?? activeCitationSection) : "";
 
   // SSE for chat is now handled globally in SseClient via the main stream
   // This ensures no messages are missed when switching between Blackboard/Chat modes.
@@ -241,7 +292,13 @@ export function BlackboardPane() {
   };
 
   const renderPolicyVerdict = (data: any) => (
-    <OutputCard title="Policy Verdict" icon={<ShieldCheck className="w-4 h-4" />} status="success">
+    <OutputCard
+      title="Policy Verdict"
+      icon={<ShieldCheck className="w-4 h-4" />}
+      status="success"
+      citationCount={sectionCitationCount(BlackboardSection.POLICY_VERDICT)}
+      onCitationClick={() => openCitations(BlackboardSection.POLICY_VERDICT)}
+    >
       <Field label="Claim Type" value={<Badge variant="secondary">{data.claim_type || "N/A"}</Badge>} />
       <div className="grid grid-cols-2 gap-3 mt-2">
         <Field label="Max Payout" value={data.max_payout_myr != null ? `RM ${data.max_payout_myr.toLocaleString()}` : "N/A"} />
@@ -256,7 +313,13 @@ export function BlackboardPane() {
     const thirdParty = data.fault_split?.third_party || 0;
     
     return (
-      <OutputCard title="Liability Verdict" icon={<Scale className="w-4 h-4" />} status="success">
+      <OutputCard
+        title="Liability Verdict"
+        icon={<Scale className="w-4 h-4" />}
+        status="success"
+        citationCount={sectionCitationCount(BlackboardSection.LIABILITY_VERDICT)}
+        onCitationClick={() => openCitations(BlackboardSection.LIABILITY_VERDICT)}
+      >
         {data.fault_split && (
           <Field label="Fault Split" value={<LiabilityBar claimant={insured} thirdParty={thirdParty} />} />
         )}
@@ -278,7 +341,13 @@ export function BlackboardPane() {
   };
 
   const renderFraudAssessment = (data: any) => (
-    <OutputCard title="Fraud Assessment" icon={<AlertTriangle className="w-4 h-4" />} status={data.suspicion_score > 0.5 ? "danger" : "success"}>
+    <OutputCard
+      title="Fraud Assessment"
+      icon={<AlertTriangle className="w-4 h-4" />}
+      status={data.suspicion_score > 0.5 ? "danger" : "success"}
+      citationCount={sectionCitationCount(BlackboardSection.FRAUD_ASSESSMENT)}
+      onCitationClick={() => openCitations(BlackboardSection.FRAUD_ASSESSMENT)}
+    >
       <div className="flex items-baseline justify-between">
         <Field label="Risk Score" value={<span className="text-lg font-mono">{data.suspicion_score?.toFixed(2)}</span>} />
         <Badge variant={data.suspicion_score > 0.5 ? "distructive" : "success"}>
@@ -507,7 +576,13 @@ export function BlackboardPane() {
   };
 
   const renderDamageResult = (data: any) => (
-    <OutputCard title="Damage Assessment" icon={<Wrench className="w-4 h-4" />} status={data.suspicious_parts?.length > 0 ? "warning" : "success"}>
+    <OutputCard
+      title="Damage Assessment"
+      icon={<Wrench className="w-4 h-4" />}
+      status={data.suspicious_parts?.length > 0 ? "warning" : "success"}
+      citationCount={sectionCitationCount(BlackboardSection.DAMAGE_RESULT)}
+      onCitationClick={() => openCitations(BlackboardSection.DAMAGE_RESULT)}
+    >
       <Field label="Verified Estimate" value={data.verified_total != null ? `RM ${data.verified_total.toLocaleString()}` : "N/A"} />
       {data.suspicious_parts?.length > 0 && (
         <div className="mt-2">
@@ -519,6 +594,34 @@ export function BlackboardPane() {
       )}
     </OutputCard>
   );
+
+  const renderAuditResult = (data: any) => {
+    const isInconsistent = data.is_consistent === false || data.status === "error";
+    const target = data.target_cluster && data.target_cluster !== "none" ? data.target_cluster : null;
+    return (
+      <OutputCard
+        title="Auditor Findings"
+        icon={<Gavel className="w-4 h-4" />}
+        status={isInconsistent ? "warning" : "success"}
+        citationCount={sectionCitationCount(BlackboardSection.AUDIT_RESULT)}
+        onCitationClick={() => openCitations(BlackboardSection.AUDIT_RESULT)}
+      >
+        <Field
+          label="Consistency"
+          value={
+            <Badge variant={isInconsistent ? "distructive" : "success"}>
+              {isInconsistent ? "Inconsistent" : "Consistent"}
+            </Badge>
+          }
+        />
+        <Field label="Findings" value={<span className="text-[11px] leading-relaxed">{data.findings || "No issues."}</span>} />
+        <div className="grid grid-cols-2 gap-3 mt-1">
+          <Field label="Suggested Action" value={<Badge variant="outline">{data.suggested_action || "N/A"}</Badge>} />
+          {target && <Field label="Target Cluster" value={<Badge variant="outline">{target}</Badge>} />}
+        </div>
+      </OutputCard>
+    );
+  };
 
   const renderArtifacts = () => {
     if (!artifacts || artifacts.length === 0) return null;
@@ -593,6 +696,7 @@ export function BlackboardPane() {
             {blackboard[BlackboardSection.DAMAGE_RESULT] && renderDamageResult(blackboard[BlackboardSection.DAMAGE_RESULT])}
             {blackboard[BlackboardSection.FRAUD_ASSESSMENT] && renderFraudAssessment(blackboard[BlackboardSection.FRAUD_ASSESSMENT])}
             {blackboard[BlackboardSection.PAYOUT_RECOMMENDATION] && renderPayoutRecommendation(blackboard[BlackboardSection.PAYOUT_RECOMMENDATION])}
+            {blackboard[BlackboardSection.AUDIT_RESULT] && renderAuditResult(blackboard[BlackboardSection.AUDIT_RESULT])}
             {renderArtifacts()}
 
             {!Object.keys(blackboard).length && !isSyncing && (
@@ -729,6 +833,20 @@ export function BlackboardPane() {
           </div>
         )}
       </div>
+
+      <CitationPanel
+        title={activeTitle}
+        citations={activeCitations}
+        documents={documents}
+        isOpen={activeCitationSection !== null}
+        onClose={() => setActiveCitationSection(null)}
+        onViewEvidence={(c) => setActiveEvidenceCitation(c)}
+      />
+      <CitationEvidenceModal
+        citation={activeEvidenceCitation}
+        documents={documents}
+        onClose={() => setActiveEvidenceCitation(null)}
+      />
     </div>
   )
 }

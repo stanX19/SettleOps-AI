@@ -55,9 +55,12 @@ class ClusterState(TypedDict):
     documents: List[dict]
     case_facts: dict[str, Any]
     active_challenge: Optional[ChallengeState]
-    
+
     # The result key will be mapped back to the specific global section (e.g., policy_results)
     results: Annotated[dict[str, Any], dict_merge]
+    # Citations keyed by node_id (sub-task name). dict_merge causes reruns
+    # of the same node_id to overwrite, not append.
+    citations: Annotated[dict[str, list[dict[str, Any]]], dict_merge]
     trace_log: Annotated[List[str], operator.add]
 
 class ClaimWorkflowState(TypedDict):
@@ -75,7 +78,15 @@ class ClaimWorkflowState(TypedDict):
     damage_results: Annotated[dict[str, Any], dict_merge]
     fraud_results: Annotated[dict[str, Any], dict_merge]
     payout_results: Annotated[dict[str, Any], dict_merge]
-    
+    auditor_results: Annotated[dict[str, Any], dict_merge]
+
+    # Per-section citations. Reruns of a section replace its list (no append).
+    policy_citations: List[dict[str, Any]]
+    liability_citations: List[dict[str, Any]]
+    damage_citations: List[dict[str, Any]]
+    fraud_citations: List[dict[str, Any]]
+    auditor_citations: List[dict[str, Any]]
+
     # Trace Log
     trace_log: Annotated[List[str], operator.add]
     
