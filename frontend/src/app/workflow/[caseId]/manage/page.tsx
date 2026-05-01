@@ -8,11 +8,13 @@ import {
   Play,
   Trash2,
   AlertCircle,
-  Loader2
+  Loader2,
+  Image as ImageIcon
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/primitives/Button";
+import { Toast } from "@/components/primitives/Toast";
 import { CaseStatus } from "@/lib/types";
 import { api } from "@/lib/api";
 
@@ -25,7 +27,29 @@ interface UploadedFile {
   name: string;
   size: string;
   date: string;
-  file: File; // Added to store raw blob
+  file?: File;
+  isRemote?: boolean;
+  tags?: string[];
+  url?: string;
+}
+
+const EXT_COLORS: Record<string, { bg: string; text: string }> = {
+  pdf: { bg: "bg-red-500/10", text: "text-red-500" },
+  jpg: { bg: "bg-blue-500/10", text: "text-blue-400" },
+  jpeg: { bg: "bg-blue-500/10", text: "text-blue-400" },
+  png: { bg: "bg-blue-500/10", text: "text-blue-400" },
+  webp: { bg: "bg-blue-500/10", text: "text-blue-400" },
+};
+
+function getExt(filename: string) {
+  return filename.split(".").pop()?.toLowerCase() || "file";
+}
+
+function formatFileSize(size: number): string {
+  if (!size || size <= 0) return "—";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function ManageCasePage({ params }: PageProps) {
@@ -37,14 +61,75 @@ export default function ManageCasePage({ params }: PageProps) {
   const [isStarting, setIsStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: "", visible: false });
 
-  // Fetch actual status on mount
+  const showToast = (message: string) => {
+    setToast({ message, visible: true });
+  };
+
+  // Fetch actual status and remote file sizes on mount
   useEffect(() => {
     const fetchSnapshot = async () => {
       try {
         const snap = await api.getCaseSnapshot(caseId);
         setSnapshot(snap);
         setStatus(snap.status);
+
+        if (snap.documents?.length > 0) {
+          const existingFiles: UploadedFile[] = snap.documents.map((doc: any, i: number) => ({
+            id: `remote-${i}`,
+            name: doc.filename,
+            size: "...", // Loading state
+            date: "",
+            isRemote: true,
+            tags: doc.tags || (doc.doc_type ? [doc.doc_type] : []),
+            url: doc.url // Store URL to fetch size
+          }));
+
+          setFiles(prev => {
+            const localOnly = prev.filter(f => !f.isRemote);
+            return [...existingFiles, ...localOnly];
+          });
+
+          // Fetch sizes in background using Range header to get full size metadata without downloading
+          existingFiles.forEach(async (f, idx) => {
+            const url = snap.documents[idx].url;
+            if (!url) return;
+            try {
+              // Try getting the full size via Range request which is often more reliable than HEAD
+              const resp = await fetch(url, { headers: { 'Range': 'bytes=0-0' } });
+
+              // For a range request, Content-Range looks like "bytes 0-0/12345"
+              const contentRange = resp.headers.get('content-range');
+              let sizeInBytes = 0;
+
+              if (contentRange) {
+                const total = contentRange.split('/')[1];
+                if (total) sizeInBytes = parseInt(total, 10);
+              } else {
+                // Fallback to Content-Length if Range is not supported or it returned 200 instead of 206
+                const cl = resp.headers.get('content-length');
+                if (cl) sizeInBytes = parseInt(cl, 10);
+              }
+
+              if (sizeInBytes > 0) {
+                const sizeStr = formatFileSize(sizeInBytes);
+                setFiles(current =>
+                  current.map(item => item.id === f.id ? { ...item, size: sizeStr } : item)
+                );
+              } else {
+                setFiles(current =>
+                  current.map(item => item.id === f.id ? { ...item, size: "—" } : item)
+                );
+              }
+            } catch (e) {
+              console.error("Failed to fetch size for", f.name, e);
+              setFiles(current =>
+                current.map(item => item.id === f.id ? { ...item, size: "—" } : item)
+              );
+            }
+          });
+        }
       } catch (err) {
         console.error("Failed to fetch case snapshot:", err);
       }
@@ -63,22 +148,28 @@ export default function ManageCasePage({ params }: PageProps) {
     const newFiles: UploadedFile[] = Array.from(fileList).map(file => ({
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
-      size: (file.size / 1024 / 1024).toFixed(2) + " MB",
+      size: formatFileSize(file.size),
       date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       file: file
     }));
 
     setFiles(prev => [...prev, ...newFiles]);
     setError(null);
+    showToast(`Successfully uploaded ${newFiles.length} document${newFiles.length > 1 ? 's' : ''}`);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const removeFile = (id: string) => {
+    const fileToRemove = files.find(f => f.id === id);
     setFiles(prev => prev.filter(f => f.id !== id));
+    if (fileToRemove) {
+      showToast(`Deleted ${fileToRemove.name}`);
+    }
   };
 
   const handleStartWorkflow = async () => {
-    if (files.length === 0) {
+    const localFiles = files.filter(f => !f.isRemote);
+    if (localFiles.length === 0 && files.filter(f => f.isRemote).length === 0) {
       setError("Please upload evidence documents first.");
       return;
     }
@@ -87,7 +178,7 @@ export default function ManageCasePage({ params }: PageProps) {
     setError(null);
 
     try {
-      const documentFiles = files.map(f => f.file);
+      const documentFiles = files.filter(f => !f.isRemote && f.file).map(f => f.file!);
       await api.submitDocuments(caseId, documentFiles);
 
       // Redirect to main workflow view
@@ -131,7 +222,7 @@ export default function ManageCasePage({ params }: PageProps) {
         <div className="flex items-center space-x-3">
           <Button
             onClick={handleStartWorkflow}
-            disabled={isStarting || files.length === 0}
+            disabled={isStarting || files.filter(f => !f.isRemote).length === 0}
             variant="outline"
             className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all disabled:opacity-50"
           >
@@ -165,10 +256,10 @@ export default function ManageCasePage({ params }: PageProps) {
 
           {/* Document Management Hub */}
           <div className="bg-neutral-surface border border-neutral-border rounded-lg shadow-sm flex flex-col h-full overflow-hidden">
-            <div className="px-6 py-4 border-b border-neutral-border flex items-center justify-between flex-shrink-0 bg-neutral-background/30">
+            <div className="p-4 border-b border-neutral-border flex items-center justify-between flex-shrink-0 bg-neutral-background/30">
               <div className="flex items-center space-x-2">
-                <FileText className="w-5 h-5 text-brand-primary" />
-                <h2 className="text-lg font-semibold text-neutral-text-primary">Document Evidence Slots</h2>
+                <FileText className="w-4 h-4 text-brand-primary" />
+                <h2 className="text-sm font-semibold text-neutral-text-primary">Document Evidence Slots</h2>
               </div>
               <div className="flex items-center space-x-2">
                 <span className="text-xs text-neutral-text-tertiary mr-2">
@@ -182,8 +273,9 @@ export default function ManageCasePage({ params }: PageProps) {
                 <table className="w-full text-left border-collapse">
                   <thead className="sticky top-0 bg-neutral-surface z-10">
                     <tr className="bg-neutral-background/30">
-                      <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider w-3/5">Document Name</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider w-[45%]">Document Name</th>
                       <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Size</th>
+                      <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Tag</th>
                       <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider text-right">Actions</th>
                     </tr>
                   </thead>
@@ -193,6 +285,8 @@ export default function ManageCasePage({ params }: PageProps) {
                         key={file.id}
                         name={file.name}
                         size={file.size}
+                        tags={file.tags || []}
+                        isRemote={file.isRemote}
                         onDelete={() => removeFile(file.id)}
                       />
                     ))}
@@ -266,33 +360,65 @@ export default function ManageCasePage({ params }: PageProps) {
           </div>
         </div>
       </div>
+      <Toast
+        message={toast.message}
+        isVisible={toast.visible}
+        onClose={() => setToast(prev => ({ ...prev, visible: false }))}
+      />
     </div>
   );
 }
 
-function DocumentRow({ name, size, onDelete }: { name: string, size: string, onDelete: () => void }) {
+function DocumentRow({ name, size, tags, isRemote, onDelete }: { name: string, size: string, tags: string[], isRemote?: boolean, onDelete: () => void }) {
+  const ext = getExt(name);
+  const colors = EXT_COLORS[ext] || { bg: "bg-neutral-border/20", text: "text-neutral-text-tertiary" };
+  const validTags = tags.filter(t => t && t !== "unknown");
+
   return (
     <tr className="hover:bg-neutral-background/20 transition-colors group">
-      <td className="px-6 py-4">
+      <td className="px-6 py-3">
         <div className="flex items-center space-x-3">
-          <div className="p-2 rounded border border-neutral-border bg-neutral-background flex-shrink-0">
-            <FileText className="w-4 h-4 text-brand-primary" />
+          {/* Square File Icon Container */}
+          <div className={`w-8 h-8 shrink-0 bg-neutral-background border border-neutral-border/50 rounded-lg flex items-center justify-center shadow-sm`}>
+            {ext === 'pdf' ? (
+              <FileText className="w-4 h-4 text-red-500" />
+            ) : (
+              <ImageIcon className="w-4 h-4 text-blue-500" />
+            )}
           </div>
-          <span className="text-sm font-medium text-neutral-text-primary truncate max-w-[500px]">
-            {name}
-          </span>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-neutral-text-primary truncate max-w-[350px]">
+              {name}
+            </span>
+          </div>
         </div>
       </td>
-      <td className="px-6 py-4">
-        <span className="text-xs text-neutral-text-secondary font-mono">{size}</span>
+      <td className="px-6 py-3">
+        <span className="text-xs text-neutral-text-secondary font-mono whitespace-nowrap">{size}</span>
       </td>
-      <td className="px-6 py-4 text-right">
+      <td className="px-6 py-3">
+        {validTags.length > 0 ? (
+          <div className="flex flex-wrap gap-1">
+            {validTags.map(tag => (
+              <span key={tag} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
+                {tag.replace(/_/g, " ")}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-neutral-text-tertiary">—</span>
+        )}
+      </td>
+      <td className="px-6 py-3 text-right">
         <button
           onClick={onDelete}
-          className="p-2 hover:bg-semantic-danger/10 rounded-md transition-colors text-neutral-text-tertiary hover:text-semantic-danger"
-          title="Delete document"
+          className="relative group/tip p-2 hover:bg-semantic-danger/10 rounded-md transition-colors text-neutral-text-tertiary hover:text-semantic-danger"
+          aria-label="Delete document"
         >
           <Trash2 className="w-4 h-4" />
+          <div className="absolute bottom-full mb-1.5 right-0 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap">
+            Delete document
+          </div>
         </button>
       </td>
     </tr>

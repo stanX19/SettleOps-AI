@@ -88,12 +88,14 @@ function OutputCard({
           {showBadge && (
             <button
               onClick={onCitationClick}
-              className="flex items-center gap-1 rounded-sm border border-brand-primary/30 bg-brand-primary/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/15"
-              title={`${citationCount} citation${citationCount === 1 ? '' : 's'}`}
+              className="relative group/tip flex items-center gap-1 rounded-sm border border-brand-primary/30 bg-brand-primary/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/15"
               aria-label={`View ${citationCount} citation${citationCount === 1 ? '' : 's'}`}
             >
               <BookOpen className="h-2.5 w-2.5" />
               {citationCount}
+              <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap normal-case tracking-normal font-medium">
+                {`${citationCount} citation${citationCount === 1 ? '' : 's'}`}
+              </div>
             </button>
           )}
           <CheckCircle2 className="w-4 h-4 text-semantic-success opacity-80" />
@@ -680,17 +682,21 @@ export function BlackboardPane() {
 
             <button
               onClick={() => setMode('blackboard')}
-              className={`relative z-10 p-1.5 px-3 rounded-md transition-colors duration-300 flex items-center space-x-1.5 ${mode === 'blackboard' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
-              title="Blackboard Mode"
+              className={`relative group/tip z-10 p-1.5 px-3 rounded-md transition-colors duration-300 flex items-center space-x-1.5 ${mode === 'blackboard' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
             >
               <LayoutList className="w-3.5 h-3.5" />
+              <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap">
+                Blackboard Mode
+              </div>
             </button>
             <button
               onClick={() => setMode('chat')}
-              className={`relative z-10 p-1.5 px-3 rounded-md transition-colors duration-300 flex items-center space-x-1.5 ${mode === 'chat' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
-              title="AI Chat Mode"
+              className={`relative group/tip z-10 p-1.5 px-3 rounded-md transition-colors duration-300 flex items-center space-x-1.5 ${mode === 'chat' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
             >
               <MessageSquare className="w-3.5 h-3.5" />
+              <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap">
+                AI Chat Mode
+              </div>
             </button>
           </div>
         </div>

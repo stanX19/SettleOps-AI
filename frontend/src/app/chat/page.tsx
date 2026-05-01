@@ -187,7 +187,7 @@ export default function ChatPage() {
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      text: text || "📎 Documents attached",
+      text: text || "Documents attached",
       attachments,
     };
     setMessages((prev) => [...prev, userMsg]);
