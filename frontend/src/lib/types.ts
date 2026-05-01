@@ -140,6 +140,7 @@ export interface CaseSnapshot {
   awaiting_clarification: boolean;
   chatbox_enabled: boolean;
   current_agent: AgentId | null;
+  pdf_ready: boolean;
   topology?: Record<string, string[]>;
 }
 
