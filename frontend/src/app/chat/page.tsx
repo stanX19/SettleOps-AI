@@ -256,7 +256,7 @@ export default function ChatPage() {
             className="flex-1 overflow-y-auto px-4 py-6 custom-scrollbar"
           >
             <div
-              className="mx-auto flex w-full min-w-0 flex-col gap-6"
+              className="mx-auto flex w-full min-w-0 flex-col gap-4"
               style={{ maxWidth: "42rem" }}
             >
               {messages.map((msg) => (
@@ -273,7 +273,7 @@ export default function ChatPage() {
               {showScrollButton && (
                 <button
                   onClick={scrollToBottom}
-                  className="absolute -top-8 left-1/2 -translate-x-1/2 p-2 rounded-full bg-neutral-surface border-1 border-white text-neutral-text-primary hover:bg-neutral-background transition-all animate-in fade-in slide-in-from-bottom-2 z-30"
+                  className="absolute -top-10 left-1/2 -translate-x-1/2 p-2 rounded-full bg-neutral-surface/90 backdrop-blur-md shadow-lg border border-neutral-border text-neutral-text-secondary hover:text-brand-primary hover:bg-neutral-background hover:-translate-y-0.5 hover:shadow-xl transition-all duration-300 animate-in fade-in slide-in-from-bottom-2 z-30"
                   aria-label="Scroll to bottom"
                 >
                   <ArrowDown className="w-4 h-4" />
