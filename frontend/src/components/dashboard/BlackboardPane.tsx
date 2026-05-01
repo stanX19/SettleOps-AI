@@ -660,31 +660,37 @@ export function BlackboardPane() {
   return (
     <div className="flex flex-col h-full bg-neutral-surface overflow-hidden">
       {/* Mode Toggle Header */}
-      <div className="px-6 py-4 border-b border-neutral-border flex-shrink-0">
+      <div className="px-6 py-2.5 border-b border-neutral-border/60 flex-shrink-0 bg-neutral-surface relative z-10 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-bold text-neutral-text-primary uppercase tracking-widest">
-            {mode === 'blackboard' ? 'Blackboard' : 'SettleOps AI'}
-          </h2>
-          <div className="relative flex bg-neutral-surface border border-neutral-border rounded-lg p-1">
+          <div className="flex items-center space-x-2.5">
+            <div className="flex items-center justify-center w-6 h-6 rounded-md bg-brand-primary/10 border border-brand-primary/20 shadow-sm">
+              {mode === 'blackboard' ? <LayoutList className="w-3.5 h-3.5 text-brand-primary" /> : <MessageSquare className="w-3.5 h-3.5 text-brand-primary" />}
+            </div>
+            <h2 className="text-lg font-semibold text-neutral-text-primary">
+              {mode === 'blackboard' ? 'Blackboard' : 'AI Strategist'}
+            </h2>
+          </div>
+          
+          <div className="relative flex bg-neutral-background border border-neutral-border/60 shadow-inner rounded-lg p-1">
             {/* Sliding Background Pill */}
             <div
-              className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-brand-primary rounded-md transition-all duration-300 ease-in-out ${mode === 'blackboard' ? 'translate-x-0' : 'translate-x-full'}`}
+              className={`absolute top-1 bottom-1 w-[calc(50%-4px)] bg-brand-primary rounded-md shadow-sm transition-transform duration-300 ease-out ${mode === 'blackboard' ? 'translate-x-0' : 'translate-x-full'}`}
               style={{ left: '4px' }}
             />
 
             <button
               onClick={() => setMode('blackboard')}
-              className={`relative z-10 p-1.5 px-2.5 rounded-md transition-colors duration-300 ${mode === 'blackboard' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
+              className={`relative z-10 p-1.5 px-3 rounded-md transition-colors duration-300 flex items-center space-x-1.5 ${mode === 'blackboard' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
               title="Blackboard Mode"
             >
-              <LayoutList className="w-4 h-4" />
+              <LayoutList className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setMode('chat')}
-              className={`relative z-10 p-1.5 px-2.5 rounded-md transition-colors duration-300 ${mode === 'chat' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
+              className={`relative z-10 p-1.5 px-3 rounded-md transition-colors duration-300 flex items-center space-x-1.5 ${mode === 'chat' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
               title="AI Chat Mode"
             >
-              <MessageSquare className="w-4 h-4" />
+              <MessageSquare className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -715,9 +721,9 @@ export function BlackboardPane() {
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 mb-4 pr-1">
               {officer_messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full text-center py-10">
-                  <Bot className="w-10 h-10 text-neutral-text-tertiary opacity-20 mb-3" />
-                  <p className="text-xs text-neutral-text-tertiary font-medium">AI Strategist Ready</p>
-                  <p className="text-[10px] text-neutral-text-tertiary/60 max-w-[180px] mt-1">
+                  <img src="/bot.png" alt="Bot" className="w-12 h-12 mb-3 object-contain" />
+                  <p className="text-sm text-neutral-text-tertiary font-medium">AI Strategist Ready</p>
+                  <p className="text-xs text-neutral-text-tertiary/60 max-w-[280px] mt-1">
                     Ask for analysis, or use the "Modify" button to challenge agent findings.
                   </p>
                 </div>
@@ -729,13 +735,13 @@ export function BlackboardPane() {
                   >
                     {msg.role !== 'officer' && (
                       <div className="w-7 h-7 rounded-full bg-brand-primary flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-3.5 h-3.5 text-black" />
+                        <img src="/bot.png" alt="Bot" className="w-4 h-4 object-contain" />
                       </div>
                     )}
 
                     <div className={`p-2.5 rounded-xl max-w-[85%] shadow-sm ${msg.role === 'officer'
-                        ? 'bg-brand-primary/10 rounded-tr-none'
-                        : 'bg-neutral-surface border border-neutral-border rounded-tl-none'
+                      ? 'bg-brand-primary/10 rounded-tr-none'
+                      : 'bg-neutral-surface border border-neutral-border rounded-tl-none'
                       }`}>
                       <MarkdownRenderer
                         content={msg.message}
@@ -767,7 +773,7 @@ export function BlackboardPane() {
             </div>
 
             {/* Chat Input */}
-            <div className="sticky bottom-0 bg-neutral-background pt-2 border-t border-neutral-border/50">
+            <div className="sticky bottom-0 pt-2">
               <div className="flex items-center space-x-2 mb-2">
                 <button
                   type="button"
@@ -788,7 +794,7 @@ export function BlackboardPane() {
                   <div className="flex items-center gap-1.5 ml-auto animate-in fade-in slide-in-from-right-2">
                     <span className="text-[9px] text-neutral-text-tertiary font-bold uppercase tracking-widest">Targeting:</span>
                     <Badge variant="outline" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/30 text-[9px] px-1.5 py-0 capitalize flex items-center gap-1">
-                      <Bot className="w-2.5 h-2.5" />
+                      <img src="/bot.png" alt="Bot" className="w-2.5 h-2.5 object-contain" />
                       {selectedAgentId}
                       <button
                         onClick={(e) => { e.stopPropagation(); setSelectedAgentId(null); }}
@@ -808,7 +814,7 @@ export function BlackboardPane() {
                   type="text"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder={isChallengeMode ? "Enter instruction for surgical rerun..." : "Ask strategist about the claim..."}
+                  placeholder={isChallengeMode ? "Challenge findings..." : "Ask strategist about the claim..."}
                   disabled={isSending || isRecording}
                   className={`w-full bg-neutral-surface border rounded-lg pl-3 pr-20 py-2.5 text-xs text-neutral-text-primary focus:outline-none transition-colors disabled:opacity-50 ${isChallengeMode ? 'border-semantic-warning/50 focus:border-semantic-warning' : 'border-neutral-border focus:border-brand-primary/50'}`}
                 />

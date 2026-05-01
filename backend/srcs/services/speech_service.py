@@ -119,9 +119,10 @@ class SpeechService:
     async def _stt_elevenlabs(audio_data: bytes) -> str | None:
         try:
             def _call() -> str:
+                import io
                 client = _get_elevenlabs_client()
                 result = client.speech_to_text.convert(
-                    file=audio_data,
+                    file=("audio.webm", io.BytesIO(audio_data), "audio/webm"),
                     model_id="scribe_v1",
                 )
                 return result.text
