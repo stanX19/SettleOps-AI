@@ -110,7 +110,7 @@ export interface Citation {
 
 export interface OfficerMessageInfo {
   message_id: string;
-  role: "officer" | "system";
+  role: "officer" | "system" | "assistant";
   message: string;
   type?: string;
   target_agent?: AgentId;
