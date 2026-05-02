@@ -64,6 +64,12 @@ export enum AuditorTrigger {
   OFFICER_MESSAGE = "officer_message",
 }
 
+export enum RerunKind {
+  OFFICER_RERUN = "officer_rerun",
+  AUDITOR_RERUN = "auditor_rerun",
+  CITATION_RETRY = "citation_retry",
+}
+
 export interface DocumentInfo {
   doc_type: string;
   filename: string;
@@ -220,6 +226,12 @@ export interface SseAgentMessageToAgent extends SseBasePayload {
   loop_count: number;
   trigger: AuditorTrigger;
   message_id?: string;
+  rerun_kind?: RerunKind;
+  retry_scope?: "cluster" | "agent" | "subtask";
+  target_agent?: AgentId;
+  target_cluster?: string;
+  target_subtask?: string;
+  trigger_node_id?: string;
 }
 
 export interface SseArtifactCreated extends SseBasePayload {

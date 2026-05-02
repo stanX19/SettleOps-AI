@@ -24,12 +24,19 @@ class WorkflowAction(str, Enum):
     FORCE_APPROVE = "force_approve"
 
 MAX_ITERATIONS = 3
+MAX_AUDITOR_LOOPS = 2
 
 class ChallengeState(TypedDict):
     """Represents a human or auditor challenge to a specific agent's decision."""
     target_cluster: str  # "policy", "liability", "damage", "fraud"
     feedback: str       # The specific instruction or correction
     iteration: int      # Counter to prevent infinite loops during surgical reruns
+
+class RerunTargetState(TypedDict):
+    """Represents a rerun request for a top-level agent outside a cluster."""
+    target_agent: str   # "intake", "payout", "adjuster", "auditor"
+    feedback: str
+    iteration: int
 
 class HumanDecision(TypedDict):
     """Represents a manual intervention by a human operator."""
@@ -98,6 +105,8 @@ class ClaimWorkflowState(TypedDict):
     
     # Routing & Loop Controls
     active_challenge: Optional[ChallengeState]
+    active_rerun_target: Optional[RerunTargetState]
+    active_rerun_source: Optional[str]  # "officer", "auditor", or None
     auditor_loop_count: int
     status: str 
     

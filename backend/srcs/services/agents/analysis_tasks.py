@@ -181,6 +181,8 @@ _DAMAGE_DEFAULTS: dict[str, Any] = {
     "verified_paint": 0.0,
     "verified_towing": 0.0,
     "suspicious_parts": [],
+    "damage_severity_pct": 0,
+    "damage_severity_basis": "",
 }
 
 

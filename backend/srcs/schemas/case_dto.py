@@ -7,7 +7,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from srcs.schemas.citations import CitationSummary
 
 
@@ -72,6 +72,12 @@ class OfficerMessageType(str, Enum):
 class AuditorTrigger(str, Enum):
     AUTONOMOUS = "autonomous"
     OFFICER_MESSAGE = "officer_message"
+
+
+class RerunKind(str, Enum):
+    OFFICER_RERUN = "officer_rerun"
+    AUDITOR_RERUN = "auditor_rerun"
+    CITATION_RETRY = "citation_retry"
 
 
 # -- Error codes --------------------------------------------------------------
@@ -184,9 +190,24 @@ class DeclineResponse(BaseModel):
     status: CaseStatus
 
 
+_RERUNABLE_AGENTS = {
+    AgentId.INTAKE, AgentId.POLICY, AgentId.LIABILITY,
+    AgentId.DAMAGE, AgentId.FRAUD, AgentId.PAYOUT,
+    AgentId.ADJUSTER, AgentId.AUDITOR,
+}
+
+
 class MessageRequest(BaseModel):
     message: str = Field(min_length=1)
     type: OfficerMessageType = OfficerMessageType.FREEFORM
+    target_agent: Optional[AgentId] = None
+
+    @field_validator("target_agent")
+    @classmethod
+    def validate_target_agent(cls, v: Optional[AgentId]) -> Optional[AgentId]:
+        if v is not None and v not in _RERUNABLE_AGENTS:
+            raise ValueError(f"Agent '{v}' cannot be targeted for rerun")
+        return v
 
 
 class MessageRerunResponse(BaseModel):
@@ -259,6 +280,12 @@ class SseAgentMessageToAgentData(_CaseSseBase):
     loop_count: int
     trigger: AuditorTrigger
     message_id: Optional[str] = None
+    rerun_kind: Optional[RerunKind] = None
+    retry_scope: Optional[Literal["cluster", "agent", "subtask"]] = None
+    target_agent: Optional[AgentId] = None
+    target_cluster: Optional[str] = None
+    target_subtask: Optional[str] = None
+    trigger_node_id: Optional[str] = None
 
 
 class SseArtifactCreatedData(_CaseSseBase):
