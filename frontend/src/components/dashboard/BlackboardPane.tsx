@@ -166,15 +166,44 @@ function splitAuditPoints(value?: string | null): string[] {
   return parts.length > 0 ? parts : [normalized];
 }
 
-function AuditBulletList({ items }: { items: string[] }) {
+function auditIssueText(issue: string | ValidationMistake): string {
+  if (typeof issue === "string") return issue.trim();
+  return [
+    issue.target_cluster ? `**${issue.target_cluster}**` : "",
+    issue.field_path ? `\`${issue.field_path}\`` : "",
+    issue.issue || issue.evidence || JSON.stringify(issue),
+  ].filter(Boolean).join(": ");
+}
+
+function AuditMarkdownText({ content }: { content: string }) {
+  return (
+    <MarkdownRenderer
+      content={content}
+      className={[
+        "text-sm leading-relaxed text-neutral-text-primary",
+        "prose-p:m-0 prose-p:leading-relaxed",
+        "prose-ul:my-1 prose-li:my-0.5",
+        "prose-code:break-words prose-code:whitespace-normal",
+        "prose-strong:text-neutral-text-primary",
+      ].join(" ")}
+    />
+  );
+}
+
+function AuditBulletList({ items, emptyText = "No issues." }: { items: string[]; emptyText?: string }) {
   if (items.length === 0) {
-    return <span className="text-sm text-neutral-text-secondary">No issues.</span>;
+    return <span className="text-sm text-neutral-text-secondary">{emptyText}</span>;
   }
 
   return (
-    <ul className="list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-neutral-text-primary marker:text-brand-primary">
+    <ul className="space-y-2">
       {items.map((item, idx) => (
-        <li key={`${item}-${idx}`}>{item}</li>
+        <li key={`${item}-${idx}`} className="flex gap-2.5">
+          <span className="mt-[0.55rem] h-1.5 w-1.5 shrink-0 rounded-full bg-brand-primary" />
+          <div className="min-w-0 flex-1">
+            <AuditMarkdownText content={item} />
+          </div>
+        </li>
       ))}
     </ul>
   );
@@ -218,6 +247,17 @@ const SECTION_TITLES: Partial<Record<BlackboardSection, string>> = {
   [BlackboardSection.RECONSTRUCTION_RESULT]: "3D Reconstruction",
 };
 
+const CHALLENGE_TARGETS: AgentId[] = [
+  AgentId.INTAKE,
+  AgentId.POLICY,
+  AgentId.LIABILITY,
+  AgentId.DAMAGE,
+  AgentId.FRAUD,
+  AgentId.PAYOUT,
+  AgentId.ADJUSTER,
+  AgentId.AUDITOR,
+];
+
 export function BlackboardPane() {
   const {
     blackboard,
@@ -228,14 +268,17 @@ export function BlackboardPane() {
     blackboard_mode: mode,
     setBlackboardMode: setMode,
     selectedAgentId,
-    setSelectedAgentId
+    setSelectedAgentId,
+    chat_challenge_mode: isChallengeMode,
+    setChatChallengeMode,
+    pendingChallengeAgent,
+    setPendingChallengeAgent,
   } = useCaseStore();
   const caseId = useCaseStore(state => state.case_id);
   const citations = useCaseStore(state => state.citations);
   const documents = useCaseStore(state => state.documents);
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [isChallengeMode, setIsChallengeMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [activeCitationSection, setActiveCitationSection] = useState<BlackboardSection | null>(null);
@@ -316,7 +359,13 @@ export function BlackboardPane() {
       });
 
       if (isChallengeMode) {
-        await api.sendMessage(caseId, currentMessage);
+        const targetAgent = pendingChallengeAgent || undefined;
+        if (targetAgent === AgentId.INTAKE) {
+          const confirmed = window.confirm("Rerunning intake restarts the case pipeline and refreshes downstream outputs. Continue?");
+          if (!confirmed) return;
+        }
+        await api.sendMessage(caseId, currentMessage, undefined, targetAgent);
+        setPendingChallengeAgent(null);
         // The clarification or rerun ack will be delivered via the global SSE stream
       } else {
         await api.sendChatMessage(caseId, currentMessage, selectedAgentId || undefined);
@@ -558,11 +607,7 @@ export function BlackboardPane() {
             label="Unresolved Issues"
             value={
               <AuditBulletList
-                items={unresolved.flatMap((issue) => (
-                  typeof issue === "string"
-                    ? splitAuditPoints(issue)
-                    : splitAuditPoints(issue.issue || JSON.stringify(issue))
-                ))}
+                items={unresolved.map(auditIssueText).filter(Boolean)}
               />
             }
           />
@@ -721,21 +766,35 @@ export function BlackboardPane() {
               <div className="flex items-center space-x-2 mb-2">
                 <button
                   type="button"
-                  onClick={() => setIsChallengeMode(false)}
+                  onClick={() => setChatChallengeMode(false)}
                   className={`px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-colors ${!isChallengeMode ? 'bg-brand-primary text-black' : 'bg-neutral-surface text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
                 >
                   Ask Strategist
                 </button>
                 <button
                   type="button"
-                  onClick={() => setIsChallengeMode(true)}
+                  onClick={() => setChatChallengeMode(true)}
                   className={`px-2 py-1 rounded text-[9px] font-bold uppercase tracking-wider transition-colors ${isChallengeMode ? 'bg-semantic-warning text-black' : 'bg-neutral-surface text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
                 >
                   Challenge Analysis
                 </button>
 
+                {isChallengeMode && (
+                  <select
+                    value={pendingChallengeAgent ?? ""}
+                    onChange={(e) => setPendingChallengeAgent((e.target.value || null) as AgentId | null)}
+                    className="ml-auto h-6 max-w-[140px] rounded-md border border-semantic-warning/30 bg-neutral-surface px-2 text-[10px] font-semibold capitalize text-neutral-text-primary focus:outline-none focus:border-semantic-warning"
+                    aria-label="Challenge target"
+                  >
+                    <option value="">Auto target</option>
+                    {CHALLENGE_TARGETS.map((target) => (
+                      <option key={target} value={target}>{target}</option>
+                    ))}
+                  </select>
+                )}
+
                 {selectedAgentId && (
-                  <div className="flex items-center gap-1.5 ml-auto animate-in fade-in slide-in-from-right-2">
+                  <div className={`flex items-center gap-1.5 ${isChallengeMode ? "" : "ml-auto"} animate-in fade-in slide-in-from-right-2`}>
                     <span className="text-[9px] text-neutral-text-tertiary font-bold uppercase tracking-widest">Targeting:</span>
                     <Badge variant="outline" className="bg-indigo-500/10 text-indigo-400 border-indigo-500/30 text-[9px] px-1.5 py-0 capitalize flex items-center gap-1">
                       <img src="/bot.png" alt="Bot" className="w-2.5 h-2.5 object-contain" />
