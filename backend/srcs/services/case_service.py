@@ -1029,6 +1029,19 @@ async def resume_workflow_with_sse(
                     except InvalidStatusTransition:
                         pass
             state.current_agent = None
+
+            # Finally, ensure completion event is emitted with the final terminal
+            # status (e.g. APPROVED) so dashboards and action bars update.
+            await SseService.emit(case_id, SseWorkflowCompletedData(
+                case_id=case_id,
+                timestamp=now_iso(),
+                status=state.status,
+                pdf_ready=any(a.artifact_type == ArtifactType.DECISION_PDF for a in state.artifacts),
+                auditor_loop_count=state.auditor_loop_count,
+                officer_challenge_count=state.officer_challenge_count,
+                chatbox_enabled=True,
+                topology=TOPOLOGY
+            ))
     except Exception:
         async with CaseStore.lock(case_id):
             try:

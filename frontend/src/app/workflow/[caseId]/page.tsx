@@ -31,7 +31,12 @@ export default function WorkflowCasePage({ params }: PageProps) {
         if (isCancelled) return;
         setCase(snapshot);
         
-        sse = new SseClient(caseId);
+        const refreshCase = useCaseStore.getState().refreshCase;
+        
+        sse = new SseClient(caseId, () => {
+          console.log("SSE connected, refreshing case state...");
+          refreshCase(caseId);
+        });
         sse.connect();
       } catch (err) {
         if (!isCancelled) {

@@ -536,20 +536,22 @@ async def stream_case(case_id: str, request: Request) -> StreamingResponse:
     queue = SseService.subscribe(case_id)
 
     async def _event_generator():
+        # Padding to force proxy flushing (some proxies buffer up to 1-2KB)
+        yield f": {' ' * 2048}\n\n"
         yield ": ready\n\n"
         try:
             while True:
                 if await request.is_disconnected():
                     break
                 try:
-                    msg = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    msg = await asyncio.wait_for(queue.get(), timeout=5.0)
                     # Broadcaster disconnected this subscriber (queue full).
                     # Exit cleanly; client recovers via GET /cases/{id}.
                     if msg.get("event") == CLOSE_EVENT_KEY:
                         break
                     yield f"event: {msg['event']}\ndata: {msg['data']}\n\n"
                 except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
+                    yield "event: ping\ndata: {\"ping\": true}\n\n"
         except asyncio.CancelledError:
             pass
         finally:
@@ -562,6 +564,7 @@ async def stream_case(case_id: str, request: Request) -> StreamingResponse:
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "Access-Control-Allow-Origin": "*", # Allow direct connection bypassing proxy
         },
     )
 

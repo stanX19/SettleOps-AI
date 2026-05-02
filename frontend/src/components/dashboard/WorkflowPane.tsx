@@ -402,10 +402,14 @@ export function WorkflowPane() {
               <span>Manage Hub</span>
             </Button>
           </Link>
-          <div className="h-8 px-3 text-[11px] font-semibold tracking-wide uppercase bg-neutral-surface shadow-card border border-neutral-border rounded-md text-neutral-text-tertiary flex items-center">
-            <div className={`w-2 h-2 rounded-full mr-2 ${caseStatus === CaseStatus.RUNNING ? 'bg-brand-primary animate-pulse' : 'bg-neutral-border'}`}></div>
+          <button 
+            onClick={() => useCaseStore.getState().refreshCase(caseId)}
+            title="Click to force sync with backend"
+            className="h-8 px-3 text-[11px] font-semibold tracking-wide uppercase bg-neutral-surface shadow-card border border-neutral-border rounded-md text-neutral-text-tertiary flex items-center hover:bg-neutral-background transition-colors cursor-pointer active:scale-95"
+          >
+            <div className={`w-2 h-2 rounded-full mr-2 ${caseStatus === CaseStatus.RUNNING ? 'bg-brand-primary animate-pulse' : 'bg-semantic-success'}`}></div>
             SSE LIVE
-          </div>
+          </button>
         </div>
       </div>
 

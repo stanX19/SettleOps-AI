@@ -13,6 +13,8 @@ import {
   SseWorkflowCompleted,
   BlackboardSection
 } from "../lib/types";
+import { normalizeCaseSnapshot, normalizeArtifact, getBackendUrl } from "../lib/utils";
+import { api } from "../lib/api";
 
 interface CaseState extends CaseSnapshot {
   // Store Actions
@@ -35,6 +37,7 @@ interface CaseState extends CaseSnapshot {
   blackboard_mode: 'blackboard' | 'chat';
   audio_urls: Record<string, string>;
   addAudioUrl: (text: string, url: string) => void;
+  refreshCase: (caseId: string) => Promise<void>;
 }
 
 const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; selectedAgentId: AgentId | null; audio_urls: Record<string, string> } = {
@@ -61,9 +64,18 @@ const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; sel
 export const useCaseStore = create<CaseState>((set) => ({
   ...initialState,
 
-  setCase: (snapshot) => set(snapshot),
+  setCase: (snapshot) => set(normalizeCaseSnapshot(snapshot)),
   
   reset: () => set(initialState),
+
+  refreshCase: async (caseId) => {
+    try {
+      const snapshot = await api.getCaseSnapshot(caseId);
+      set(normalizeCaseSnapshot(snapshot));
+    } catch (error) {
+      console.error("Failed to refresh case:", error);
+    }
+  },
 
   setBlackboardMode: (mode) => set({ blackboard_mode: mode }),
 
@@ -169,14 +181,14 @@ export const useCaseStore = create<CaseState>((set) => ({
       ...state.artifacts.map(a => 
         a.artifact_type === data.artifact_type ? { ...a, superseded: true } : a
       ),
-      {
+      normalizeArtifact({
         artifact_type: data.artifact_type,
         filename: data.filename,
         url: data.url,
         ready: true,
         version: data.version,
         superseded: false
-      }
+      })
     ]
   })),
 

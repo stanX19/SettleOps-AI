@@ -28,7 +28,8 @@ from srcs.schemas.case_dto import (
     SseAgentStatusChangedData,
     SseAgentOutputData,
     SseWorkflowCompletedData,
-    CaseStatus
+    CaseStatus,
+    ArtifactType
 )
 from srcs.services.case_store import CaseStore, now_iso
 
@@ -275,7 +276,7 @@ async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkf
         case_id=case_id,
         timestamp=now_iso(),
         status=display_status,
-        pdf_ready=False,
+        pdf_ready=any(a.artifact_type == ArtifactType.DECISION_PDF for a in CaseStore.get(case_id).artifacts) if CaseStore.get(case_id) else False,
         auditor_loop_count=final_state_wrapper.values.get("auditor_loop_count", 0),
         officer_challenge_count=final_state_wrapper.values.get("officer_challenge_count", 0),
         chatbox_enabled=display_status in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS),
