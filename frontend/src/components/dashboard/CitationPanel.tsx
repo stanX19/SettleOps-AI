@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
-import { BookOpen, FileText, ImageIcon, Bot, X, ExternalLink } from "lucide-react";
+import { useEffect, useState } from "react";
+import { BookOpen, FileText, ImageIcon, Bot, X, ChevronDown } from "lucide-react";
 import { Citation, DocumentInfo } from "@/lib/types";
 import {
   formatNodeLabel,
@@ -22,8 +22,8 @@ interface CitationPanelProps {
 
 /**
  * Slide-in panel that lists every citation backing a blackboard section,
- * grouped by the agent (``node_id``) that produced them. Image citations
- * surface a "View Evidence" button that opens ``CitationEvidenceModal``.
+ * grouped by the agent (``node_id``) that produced them. Each citation is
+ * a compact collapsible row — click to expand evidence details.
  */
 export function CitationPanel({
   title,
@@ -33,7 +33,6 @@ export function CitationPanel({
   onClose,
   onViewEvidence,
 }: CitationPanelProps) {
-  // Close on Escape for keyboard accessibility.
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
@@ -47,7 +46,7 @@ export function CitationPanel({
 
   return (
     <>
-      {/* Backdrop — click to close */}
+      {/* Backdrop */}
       <div
         className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-200 ${
           isOpen ? "opacity-100" : "pointer-events-none opacity-0"
@@ -95,24 +94,15 @@ export function CitationPanel({
               No citations recorded for this section.
             </div>
           ) : (
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4">
               {grouped.map(({ nodeId, citations: group }) => (
-                <section key={nodeId}>
-                  <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-neutral-text-tertiary">
-                    <Bot className="h-3 w-3" />
-                    {formatNodeLabel(nodeId)}
-                  </div>
-                  <div className="flex flex-col gap-2.5">
-                    {group.map((c, idx) => (
-                      <CitationCard
-                        key={`${nodeId}-${idx}`}
-                        citation={c}
-                        documents={documents}
-                        onViewEvidence={onViewEvidence}
-                      />
-                    ))}
-                  </div>
-                </section>
+                <NodeGroup
+                  key={nodeId}
+                  nodeId={nodeId}
+                  citations={group}
+                  documents={documents}
+                  onViewEvidence={onViewEvidence}
+                />
               ))}
             </div>
           )}
@@ -122,190 +112,147 @@ export function CitationPanel({
   );
 }
 
-function CitationCard({
-  citation,
+function NodeGroup({
+  nodeId,
+  citations,
   documents,
   onViewEvidence,
 }: {
-  citation: Citation;
+  nodeId: string;
+  citations: Citation[];
   documents: DocumentInfo[];
-  onViewEvidence: (citation: Citation) => void;
-}) {
-  if (citation.source_type === "image") {
-    return <ImageCitationCard citation={citation} documents={documents} onViewEvidence={onViewEvidence} />;
-  }
-  if (citation.source_type === "agent_output") {
-    return <AgentOutputCitationCard citation={citation} />;
-  }
-  return <TextCitationCard citation={citation} documents={documents} onViewEvidence={onViewEvidence} />;
-}
-
-function CardShell({
-  icon,
-  filename,
-  fieldPath,
-  children,
-}: {
-  icon: React.ReactNode;
-  filename: React.ReactNode;
-  fieldPath: string;
-  children: React.ReactNode;
+  onViewEvidence: (c: Citation) => void;
 }) {
   return (
-    <div className="rounded-md border border-neutral-border bg-neutral-surface p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-neutral-text-primary">
-          <span className="text-neutral-text-tertiary">{icon}</span>
-          <span className="truncate">{filename}</span>
+    <section>
+      {/* Group header */}
+      <div className="mb-1.5 flex items-center justify-between px-0.5">
+        <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-neutral-text-tertiary">
+          <Bot className="h-3 w-3" />
+          {formatNodeLabel(nodeId)}
         </div>
-        <span className="shrink-0 rounded-sm border border-neutral-border bg-neutral-background px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-neutral-text-tertiary">
-          {fieldPath}
+        <span className="text-[9px] text-neutral-text-tertiary tabular-nums">
+          {citations.length} citation{citations.length !== 1 ? "s" : ""}
         </span>
       </div>
-      <div className="mt-2 space-y-2 text-[11px] leading-relaxed text-neutral-text-primary">
-        {children}
-      </div>
-    </div>
+
+      {/* Compact citation list */}
+      <ul className="rounded-md border border-neutral-border bg-neutral-surface overflow-hidden">
+        {citations.map((c, idx) => (
+          <CitationRow
+            key={`${nodeId}-${idx}`}
+            citation={c}
+            documents={documents}
+            onViewEvidence={onViewEvidence}
+            isLast={idx === citations.length - 1}
+          />
+        ))}
+      </ul>
+    </section>
   );
 }
 
-function TextCitationCard({
+function CitationRow({
   citation,
   documents,
   onViewEvidence,
+  isLast,
 }: {
   citation: Citation;
   documents: DocumentInfo[];
-  onViewEvidence: (citation: Citation) => void;
+  onViewEvidence: (c: Citation) => void;
+  isLast: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const url = resolveDocUrl(citation.filename, documents);
-  return (
-    <CardShell
-      icon={<FileText className="h-3 w-3" />}
-      filename={
-        url ? (
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-brand-primary hover:underline"
-          >
-            {citation.filename}
-          </a>
-        ) : (
-          citation.filename
-        )
-      }
-      fieldPath={citation.field_path}
-    >
-      {citation.excerpt && (
-        <blockquote className="border-l-2 border-brand-primary/50 bg-neutral-background/50 px-2 py-1 italic text-neutral-text-secondary">
-          “{citation.excerpt}”
-        </blockquote>
-      )}
-      <div>
-        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-text-tertiary">
-          Why it matters
-        </span>
-        <p>{citation.comment}</p>
-      </div>
-      <div>
-        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-text-tertiary">
-          Supports
-        </span>
-        <p>{citation.conclusion}</p>
-      </div>
-      <div className="flex items-center gap-2 pt-1">
-        <button
-          onClick={() => onViewEvidence(citation)}
-          disabled={!url}
-          className="inline-flex items-center gap-1.5 rounded-md border border-brand-primary/30 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <FileText className="h-3 w-3" />
-          View Evidence
-        </button>
-      </div>
-    </CardShell>
-  );
-}
 
-function ImageCitationCard({
-  citation,
-  documents,
-  onViewEvidence,
-}: {
-  citation: Citation;
-  documents: DocumentInfo[];
-  onViewEvidence: (citation: Citation) => void;
-}) {
-  const url = resolveDocUrl(citation.filename, documents);
-  return (
-    <CardShell
-      icon={<ImageIcon className="h-3 w-3" />}
-      filename={citation.filename}
-      fieldPath={citation.field_path}
-    >
-      <div>
-        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-text-tertiary">
-          What is visible
-        </span>
-        <p>{citation.comment}</p>
-      </div>
-      <div>
-        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-text-tertiary">
-          Supports
-        </span>
-        <p>{citation.conclusion}</p>
-      </div>
-      <div className="flex items-center gap-2 pt-1">
-        <button
-          onClick={() => onViewEvidence(citation)}
-          disabled={!url}
-          className="inline-flex items-center gap-1.5 rounded-md border border-brand-primary/30 px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <ImageIcon className="h-3 w-3" />
-          View Evidence
-        </button>
-        {url && (
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-[10px] text-neutral-text-tertiary transition-colors hover:text-brand-primary"
-          >
-            <ExternalLink className="h-3 w-3" />
-            Original
-          </a>
-        )}
-      </div>
-    </CardShell>
-  );
-}
+  const Icon =
+    citation.source_type === "image"
+      ? ImageIcon
+      : citation.source_type === "agent_output"
+      ? Bot
+      : FileText;
 
-function AgentOutputCitationCard({ citation }: { citation: Citation }) {
+  // Strip the uploaded_N_ prefix for a cleaner display name in the expanded detail
+  const shortName = citation.filename.replace(/^uploaded_\d+_/, "");
+
   return (
-    <CardShell
-      icon={<Bot className="h-3 w-3" />}
-      filename={<span className="italic text-neutral-text-secondary">{citation.filename}</span>}
-      fieldPath={citation.field_path}
-    >
-      {citation.excerpt && (
-        <blockquote className="border-l-2 border-indigo-500/50 bg-neutral-background/50 px-2 py-1 italic text-neutral-text-secondary">
-          {citation.excerpt}
-        </blockquote>
+    <li className={!isLast ? "border-b border-neutral-border/50" : undefined}>
+      {/* Collapsed row — shows what the citation is about, not the filename */}
+      <button
+        className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-neutral-background/60 transition-colors"
+        onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+      >
+        <Icon className="h-3 w-3 shrink-0 text-neutral-text-tertiary mt-0.5" />
+
+        <div className="min-w-0 flex-1">
+          {/* Primary: what this citation is about */}
+          <p className="text-[10px] text-neutral-text-primary leading-snug line-clamp-2">
+            {citation.comment}
+          </p>
+          {/* Secondary: which output field it backs */}
+          <span className="mt-0.5 inline-block rounded border border-neutral-border/70 bg-neutral-background px-1 font-mono text-[8px] uppercase tracking-wider text-neutral-text-tertiary">
+            {citation.field_path}
+          </span>
+        </div>
+
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 text-neutral-text-tertiary transition-transform duration-150 ${
+            expanded ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+
+      {/* Expanded detail — source + verbatim quote + conclusion */}
+      {expanded && (
+        <div className="px-3 pb-3 space-y-2 border-t border-neutral-border/30 bg-neutral-background/40">
+          {/* Source file */}
+          <div className="pt-2 flex items-center gap-1.5 text-[9px] text-neutral-text-tertiary">
+            <Icon className="h-2.5 w-2.5 shrink-0" />
+            {url ? (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="truncate hover:text-brand-primary transition-colors"
+              >
+                {shortName}
+              </a>
+            ) : (
+              <span className="truncate">{shortName}</span>
+            )}
+          </div>
+
+          {/* Verbatim excerpt */}
+          {citation.excerpt && (
+            <blockquote className="border-l-2 border-brand-primary/40 bg-neutral-surface/60 px-2 py-1 italic text-[10px] text-neutral-text-secondary">
+              "{citation.excerpt}"
+            </blockquote>
+          )}
+
+          {/* Conclusion */}
+          <p className="text-[10px] leading-relaxed text-neutral-text-secondary">
+            <span className="font-bold uppercase tracking-wider text-[8px] text-neutral-text-tertiary mr-1">
+              Supports:
+            </span>
+            {citation.conclusion}
+          </p>
+
+          {/* View Evidence */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewEvidence(citation);
+            }}
+            disabled={!url && citation.source_type !== "image"}
+            className="inline-flex items-center gap-1 rounded border border-brand-primary/30 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Icon className="h-2.5 w-2.5" />
+            View Evidence
+          </button>
+        </div>
       )}
-      <div>
-        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-text-tertiary">
-          Why it matters
-        </span>
-        <p>{citation.comment}</p>
-      </div>
-      <div>
-        <span className="text-[9px] font-bold uppercase tracking-wider text-neutral-text-tertiary">
-          Supports
-        </span>
-        <p>{citation.conclusion}</p>
-      </div>
-    </CardShell>
+    </li>
   );
 }

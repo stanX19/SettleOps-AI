@@ -39,9 +39,15 @@ _VALID_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
     CaseStatus.SUBMITTED: {CaseStatus.RUNNING, CaseStatus.FAILED},
     CaseStatus.RUNNING: {
         CaseStatus.AWAITING_APPROVAL,
+        CaseStatus.AWAITING_ADJUSTER,
         CaseStatus.ESCALATED,
         CaseStatus.AWAITING_DOCS,
         CaseStatus.FAILED,
+    },
+    CaseStatus.AWAITING_ADJUSTER: {
+        CaseStatus.RUNNING,
+        CaseStatus.APPROVED,
+        CaseStatus.DECLINED,
     },
     CaseStatus.AWAITING_APPROVAL: {
         CaseStatus.RUNNING,
@@ -145,6 +151,7 @@ class CaseState:
     damage_result: Optional[dict[str, Any]] = None
     fraud_assessment: Optional[dict[str, Any]] = None
     payout_recommendation: Optional[dict[str, Any]] = None
+    adjuster_request: Optional[dict[str, Any]] = None
     audit_result: Optional[dict[str, Any]] = None
 
     # Per-section citations. Reruns replace the entire list (no append).
@@ -152,6 +159,7 @@ class CaseState:
     liability_citations: list[dict[str, Any]] = field(default_factory=list)
     damage_citations: list[dict[str, Any]] = field(default_factory=list)
     fraud_citations: list[dict[str, Any]] = field(default_factory=list)
+    adjuster_citations: list[dict[str, Any]] = field(default_factory=list)
     auditor_citations: list[dict[str, Any]] = field(default_factory=list)
 
     # Runtime state
@@ -192,6 +200,7 @@ class CaseState:
             BlackboardSection.DAMAGE_RESULT: self.damage_result,
             BlackboardSection.FRAUD_ASSESSMENT: self.fraud_assessment,
             BlackboardSection.PAYOUT_RECOMMENDATION: self.payout_recommendation,
+            BlackboardSection.ADJUSTER_REQUEST: self.adjuster_request,
             BlackboardSection.AUDIT_RESULT: self.audit_result,
         }.get(section)
 
@@ -210,6 +219,8 @@ class CaseState:
             self.fraud_assessment = data
         elif section is BlackboardSection.PAYOUT_RECOMMENDATION:
             self.payout_recommendation = data
+        elif section is BlackboardSection.ADJUSTER_REQUEST:
+            self.adjuster_request = data
         elif section is BlackboardSection.AUDIT_RESULT:
             self.audit_result = data
 
@@ -221,6 +232,7 @@ class CaseState:
             BlackboardSection.LIABILITY_VERDICT: self.liability_citations,
             BlackboardSection.DAMAGE_RESULT: self.damage_citations,
             BlackboardSection.FRAUD_ASSESSMENT: self.fraud_citations,
+            BlackboardSection.ADJUSTER_REQUEST: self.adjuster_citations,
             BlackboardSection.AUDIT_RESULT: self.auditor_citations,
         }.get(section, [])
 
@@ -237,6 +249,8 @@ class CaseState:
             self.damage_citations = normalized
         elif section is BlackboardSection.FRAUD_ASSESSMENT:
             self.fraud_citations = normalized
+        elif section is BlackboardSection.ADJUSTER_REQUEST:
+            self.adjuster_citations = normalized
         elif section is BlackboardSection.AUDIT_RESULT:
             self.auditor_citations = normalized
 

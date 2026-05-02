@@ -28,7 +28,7 @@ interface CaseState extends CaseSnapshot {
   // SSE Event Handlers
   handleWorkflowStarted: (data: SseWorkflowStarted) => void;
   handleAgentStatusChanged: (data: SseAgentStatusChanged) => void;
-  handleAgentOutput: (data: SseAgentOutput) => void;
+  handleAgentOutput: (data: Pick<SseAgentOutput, "section" | "data"> & Partial<SseAgentOutput>) => void;
   handleAgentMessageToAgent: (data: SseAgentMessageToAgent) => void;
   handleArtifactCreated: (data: SseArtifactCreated) => void;
   handleWorkflowCompleted: (data: SseWorkflowCompleted) => void;
@@ -40,7 +40,11 @@ interface CaseState extends CaseSnapshot {
   refreshCase: (caseId: string) => Promise<void>;
 }
 
-const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; selectedAgentId: AgentId | null; audio_urls: Record<string, string> } = {
+const initialState: CaseSnapshot & {
+  blackboard_mode: 'blackboard' | 'chat';
+  selectedAgentId: AgentId | null;
+  audio_urls: Record<string, string>;
+} = {
   case_id: "",
   status: CaseStatus.SUBMITTED,
   submitted_at: "",
@@ -127,7 +131,7 @@ export const useCaseStore = create<CaseState>((set) => ({
 
     // Update logs for the agent if provided
     const newAgents = { ...state.agents };
-    if (data.logs && data.logs.length > 0) {
+    if (data.logs && data.logs.length > 0 && data.agent) {
       const agentId = data.agent;
       newAgents[agentId] = {
         ...(newAgents[agentId] || { status: AgentStatus.IDLE, sub_tasks: {} }),
@@ -140,7 +144,8 @@ export const useCaseStore = create<CaseState>((set) => ({
     // PROBLEM 1 FIX: If CaseFacts changed, we must update the doc_type/tags in the documents array
     // so that the left pane (InputsPane) refreshes immediately.
     if (data.section === BlackboardSection.CASE_FACTS) {
-      const taggedDocs = data.data.tagged_documents || {};
+      const caseFacts = data.data as { tagged_documents?: Record<string, string | string[]> };
+      const taggedDocs = caseFacts.tagged_documents || {};
       nextDocuments = state.documents.map(doc => {
         if (doc.index !== undefined) {
           const rawTags = taggedDocs[String(doc.index)];

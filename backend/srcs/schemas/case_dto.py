@@ -17,6 +17,7 @@ class CaseStatus(str, Enum):
     SUBMITTED = "submitted"
     RUNNING = "running"
     AWAITING_APPROVAL = "awaiting_approval"
+    AWAITING_ADJUSTER = "awaiting_adjuster"
     ESCALATED = "escalated"
     APPROVED = "approved"
     DECLINED = "declined"
@@ -31,6 +32,7 @@ class AgentId(str, Enum):
     DAMAGE = "damage"
     FRAUD = "fraud"
     PAYOUT = "payout"
+    ADJUSTER = "adjuster"
     AUDITOR = "auditor"
 
 
@@ -49,6 +51,7 @@ class BlackboardSection(str, Enum):
     DAMAGE_RESULT = "DamageResult"
     FRAUD_ASSESSMENT = "FraudAssessment"
     PAYOUT_RECOMMENDATION = "PayoutRecommendation"
+    ADJUSTER_REQUEST = "AdjusterRequest"
     AUDIT_RESULT = "AuditResult"
 
 

@@ -199,4 +199,20 @@ export const api = {
     });
     return handleResponse(res);
   },
+
+  /**
+   * Upload an adjuster report to resume the workflow from AWAITING_ADJUSTER.
+   */
+  async uploadAdjusterReport(
+    caseId: string,
+    file: File
+  ): Promise<{ case_id: string; status: CaseStatus }> {
+    const form = new FormData();
+    form.append("adjuster_report", file);
+    const res = await fetch(`${API_BASE}/api/v1/cases/${caseId}/adjuster-report`, {
+      method: "POST",
+      body: form,
+    });
+    return handleResponse(res);
+  },
 };

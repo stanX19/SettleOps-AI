@@ -5,9 +5,11 @@ import { InputsPane } from "@/components/dashboard/InputsPane"
 import { WorkflowPane } from "@/components/dashboard/WorkflowPane"
 import { BlackboardPane } from "@/components/dashboard/BlackboardPane"
 import { ActionBar } from "@/components/dashboard/ActionBar"
+import { AdjusterUploadModal } from "@/components/dashboard/AdjusterUploadModal"
 import { api } from "@/lib/api"
 import { useCaseStore } from "@/stores/case-store"
 import { SseClient } from "@/lib/sse-client"
+import { CaseStatus } from "@/lib/types"
 
 interface PageProps {
   params: Promise<{ caseId: string }>;
@@ -19,6 +21,21 @@ export default function WorkflowCasePage({ params }: PageProps) {
   const [isResizing, setIsResizing] = useState(false);
   const setCase = useCaseStore(state => state.setCase);
   const resetCase = useCaseStore(state => state.reset);
+  const caseStatus = useCaseStore(state => state.status);
+  const [adjusterModalOpen, setAdjusterModalOpen] = useState(false);
+  const [adjusterModalShown, setAdjusterModalShown] = useState(false);
+
+  // Auto-open adjuster upload modal when case enters AWAITING_ADJUSTER
+  useEffect(() => {
+    if (caseStatus === CaseStatus.AWAITING_ADJUSTER && !adjusterModalShown) {
+      setAdjusterModalOpen(true);
+      setAdjusterModalShown(true);
+    }
+  }, [caseStatus, adjusterModalShown]);
+
+  const handleAdjusterUpload = useCallback(async (file: File) => {
+    await api.uploadAdjusterReport(caseId, file);
+  }, [caseId]);
 
   // Load snapshot and connect to SSE on mount
   useEffect(() => {
@@ -113,7 +130,14 @@ export default function WorkflowCasePage({ params }: PageProps) {
       </div>
       
       {/* Bottom Action Bar */}
-      <ActionBar />
+      <ActionBar onOpenAdjusterUpload={() => setAdjusterModalOpen(true)} />
+
+      {/* Adjuster Upload Modal — auto-opens on AWAITING_ADJUSTER */}
+      <AdjusterUploadModal
+        isOpen={adjusterModalOpen}
+        onClose={() => setAdjusterModalOpen(false)}
+        onUpload={handleAdjusterUpload}
+      />
     </div>
   )
 }

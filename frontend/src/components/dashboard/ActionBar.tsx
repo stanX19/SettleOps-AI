@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { Button } from "@/components/primitives/Button"
 import { Toast } from "@/components/primitives/Toast"
-import { Check, Edit3, ShieldX, AlertTriangle, Loader2, FileText } from "lucide-react"
+import { Check, Edit3, ShieldX, AlertTriangle, Loader2, FileText, Upload } from "lucide-react"
 import { useCaseStore } from "@/stores/case-store"
 import { CaseStatus, ArtifactType } from "@/lib/types"
 import { api } from "@/lib/api"
@@ -52,7 +52,11 @@ function DeclineConfirmModal({ isOpen, isSubmitting, onConfirm, onCancel }: {
   );
 }
 
-export function ActionBar() {
+interface ActionBarProps {
+  onOpenAdjusterUpload?: () => void;
+}
+
+export function ActionBar({ onOpenAdjusterUpload }: ActionBarProps) {
   const caseId = useCaseStore(state => state.case_id);
   const status = useCaseStore(state => state.status);
   const [isConfirmingDecline, setIsConfirmingDecline] = useState(false);
@@ -63,10 +67,16 @@ export function ActionBar() {
   // The action bar UI itself only makes sense while the case is awaiting an
   // operator decision. The signature modal and toast are intentionally rendered
   // unconditionally below: once the operator has opened the modal, the case
-  // transitions through RUNNING → APPROVED on the backend, and unmounting the
+  // transitions through RUNNING -> APPROVED on the backend, and unmounting the
   // modal mid-flow would lose its local step state and snap back to "preview
   // draft" the next time the parent re-renders.
-  const showActionBar = !!caseId && [CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS, CaseStatus.APPROVED].includes(status);
+  const showActionBar = !!caseId && [
+    CaseStatus.AWAITING_APPROVAL,
+    CaseStatus.ESCALATED,
+    CaseStatus.AWAITING_DOCS,
+    CaseStatus.AWAITING_ADJUSTER,
+    CaseStatus.APPROVED,
+  ].includes(status);
 
   const handleResume = async () => {
     try {
@@ -100,7 +110,7 @@ export function ActionBar() {
     const signedArtifact = artifacts.find(a => a.artifact_type === ArtifactType.DECISION_PDF_SIGNED && !a.superseded);
     if (signedArtifact) {
       const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
-      window.open(`${apiBase}${signedArtifact.url}`, '_blank');
+      window.open(`${apiBase}${signedArtifact.url}`, "_blank");
     }
   };
 
@@ -155,13 +165,23 @@ export function ActionBar() {
                     )}
                     Resume Pipeline
                   </Button>
+                ) : status === CaseStatus.AWAITING_ADJUSTER ? (
+                  <Button
+                    variant="default"
+                    className="group h-9 rounded-md px-6 py-2 text-sm font-semibold bg-semantic-warning hover:bg-semantic-warning hover:brightness-110 hover:shadow-xl hover:shadow-semantic-warning/40 active:shadow-md text-black shadow-lg shadow-semantic-warning/20 transition-all duration-200 ease-out disabled:opacity-60 disabled:hover:brightness-100"
+                    onClick={onOpenAdjusterUpload}
+                    disabled={isSubmitting}
+                  >
+                    <Upload className="w-4 h-4 mr-2 transition-transform duration-200 group-hover:scale-110" />
+                    Upload Adjuster Report
+                  </Button>
                 ) : (
                   <>
                     <Button
                       variant="secondary"
                       className="border-neutral-border text-neutral-text-primary h-9 rounded-md px-4 py-2 text-sm font-medium hover:bg-brand-primary/10 hover:border-brand-primary/40 hover:text-brand-primary transition-all duration-200"
                       disabled={isSubmitting}
-                      onClick={() => useCaseStore.getState().setBlackboardMode('chat')}
+                      onClick={() => useCaseStore.getState().setBlackboardMode("chat")}
                     >
                       <Edit3 className="w-4 h-4 mr-2 text-brand-primary" />
                       Challenge

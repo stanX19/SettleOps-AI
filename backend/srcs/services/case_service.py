@@ -73,7 +73,7 @@ from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes
 from srcs.services.workflow_engine import (
     run_workflow_with_sse,
     resume_workflow_with_sse as resume_workflow_with_sse_engine,
-    TOPOLOGY
+    TOPOLOGY,
 )
 from srcs.services.pdf_service import (
     RepairApprovalData,
@@ -257,8 +257,8 @@ AGENT_METADATA = {
         "prompt": "Ensure mathematical accuracy. Final payout = (Estimate - Depr) * (1 - Fault) - Excess."
     },
     AgentId.AUDITOR: {
-        "purpose": "Reviewer that ensures consistency across all agent findings before final approval.",
-        "prompt": "Double check that Payout logic matches Policy and Liability findings."
+        "purpose": "Final aggregator that summarizes validated findings for human approval.",
+        "prompt": "Synthesize validated outputs and unresolved issues for the officer."
     }
 }
 
@@ -316,7 +316,7 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
         awaiting_clarification=state.awaiting_clarification,
         chatbox_enabled=state.chatbox_enabled(),
         current_agent=state.current_agent,
-        topology=TOPOLOGY
+        topology=TOPOLOGY,
     )
 
 
@@ -627,7 +627,13 @@ def _stub_section(section: BlackboardSection, state: CaseState) -> dict[str, Any
             "confidence": 0.8,
         }
     if section is BlackboardSection.AUDIT_RESULT:
-        return {"verdict": "approve", "challenges": [], "reasoning": "Stub audit."}
+        return {
+            "summary": "Stub final synthesis.",
+            "final_recommendation": "approve",
+            "validation_status": "valid",
+            "unresolved_issues": [],
+            "human_review_notes": "",
+        }
     return {}
 
 
@@ -763,6 +769,7 @@ def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
         "auditor_citations": list(case.auditor_citations),
         "trace_log": [],
         "active_challenge": None,
+        "auditor_loop_count": case.auditor_loop_count,
         "status": case.status.value,
         "current_agent": case.current_agent.value if case.current_agent else None,
         "latest_user_message": None,
@@ -822,6 +829,11 @@ async def run_pipeline(case_id: str) -> None:
             async with CaseStore.lock(case_id):
                 if WorkflowNodes.WAIT_FOR_DOCS in final_state_wrapper.next:
                     transition_status(state, CaseStatus.AWAITING_DOCS)
+                elif (
+                    WorkflowNodes.ADJUSTER_REQUEST in final_state_wrapper.next
+                    or WorkflowNodes.WAIT_FOR_ADJUSTER in final_state_wrapper.next
+                ):
+                    transition_status(state, CaseStatus.AWAITING_ADJUSTER)
                 elif WorkflowNodes.DECISION_GATE in final_state_wrapper.next:
                     # Case reached auditor decision point, awaiting officer action
                     transition_status(state, CaseStatus.AWAITING_APPROVAL)
@@ -856,6 +868,11 @@ _RERUN_CHAINS: dict[AgentId, list[tuple[AgentId, BlackboardSection]]] = {
     ],
     AgentId.LIABILITY: [
         (AgentId.LIABILITY, BlackboardSection.LIABILITY_VERDICT),
+        (AgentId.PAYOUT, BlackboardSection.PAYOUT_RECOMMENDATION),
+        (AgentId.AUDITOR, BlackboardSection.AUDIT_RESULT),
+    ],
+    AgentId.DAMAGE: [
+        (AgentId.DAMAGE, BlackboardSection.DAMAGE_RESULT),
         (AgentId.PAYOUT, BlackboardSection.PAYOUT_RECOMMENDATION),
         (AgentId.AUDITOR, BlackboardSection.AUDIT_RESULT),
     ],
@@ -933,7 +950,7 @@ async def resume_workflow_with_sse(
         return
 
     # 1. Safety Guard: Verify case is in a resumable status
-    if state.status not in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS):
+    if state.status not in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS, CaseStatus.AWAITING_ADJUSTER):
         return
 
     # 2. Audit Logging & Final Decision Setup
@@ -965,7 +982,7 @@ async def resume_workflow_with_sse(
         SseWorkflowStartedData(
             case_id=case_id,
             timestamp=now_iso(),
-            trigger="submit" if action == "upload_docs" else "officer_rerun",
+            trigger="submit" if action in ("upload_docs", "upload_adjuster_report") else "officer_rerun",
         ),
     )
 
@@ -991,11 +1008,11 @@ async def resume_workflow_with_sse(
             } if action == "approve" else None
         }
         
-        # If we are resuming for docs, we need to refresh the documents list
-        if action == "upload_docs":
+        # If we are resuming for docs or adjuster report, refresh the documents list
+        if action in ("upload_docs", "upload_adjuster_report"):
             workflow_state = _to_workflow_state(state)
             updates["documents"] = workflow_state["documents"]
-            updates["status"] = "running" # Clear the awaiting_docs status in the graph
+            updates["status"] = "running"  # Clear the awaiting status in the graph
 
         # 5. Execute Resumption
         from srcs.services.workflow_engine import resume_workflow_with_sse as resume_workflow_with_sse_engine
@@ -1006,6 +1023,11 @@ async def resume_workflow_with_sse(
             async with CaseStore.lock(case_id):
                 if WorkflowNodes.WAIT_FOR_DOCS in final_state_wrapper.next:
                     transition_status(state, CaseStatus.AWAITING_DOCS)
+                elif (
+                    WorkflowNodes.ADJUSTER_REQUEST in final_state_wrapper.next
+                    or WorkflowNodes.WAIT_FOR_ADJUSTER in final_state_wrapper.next
+                ):
+                    transition_status(state, CaseStatus.AWAITING_ADJUSTER)
                 elif WorkflowNodes.DECISION_GATE in final_state_wrapper.next:
                     transition_status(state, CaseStatus.AWAITING_APPROVAL)
                 

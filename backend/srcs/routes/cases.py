@@ -502,6 +502,82 @@ async def submit_case_documents(
     return CaseCreateResponse(case_id=case_id, status=state.status)
 
 
+# -- Adjuster report upload (HITL interrupt) ---------------------------------
+
+
+@router.post("/{case_id}/adjuster-report", response_model=CaseCreateResponse)
+async def upload_adjuster_report(
+    case_id: str,
+    background: BackgroundTasks,
+    adjuster_report: UploadFile = File(...),
+) -> CaseCreateResponse:
+    """Upload an adjuster report to resume the workflow from AWAITING_ADJUSTER.
+
+    This is the HITL interrupt resume point for high-value claims where a
+    physical adjuster inspection was requested.
+    """
+    state = require_case(case_id)
+
+    adjuster_request = state.adjuster_request or {}
+    is_awaiting_adjuster = (
+        state.status == CaseStatus.AWAITING_ADJUSTER
+        or (
+            state.status == CaseStatus.AWAITING_APPROVAL
+            and adjuster_request.get("status") == "awaiting_adjuster"
+        )
+    )
+    if not is_awaiting_adjuster:
+        raise api_error(
+            409,
+            ErrorCode.INVALID_STATUS,
+            "Adjuster report can only be uploaded when the case is awaiting an adjuster",
+        )
+
+    _require_mime(adjuster_report, _DOC_MIMES)
+
+    upload_dir = case_upload_dir(case_id)
+    adjuster_path = os.path.join(
+        upload_dir, f"adjuster_report_{_safe_name(adjuster_report.filename)}"
+    )
+    await _save_upload(adjuster_report, adjuster_path, _PDF_MAX)
+
+    extractions = await extract_uploaded_documents([adjuster_path])
+
+    async with CaseStore.lock(case_id):
+        state = require_case(case_id)
+        adjuster_request = state.adjuster_request or {}
+        is_awaiting_adjuster = (
+            state.status == CaseStatus.AWAITING_ADJUSTER
+            or (
+                state.status == CaseStatus.AWAITING_APPROVAL
+                and adjuster_request.get("status") == "awaiting_adjuster"
+            )
+        )
+        if not is_awaiting_adjuster:
+            raise api_error(
+                409,
+                ErrorCode.INVALID_STATUS,
+                "Adjuster report can only be uploaded when the case is awaiting an adjuster",
+            )
+        existing_upload_count = len(state.uploaded_document_paths)
+        remapped_extractions = {
+            f"uploaded_{existing_upload_count + i}": value
+            for i, value in enumerate(extractions.values())
+        }
+        state.adjuster_report_path = adjuster_path
+        state.uploaded_document_paths.append(adjuster_path)
+        state.document_extractions.update(remapped_extractions)
+
+    background.add_task(
+        resume_workflow_with_sse,
+        case_id,
+        operator_name="Operator Jack",
+        action="upload_adjuster_report",
+    )
+
+    return CaseCreateResponse(case_id=case_id, status=state.status)
+
+
 # -- List / detail ------------------------------------------------------------
 
 @router.get("", response_model=list[CaseListItem])

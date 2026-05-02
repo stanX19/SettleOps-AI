@@ -13,6 +13,7 @@ from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes
 from srcs.schemas.case_dto import AgentId, AgentStatus, BlackboardSection
 from srcs.services.agents.intake import ingest_tagging, entity_extraction_node, validation_gate, wait_for_docs_node
 from srcs.services.agents.payout import payout_node
+from srcs.services.agents.adjuster_request import adjuster_request_node, wait_for_adjuster_node, should_request_adjuster
 from srcs.services.agents.auditor import auditor_node, decision_router, decision_gate_logic
 from srcs.services.agents.refiner import refiner_node
 from srcs.services.agents.analysis_tasks import (
@@ -20,6 +21,7 @@ from srcs.services.agents.analysis_tasks import (
     liability_narrative_task,
     liability_poi_task,
     damage_quote_audit_task,
+    pricing_validation_task,
     fraud_assessment_task
 )
 from srcs.utils.cluster_factory import create_cluster_subgraph
@@ -40,10 +42,9 @@ from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes, ClusterState
 TOPOLOGY = {
     AgentId.POLICY.value: ["policy_analysis_task"],
     AgentId.LIABILITY.value: ["liability_narrative_task", "liability_poi_task"],
-    AgentId.DAMAGE.value: ["damage_quote_audit_task"],
+    AgentId.DAMAGE.value: ["damage_quote_audit_task", "pricing_validation_task"],
     AgentId.FRAUD.value: ["fraud_assessment_task"],
 }
-
 
 def _assert_no_upstream_citations_in_cluster_input(
     cluster_id: str, input_state: ClusterState
@@ -108,7 +109,7 @@ def build_workflow() -> StateGraph:
     # 2. Analysis Phase (Clusters)
     policy_graph = create_cluster_subgraph("policy", [policy_analysis_task]).compile()
     liability_graph = create_cluster_subgraph("liability", [liability_narrative_task, liability_poi_task]).compile()
-    damage_graph = create_cluster_subgraph("damage", [damage_quote_audit_task]).compile()
+    damage_graph = create_cluster_subgraph("damage", [damage_quote_audit_task, pricing_validation_task]).compile()
     fraud_graph = create_cluster_subgraph("fraud", [fraud_assessment_task]).compile()
 
     async def run_policy(x): return await _run_cluster(policy_graph, "policy", x)
@@ -123,6 +124,8 @@ def build_workflow() -> StateGraph:
 
     # 3. Payout & Audit Phase
     builder.add_node("payout_node", node_sse_wrapper("payout_node", payout_node))
+    builder.add_node(WorkflowNodes.ADJUSTER_REQUEST, node_sse_wrapper(WorkflowNodes.ADJUSTER_REQUEST, adjuster_request_node))
+    builder.add_node(WorkflowNodes.WAIT_FOR_ADJUSTER, node_sse_wrapper(WorkflowNodes.WAIT_FOR_ADJUSTER, wait_for_adjuster_node))
     builder.add_node("auditor_node", node_sse_wrapper("auditor_node", auditor_node))
 
     # 4. Refinement & Decision Phase
@@ -172,7 +175,15 @@ def build_workflow() -> StateGraph:
     builder.add_edge(WorkflowNodes.DAMAGE_CLUSTER, "payout_node")
     builder.add_edge(WorkflowNodes.FRAUD_CLUSTER, "payout_node")
     
-    builder.add_edge("payout_node", "auditor_node")
+    def payout_router(state: ClaimWorkflowState) -> str:
+        return WorkflowNodes.ADJUSTER_REQUEST if should_request_adjuster(state) else "auditor_node"
+
+    builder.add_conditional_edges("payout_node", payout_router, {
+        "auditor_node": "auditor_node",
+        WorkflowNodes.ADJUSTER_REQUEST: WorkflowNodes.ADJUSTER_REQUEST,
+    })
+    builder.add_edge(WorkflowNodes.ADJUSTER_REQUEST, WorkflowNodes.WAIT_FOR_ADJUSTER)
+    builder.add_edge(WorkflowNodes.WAIT_FOR_ADJUSTER, "auditor_node")
     builder.add_edge("auditor_node", WorkflowNodes.DECISION_GATE)
     
     # Decision Gate Routing (The Surgical Loop)
@@ -203,6 +214,8 @@ _NODE_TO_AGENT = {
     WorkflowNodes.DAMAGE_CLUSTER: AgentId.DAMAGE,
     WorkflowNodes.FRAUD_CLUSTER: AgentId.FRAUD,
     "payout_node": AgentId.PAYOUT,
+    WorkflowNodes.ADJUSTER_REQUEST: AgentId.ADJUSTER,
+    WorkflowNodes.WAIT_FOR_ADJUSTER: AgentId.ADJUSTER,
     "auditor_node": AgentId.AUDITOR,
 }
 
@@ -215,6 +228,8 @@ _NODE_TO_SECTION = {
     WorkflowNodes.DAMAGE_CLUSTER: BlackboardSection.DAMAGE_RESULT,
     WorkflowNodes.FRAUD_CLUSTER: BlackboardSection.FRAUD_ASSESSMENT,
     "payout_node": BlackboardSection.PAYOUT_RECOMMENDATION,
+    WorkflowNodes.ADJUSTER_REQUEST: BlackboardSection.ADJUSTER_REQUEST,
+    WorkflowNodes.WAIT_FOR_ADJUSTER: BlackboardSection.ADJUSTER_REQUEST,
     "auditor_node": BlackboardSection.AUDIT_RESULT,
 }
 
@@ -223,7 +238,7 @@ def get_graph():
     builder = build_workflow()
     return builder.compile(
         checkpointer=workflow_checkpointer, 
-        interrupt_before=[WorkflowNodes.DECISION_GATE, WorkflowNodes.WAIT_FOR_DOCS]
+        interrupt_before=[WorkflowNodes.DECISION_GATE, WorkflowNodes.WAIT_FOR_DOCS, WorkflowNodes.WAIT_FOR_ADJUSTER]
     )
 
 async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkflowState]):
@@ -245,7 +260,7 @@ async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkf
             auditor_loop_count=0,
             officer_challenge_count=0,
             chatbox_enabled=False,
-            topology=TOPOLOGY
+            topology=TOPOLOGY,
         ))
         raise # Re-raise to let the background task handler know it failed
 
@@ -256,6 +271,8 @@ async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkf
     display_status = CaseStatus.AWAITING_APPROVAL # Default for finished graph
     if final_status in ("inconsistent", "escalated"):
         display_status = CaseStatus.ESCALATED
+    elif final_status == "awaiting_adjuster":
+        display_status = CaseStatus.AWAITING_ADJUSTER
     elif final_status == "completed":
         display_status = CaseStatus.AWAITING_APPROVAL
     elif final_status == "awaiting_docs":
@@ -266,6 +283,8 @@ async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkf
                  display_status = CaseStatus.AWAITING_APPROVAL
              elif WorkflowNodes.WAIT_FOR_DOCS in final_state_wrapper.next:
                  display_status = CaseStatus.AWAITING_DOCS
+             elif WorkflowNodes.WAIT_FOR_ADJUSTER in final_state_wrapper.next:
+                 display_status = CaseStatus.AWAITING_ADJUSTER
              else:
                  display_status = CaseStatus.RUNNING
         else:
@@ -279,8 +298,8 @@ async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkf
         pdf_ready=any(a.artifact_type == ArtifactType.DECISION_PDF for a in CaseStore.get(case_id).artifacts) if CaseStore.get(case_id) else False,
         auditor_loop_count=final_state_wrapper.values.get("auditor_loop_count", 0),
         officer_challenge_count=final_state_wrapper.values.get("officer_challenge_count", 0),
-        chatbox_enabled=display_status in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS),
-        topology=TOPOLOGY
+        chatbox_enabled=display_status in (CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS, CaseStatus.AWAITING_ADJUSTER),
+        topology=TOPOLOGY,
     ))
     return final_state_wrapper
 
@@ -344,7 +363,7 @@ def node_sse_wrapper(node_name: str, func):
                     if section and data is not None:
                         case.set_section_data(section, data)
 
-                    # 2. Store Citations (replace, not append — keeps reruns clean)
+                    # 2. Store Citations (replace, not append; keeps reruns clean)
                     if section:
                         case.set_section_citations(section, citations)
 
@@ -354,6 +373,9 @@ def node_sse_wrapper(node_name: str, func):
                         rs = case.agent_states.get(agent_id)
                         if rs:
                             rs.logs.extend(trace_log)
+
+                    if "auditor_loop_count" in result:
+                        case.auditor_loop_count = int(result.get("auditor_loop_count") or 0)
 
             # Emit Output SSE
             if section and data is not None:

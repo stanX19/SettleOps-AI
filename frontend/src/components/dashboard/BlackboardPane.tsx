@@ -119,6 +119,24 @@ function Field({ label, value }: { label: string, value: React.ReactNode }) {
   )
 }
 
+interface ValidationMistake {
+  target_cluster?: string;
+  field_path?: string;
+  issue?: string;
+  evidence?: string;
+  severity?: string;
+}
+
+interface AuditResultData {
+  validation_status?: string;
+  summary?: string;
+  findings?: string;
+  final_recommendation?: string;
+  suggested_action?: string;
+  unresolved_issues?: Array<string | ValidationMistake>;
+  human_review_notes?: string;
+}
+
 function BlackboardSkeleton() {
   return (
     <div className="bg-neutral-surface border border-neutral-border rounded-md shadow-card mb-4 overflow-hidden opacity-60">
@@ -153,7 +171,7 @@ const SECTION_TITLES: Partial<Record<BlackboardSection, string>> = {
   [BlackboardSection.LIABILITY_VERDICT]: "Liability Verdict",
   [BlackboardSection.DAMAGE_RESULT]: "Damage Assessment",
   [BlackboardSection.FRAUD_ASSESSMENT]: "Fraud Assessment",
-  [BlackboardSection.AUDIT_RESULT]: "Auditor Findings",
+  [BlackboardSection.AUDIT_RESULT]: "Final Aggregation",
 };
 
 export function BlackboardPane() {
@@ -268,8 +286,7 @@ export function BlackboardPane() {
 
   const renderCaseFacts = (data: any) => {
     const tagged = data.tagged_documents ? Object.values(data.tagged_documents) as string[] : [];
-    const missing = data.missing_documents || [];
-
+    const missing = (data.missing_documents || []) as string[];
     return (
       <OutputCard title="Intake Validation" icon={<FileKey className="w-4 h-4" />} status="success">
         <Field label="Processed Documents" value={tagged.length} />
@@ -600,30 +617,42 @@ export function BlackboardPane() {
     </OutputCard>
   );
 
-  const renderAuditResult = (data: any) => {
-    const isInconsistent = data.is_consistent === false || data.status === "error";
-    const target = data.target_cluster && data.target_cluster !== "none" ? data.target_cluster : null;
+  const renderAuditResult = (data: AuditResultData) => {
+    const isInconsistent = data.validation_status && data.validation_status !== "valid";
+    const unresolved = Array.isArray(data.unresolved_issues) ? data.unresolved_issues : [];
     return (
       <OutputCard
-        title="Auditor Findings"
+        title="Final Aggregation"
         icon={<Gavel className="w-4 h-4" />}
         status={isInconsistent ? "warning" : "success"}
         citationCount={sectionCitationCount(BlackboardSection.AUDIT_RESULT)}
         onCitationClick={() => openCitations(BlackboardSection.AUDIT_RESULT)}
       >
         <Field
-          label="Consistency"
+          label="Validation Status"
           value={
             <Badge variant={isInconsistent ? "distructive" : "success"}>
-              {isInconsistent ? "Inconsistent" : "Consistent"}
+              {data.validation_status || "valid"}
             </Badge>
           }
         />
-        <Field label="Findings" value={<span className="text-[11px] leading-relaxed">{data.findings || "No issues."}</span>} />
-        <div className="grid grid-cols-2 gap-3 mt-1">
-          <Field label="Suggested Action" value={<Badge variant="outline">{data.suggested_action || "N/A"}</Badge>} />
-          {target && <Field label="Target Cluster" value={<Badge variant="outline">{target}</Badge>} />}
-        </div>
+        <Field label="Summary" value={<span className="text-[11px] leading-relaxed">{data.summary || data.findings || "No issues."}</span>} />
+        <Field label="Final Recommendation" value={<Badge variant="outline">{data.final_recommendation || data.suggested_action || "N/A"}</Badge>} />
+        {unresolved.length > 0 && (
+          <Field
+            label="Unresolved Issues"
+            value={
+              <div className="space-y-1">
+                {unresolved.map((issue, idx: number) => (
+                  <div key={idx}>{typeof issue === "string" ? issue : issue.issue || JSON.stringify(issue)}</div>
+                ))}
+              </div>
+            }
+          />
+        )}
+        {data.human_review_notes && (
+          <Field label="Human Review Notes" value={<span className="text-[11px] leading-relaxed">{data.human_review_notes}</span>} />
+        )}
       </OutputCard>
     );
   };
@@ -711,7 +740,7 @@ export function BlackboardPane() {
             {blackboard[BlackboardSection.DAMAGE_RESULT] && renderDamageResult(blackboard[BlackboardSection.DAMAGE_RESULT])}
             {blackboard[BlackboardSection.FRAUD_ASSESSMENT] && renderFraudAssessment(blackboard[BlackboardSection.FRAUD_ASSESSMENT])}
             {blackboard[BlackboardSection.PAYOUT_RECOMMENDATION] && renderPayoutRecommendation(blackboard[BlackboardSection.PAYOUT_RECOMMENDATION])}
-            {blackboard[BlackboardSection.AUDIT_RESULT] && renderAuditResult(blackboard[BlackboardSection.AUDIT_RESULT])}
+            {blackboard[BlackboardSection.AUDIT_RESULT] && renderAuditResult(blackboard[BlackboardSection.AUDIT_RESULT] as AuditResultData)}
             {renderArtifacts()}
 
             {!Object.keys(blackboard).length && !isSyncing && (

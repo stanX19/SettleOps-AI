@@ -457,6 +457,10 @@ function StatusBadge({ status }: { status: CaseStatus }) {
       label: 'Pending Review',
       styles: 'bg-semantic-warning'
     },
+    [CaseStatus.AWAITING_ADJUSTER]: {
+      label: 'Awaiting Adjuster',
+      styles: 'bg-semantic-warning'
+    },
     [CaseStatus.APPROVED]: {
       label: 'Approved',
       styles: 'bg-semantic-success'
