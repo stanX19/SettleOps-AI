@@ -6,7 +6,7 @@ import { OrbitControls, PerspectiveCamera, Stage, useGLTF } from "@react-three/d
 import {
   Activity,
   AlertCircle,
-  Box,
+  Wrench,
   Eye,
   Loader2,
   Maximize2,
@@ -268,7 +268,7 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
   const surfacePoints = readNumber(data, ["surface_points", "points_analyzed", "point_count"]) ?? 145200
   const damageSummary =
     readString(data, ["summary", "damage_summary", "analysis_summary", "finding"]) ||
-    "Detected significant geometric deformation in the front bumper and left headlamp assembly."
+    "Detected significant geometric deformation in the front bumper and left headlamp assembly. 43.7% Vertex displaced."
 
   if (data.status === "error") {
     return (
@@ -290,11 +290,11 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
           <div className="flex items-center justify-between gap-3 border-b border-neutral-border bg-neutral-background px-4 py-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-brand-primary/20 bg-brand-primary/10">
-                <Box className="h-4 w-4 text-brand-primary" />
+                <Wrench className="h-4 w-4 text-brand-primary" />
               </div>
               <div className="min-w-0">
                 <h3 className="truncate text-sm font-semibold text-neutral-text-primary">
-                  3D Reconstruction
+                  Spatial Damage Analysis
                 </h3>
                 <p className="truncate text-[10px] font-bold uppercase tracking-widest text-neutral-text-tertiary">
                   {vehicleLabel}
@@ -338,8 +338,7 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 border-t border-neutral-border bg-neutral-surface">
-            <Metric label="Confidence" value={formatConfidence(confidence)} />
+          <div className="grid grid-cols-2 border-t border-neutral-border bg-neutral-surface">
             <Metric label="Points" value={formatCount(surfacePoints)} />
             <Metric label="Status" value={isAnalysisLoading ? "Analyzing..." : "Complete"} />
           </div>
@@ -347,11 +346,8 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
           <div className="flex items-start gap-2.5 border-t border-neutral-border bg-neutral-surface px-4 py-3">
             <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-primary" />
             <p className="text-xs leading-relaxed text-neutral-text-secondary">
-              <span className="font-bold uppercase text-brand-primary">3D Recon Agent:</span>{" "}
+              <span className="font-bold uppercase text-brand-primary">Damage Assessment Agent:</span>{" "}
               {isAnalysisLoading ? "Performing geometric validation on high-density point clouds..." : damageSummary} 
-              {!isAnalysisLoading && ` Confidence score: `}
-              {!isAnalysisLoading && <span className="font-bold text-neutral-text-primary">{formatConfidence(confidence)}</span>}
-              {!isAnalysisLoading && `.`}
             </p>
           </div>
       </div>
@@ -366,7 +362,7 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
               </div>
               <div className="min-w-0">
                 <Dialog.Title className="truncate text-base font-semibold text-neutral-text-primary">
-                  3D Reconstruction
+                  Spatial Damage Analysis
                 </Dialog.Title>
                 <Dialog.Description className="mt-1 truncate text-xs font-bold uppercase tracking-widest text-neutral-text-tertiary">
                   {vehicleLabel} - Spatial analysis engine v2.4
@@ -410,8 +406,7 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
                 </button>
               </div>
 
-              <div className="grid grid-cols-3 overflow-hidden rounded-md border border-neutral-border bg-neutral-surface text-right shadow-[0_1px_4px_rgba(15,23,42,0.06)] md:w-[340px]">
-                <Metric label="Confidence" value={formatConfidence(confidence)} compact />
+              <div className="grid grid-cols-2 overflow-hidden rounded-md border border-neutral-border bg-neutral-surface text-right shadow-[0_1px_4px_rgba(15,23,42,0.06)] md:w-[240px]">
                 <Metric label="Points" value={formatCount(surfacePoints)} compact />
                 <Metric label="Status" value={isAnalysisLoading ? "Analyzing..." : "Complete"} compact />
               </div>
@@ -482,11 +477,8 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
 
             <div className="shrink-0 border-t border-neutral-border bg-neutral-surface px-5 py-3">
               <p className="text-sm leading-relaxed text-neutral-text-secondary">
-                <span className="font-bold uppercase text-brand-primary">3D Recon Agent:</span>{" "}
+                <span className="font-bold uppercase text-brand-primary">Damage Assessment Agent:</span>{" "}
                 {isAnalysisLoading ? "Geometric validation in progress. Aligning point clouds to reference mesh..." : damageSummary} 
-                {!isAnalysisLoading && ` Confidence score: `}
-                {!isAnalysisLoading && <span className="font-bold text-neutral-text-primary">{formatConfidence(confidence)}</span>}
-                {!isAnalysisLoading && `.`}
               </p>
             </div>
           </div>

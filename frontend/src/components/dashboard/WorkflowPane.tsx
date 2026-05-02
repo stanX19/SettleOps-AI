@@ -168,7 +168,7 @@ export function WorkflowPane() {
 
     // Dynamic Clusters
     if (topology) {
-      const clusterIds = Object.keys(topology);
+      const clusterIds = Object.keys(topology).filter(id => id !== 'reconstruction');
       const totalWidth = (clusterIds.length - 1) * CLUSTER_SPACING;
       const xStart = CANVAS_CENTER_X - (totalWidth / 2);
 

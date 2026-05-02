@@ -215,7 +215,7 @@ const SECTION_TITLES: Partial<Record<BlackboardSection, string>> = {
   [BlackboardSection.DAMAGE_RESULT]: "Damage Assessment",
   [BlackboardSection.FRAUD_ASSESSMENT]: "Fraud Assessment",
   [BlackboardSection.AUDIT_RESULT]: "Final Aggregation",
-  [BlackboardSection.RECONSTRUCTION_RESULT]: "3D Reconstruction",
+  [BlackboardSection.RECONSTRUCTION_RESULT]: "Spatial Damage Analysis",
 };
 
 export function BlackboardPane() {
