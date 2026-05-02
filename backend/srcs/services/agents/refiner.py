@@ -42,7 +42,11 @@ async def refiner_node(state: ClaimWorkflowState) -> dict[str, Any]:
     """
 
     try:
-        response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+        response = await rotating_llm.send_message_get_json(
+            prompt,
+            temperature=0.0,
+            mock_data={"target_cluster": "liability", "feedback": user_input}
+        )
         challenge_data = response.json_data if response.json_data else {}
         
         target = challenge_data.get("target_cluster", "liability")
