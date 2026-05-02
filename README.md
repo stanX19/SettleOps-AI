@@ -16,6 +16,14 @@
 ---
 
 ## Hackathon Submissions
+
+### Final Stage
+-   **[Refined Quality Assurance Testing Document (PDF)]()**
+-   **[Business Proposal]()**
+-   **[Deployment Plan]()**
+-   **[Final Round Pitch Deck]()**
+
+### Preliminary Stage
 -   **[Product Requirement Documentation (PRD)](./Product%20Requirement%20Documentation%20(Team%20spectrUM).pdf)**
 -   **[System Analysis Documentation (SAD)](./System%20Analysis%20Documentation%20(Team%20spectrUM).pdf)**
 -   **[Quality Assurance Testing Documentation (QATD)](./Quality%20Assurance%20Testing%20Documentation%20(Team%20spectrUM).pdf)**
@@ -37,41 +45,64 @@ The platform is not an autopilot. It is a **decision cockpit**: a fleet of speci
 ## Core Problem
 Motor insurance claim review is a high-volume, high-context, low-leverage task. A single claim contains:
 
--   **Too many documents, no single source of truth** — police reports, adjuster reports, policy & cover notes, workshop quotations, and crash photos all need to be cross-referenced by hand.
--   **A manual decision-making bottleneck** — 2-4 days per claim, 15-25 claims per officer per day, with constant context switching between PDFs, photos, and policy clauses.
--   **Repetitive cognitive labor** — the same reasoning steps (verify coverage, allocate fault, validate quotes, screen for fraud) are re-done from scratch for every claim.
--   **Inconsistency and missed fraud** — fatigue and document overload cause inconsistent verdicts and let suspicious patterns slip through.
+-   **Too many documents, no single source of truth**： police reports, adjuster reports, policy & cover notes, workshop quotations, and crash photos all need to be cross-referenced by hand.
+-   **A manual decision-making bottleneck**： 2-4 days per claim, 15-25 claims per officer per day, with constant context switching between PDFs, photos, and policy clauses.
+-   **Repetitive cognitive labor**： the same reasoning steps (verify coverage, allocate fault, validate quotes, screen for fraud) are re-done from scratch for every claim.
+-   **Inconsistency and missed fraud**： fatigue and document overload cause inconsistent verdicts and let suspicious patterns slip through.
 
-> **The pain point: manual review is a repetitive task. It *is* the problem.**
+> **The pain point: manual review is a repetitive task. It is the problem.**
 
 ---
 
 ## Solution
 SettleOps AI replaces the repetitive parts of claim review with a structured **PEVR (Plan, Execute, Verify, Replan)** multi-agent pipeline, while keeping the officer in the driver's seat.
 
-1.  **Reads everything** — the Intake agent parses every uploaded document (PDF, image, structured form) and tags it on a shared Decision Blackboard.
-2.  **Reasons in parallel** — specialist clusters (Policy, Liability, Damage, Fraud, Reconstruction) analyze evidence simultaneously using Gemini 2.5 Flash with a 1M-token context.
-3.  **Self-audits** — a Senior Auditor agent cross-checks every verdict for inconsistency before the case is shown to a human.
-4.  **Drafts the decision** — outputs a formal, citation-backed Decision PDF and a machine-readable Audit Trail JSON.
-5.  **Escalates when uncertain** — low-confidence cases are flagged, never guessed.
-6.  **Officer decides** — Approve, Decline, or **Challenge** a specific reasoning node to trigger a surgical rerun of just that agent.
+1.  **Reads everything**： the Intake agent parses every uploaded document (PDF, image, structured form) and tags it on a shared Decision Blackboard.
+2.  **Reasons sequentially *and* in parallel**： the orchestrator runs causally-dependent steps sequentially (Intake → Policy → Liability → Payout) while fanning out independent specialist clusters (Damage, Fraud, Reconstruction) in parallel — minimizing latency without breaking causal order. All clusters run on Gemini 2.5 Flash with a 1M-token context.
+3.  **Self-audits**： a Senior Auditor agent cross-checks every verdict for inconsistency before the case is shown to a human.
+4.  **Drafts the decision**： outputs a formal, citation-backed Decision PDF and a machine-readable Audit Trail JSON.
+5.  **Escalates when uncertain**： low-confidence cases are flagged, never guessed.
+6.  **Human-in-the-loop — one officer signs off**： a single accountable officer reviews the draft and takes legal responsibility by Approving, Declining, or **Challenging** a specific reasoning node to trigger a surgical rerun of just that agent.
 
-> **Officers stop doing paperwork. They start making decisions.**
+> **Officers stop doing paperwork. They start making decisions — and remain accountable for them.**
+
+### Why a Human Still Signs
+Insurance decisions carry legal, regulatory, and reputational weight. SettleOps AI is intentionally designed as **near-full automation today, with a single accountable human in the loop**. The officer is the only party authorized to commit the insurer to a payout — the AI does the heavy lifting; the human owns the part that matters: *responsibility*.
+
+### The Path to Full Automation
+SettleOps AI is built to evolve along a deliberate autonomy curve — we start *close* to full automation and earn our way to *fully* automated as trust compounds. We do not flip a switch; we move the threshold.
+
+| Stage | Behavior | Human Role |
+| --- | --- | --- |
+| **Stage 1 — Assisted (today)** | AI drafts every decision; human approves every claim | Sole decision-maker on every case |
+| **Stage 2 — Supervised** | AI auto-approves high-confidence claims; humans review low-confidence + sampled audits | Reviewer on flagged + sampled cases |
+| **Stage 3 — Autonomous** | AI handles end-to-end; humans govern policy, audits, and exceptions | Governance & exception handling |
+
+### Self-Improvement Flywheel
+Every officer interaction is a training signal. SettleOps AI compounds in quality over time:
+
+1.  **Capture** — every approval, decline, and challenge is logged with the officer's reasoning and the affected agent node.
+2.  **Diagnose** — the Refiner agent localizes which specialist agent (Policy, Liability, Damage, Fraud, Reconstruction) was overruled and why.
+3.  **Tune** — claims managers update agent prompts (no code, no fine-tuning) based on aggregated challenge patterns.
+4.  **Evaluate** — updated agents are replayed against historical cases to confirm the change improves accuracy without regression.
+5.  **Promote** — validated improvements roll out, raising the auto-approval confidence threshold and shrinking the share of claims that need a human.
+
+> Each human decision today buys back human time tomorrow. The system gets quieter as it gets smarter.
 
 ---
 
 ## Key Features
--   **13-Agent Reasoning Fleet** — Intake, Policy, Liability (Narrative + Point-of-Impact), Damage (Quote Audit + Pricing), Fraud, 3D Reconstruction, Payout, Adjuster, Auditor, and Refiner agents collaborate on a shared Decision Blackboard.
--   **PEVR Self-Correcting Pipeline** — Plan → Execute → Verify → Replan. The Auditor agent detects cross-document inconsistencies and triggers targeted reruns autonomously.
--   **3-Pane Decision Cockpit** — Live operator UI with Inputs (case assets), Workflow (real-time agent graph via React Flow), and Blackboard (structured verdicts + citations) — streamed over Server-Sent Events.
--   **Surgical Reruns (Human-in-the-Loop)** — Officers can challenge any single reasoning node with natural-language feedback; the Refiner agent re-runs only the affected cluster instead of the whole case.
--   **Visual Forensics** — Multimodal vision analysis on crash photos for Point of Impact (POI) classification, damage severity, and a 3D reconstruction view of the incident.
--   **Fraud Detection Cluster** — Dedicated agent screens for narrative inconsistencies, suspicious patterns, and quote inflation, returning a suspicion score with cited evidence.
--   **Full Audit Trail & Citations** — Every claim in every verdict is anchored to a source document excerpt; outputs include a signed Decision PDF and an Audit Trail JSON for compliance.
--   **Adjuster Loop** — When physical inspection is required, the workflow pauses, requests an adjuster report upload, and resumes from a LangGraph checkpoint.
--   **Customizable Agent Prompts** — Non-technical claims managers tune each specialist agent's behavior via persistent prompts stored locally — no code changes, no fine-tuning.
--   **AI Strategy Chat** — Conversational interface for officers to interrogate the underlying agentic logic in plain language.
--   **Digital Signature Flow** — Officers sign the final decision PDF in-app; the signed artifact is stored alongside the audit trail.
+-   **13-Agent Reasoning Fleet**： Intake, Policy, Liability (Narrative + Point-of-Impact), Damage (Quote Audit + Pricing), Fraud, 3D Reconstruction, Payout, Adjuster, Auditor, and Refiner agents collaborate on a shared Decision Blackboard.
+-   **PEVR Self-Correcting Pipeline**： Plan → Execute → Verify → Replan. The Auditor agent detects cross-document inconsistencies and triggers targeted reruns autonomously.
+-   **3-Pane Decision Cockpit**： Live operator UI with Inputs (case assets), Workflow (real-time agent graph via React Flow), and Blackboard (structured verdicts + citations) — streamed over Server-Sent Events.
+-   **Surgical Reruns (Human-in-the-Loop)**： Officers can challenge any single reasoning node with natural-language feedback; the Refiner agent re-runs only the affected cluster instead of the whole case.
+-   **Visual Forensics**： Multimodal vision analysis on crash photos for Point of Impact (POI) classification, damage severity, and a 3D reconstruction view of the incident.
+-   **Fraud Detection Cluster**： Dedicated agent screens for narrative inconsistencies, suspicious patterns, and quote inflation, returning a suspicion score with cited evidence.
+-   **Full Audit Trail & Citations**： Every claim in every verdict is anchored to a source document excerpt; outputs include a signed Decision PDF and an Audit Trail JSON for compliance.
+-   **Adjuster Loop**： When physical inspection is required, the workflow pauses, requests an adjuster report upload, and resumes from a LangGraph checkpoint.
+-   **Customizable Agent Prompts**： Non-technical claims managers tune each specialist agent's behavior via persistent prompts stored locally — no code changes, no fine-tuning.
+-   **AI Strategy Chat**： Conversational interface for officers to interrogate the underlying agentic logic in plain language.
+-   **Digital Signature Flow**： Officers sign the final decision PDF in-app; the signed artifact is stored alongside the audit trail.
 
 ---
 
@@ -82,9 +113,9 @@ SettleOps AI is built as a stateful, agentic monolith managed by **LangGraph**. 
 
 ### The PEVR Cycle
 1.  **Plan** — Intake Specialist categorizes documents and identifies which reasoning clusters are required.
-2.  **Execute** — Parallel clusters (Policy, Liability, Damage, Fraud, Reconstruction) analyze evidence using Gemini 2.5 Flash.
+2.  **Execute** — A hybrid sequential + parallel pipeline: causally-dependent agents run in sequence (Intake → Policy → Liability → Payout) while independent specialist clusters (Damage, Fraud, Reconstruction) fan out in parallel — all on Gemini 2.5 Flash.
 3.  **Verify** — The Senior Auditor agent validates cross-document consistency.
-4.  **Replan** — If conflicts are detected (or the officer challenges a node), the system triggers a surgical rerun of just the affected agent.
+4.  **Replan** — If conflicts are detected (or the officer challenges a node), the system triggers a surgical rerun of just the affected agent — and the Refiner feeds that signal into the self-improvement flywheel.
 
 ---
 
