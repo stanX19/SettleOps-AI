@@ -14,6 +14,7 @@ class WorkflowNodes(str, Enum):
     REPORT_GENERATOR = "report_generator"
     DECISION_GATE = "decision_gate"
     WAIT_FOR_DOCS = "wait_for_docs"
+    RECONSTRUCTION = "reconstruction"
 
 class WorkflowAction(str, Enum):
     """Centralized action identifiers for human and agentic decisions."""
@@ -82,6 +83,7 @@ class ClaimWorkflowState(TypedDict):
     payout_results: Annotated[dict[str, Any], dict_merge]
     adjuster_results: Annotated[dict[str, Any], dict_merge]
     auditor_results: Annotated[dict[str, Any], dict_merge]
+    reconstruction_results: Annotated[dict[str, Any], dict_merge]
 
     # Per-section citations. Reruns of a section replace its list (no append).
     policy_citations: List[dict[str, Any]]
@@ -89,6 +91,7 @@ class ClaimWorkflowState(TypedDict):
     damage_citations: List[dict[str, Any]]
     fraud_citations: List[dict[str, Any]]
     auditor_citations: List[dict[str, Any]]
+    reconstruction_citations: List[dict[str, Any]]
 
     # Trace Log
     trace_log: Annotated[List[str], operator.add]

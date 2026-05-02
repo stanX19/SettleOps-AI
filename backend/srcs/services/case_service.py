@@ -261,6 +261,10 @@ AGENT_METADATA = {
     AgentId.AUDITOR: {
         "purpose": "Final aggregator that summarizes validated findings for human approval.",
         "prompt": "Synthesize validated outputs and unresolved issues for the officer."
+    },
+    AgentId.RECONSTRUCTION: {
+        "purpose": "Simulates 3D vehicle reconstruction and performs geometric damage analysis.",
+        "prompt": "You are a photogrammetry expert. Analyze the vehicle surface for deviations from OEM specifications."
     }
 }
 
@@ -309,6 +313,7 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
             BlackboardSection.DAMAGE_RESULT.value: build_citation_summary(list(state.damage_citations)).model_dump(),
             BlackboardSection.FRAUD_ASSESSMENT.value: build_citation_summary(list(state.fraud_citations)).model_dump(),
             BlackboardSection.AUDIT_RESULT.value: build_citation_summary(list(state.auditor_citations)).model_dump(),
+            BlackboardSection.RECONSTRUCTION_RESULT.value: build_citation_summary(list(state.reconstruction_citations)).model_dump(),
         },
         artifacts=_artifact_info_for(state),
         officer_messages=[
@@ -783,6 +788,8 @@ def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
         "damage_citations": list(case.damage_citations),
         "fraud_citations": list(case.fraud_citations),
         "auditor_citations": list(case.auditor_citations),
+        "reconstruction_results": case.reconstruction_result or {},
+        "reconstruction_citations": list(case.reconstruction_citations),
         "trace_log": [],
         "active_challenge": None,
         "auditor_loop_count": case.auditor_loop_count,

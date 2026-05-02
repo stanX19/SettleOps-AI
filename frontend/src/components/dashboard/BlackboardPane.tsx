@@ -33,6 +33,7 @@ import { Button } from "@/components/primitives/Button"
 import { CitationPanel } from "@/components/dashboard/CitationPanel"
 import { CitationEvidenceModal } from "@/components/dashboard/CitationEvidenceModal"
 import { isCitationSummary, getSupportingCount } from "@/lib/citation-utils"
+import DamageAnalyzer from "@/components/ThreeD/DamageAnalyzer"
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -182,6 +183,7 @@ const SECTION_TITLES: Partial<Record<BlackboardSection, string>> = {
   [BlackboardSection.DAMAGE_RESULT]: "Damage Assessment",
   [BlackboardSection.FRAUD_ASSESSMENT]: "Fraud Assessment",
   [BlackboardSection.AUDIT_RESULT]: "Final Aggregation",
+  [BlackboardSection.RECONSTRUCTION_RESULT]: "3D Reconstruction",
 };
 
 export function BlackboardPane() {
@@ -676,6 +678,12 @@ export function BlackboardPane() {
     );
   };
 
+  const renderReconstructionResult = (data: any) => (
+    <div className="mb-6">
+      <DamageAnalyzer data={data} />
+    </div>
+  );
+
   const renderArtifacts = () => {
     if (!artifacts || artifacts.length === 0) return null;
 
@@ -754,6 +762,7 @@ export function BlackboardPane() {
         {mode === 'blackboard' ? (
           <div className="flex flex-col">
             {blackboard[BlackboardSection.CASE_FACTS] ? renderCaseFacts(blackboard[BlackboardSection.CASE_FACTS]) : (isSyncing && <BlackboardSkeleton />)}
+            {blackboard[BlackboardSection.RECONSTRUCTION_RESULT] && renderReconstructionResult(blackboard[BlackboardSection.RECONSTRUCTION_RESULT])}
             {blackboard[BlackboardSection.POLICY_VERDICT] ? renderPolicyVerdict(blackboard[BlackboardSection.POLICY_VERDICT]) : (isSyncing && blackboard[BlackboardSection.CASE_FACTS] && <BlackboardSkeleton />)}
             {blackboard[BlackboardSection.LIABILITY_VERDICT] && renderLiabilityVerdict(blackboard[BlackboardSection.LIABILITY_VERDICT])}
             {blackboard[BlackboardSection.DAMAGE_RESULT] && renderDamageResult(blackboard[BlackboardSection.DAMAGE_RESULT])}

@@ -546,3 +546,79 @@ async def entity_extraction_task(
         return {"data": raw.get("data", raw), "reasoning": raw.get("reasoning", "Extracted")}
     except Exception as e:
         return {"data": {}, "reasoning": f"Error: {str(e)}"}
+
+
+async def three_d_reconstruction_task(
+    state: Union[ClaimWorkflowState, ClusterState], feedback: Optional[str] = None
+) -> dict[str, Any]:
+    """Simulates 3D reconstruction of the car from uploaded video/photos.
+
+    In this demo, it returns hardcoded paths to the Luma AI generated models.
+    """
+    node_id = "three_d_reconstruction_task"
+    
+    # Identify if a video or plate photo is present to 'justify' the scan
+    video_doc = get_doc_info(state, "car_video")
+    if not video_doc["filename"]:
+        # Fallback to plate photo if video is missing
+        video_doc = get_doc_info(state, "car_photo_plate")
+
+    prompt = f"""
+    You are a 3D Reconstruction Specialist. Based on the uploaded evidence, 
+    confirm that a 3D scan can be generated for this vehicle.
+    
+    EVIDENCE (filename: {video_doc['filename']}):
+    {video_doc['content'][:500]}
+    
+    Feedback: {feedback if feedback else "None"}
+    
+    Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
+    """
+
+    try:
+        # Select model based on case facts if available
+        vehicle_model = (state.get("case_facts") or {}).get("vehicle_model", "").lower()
+        glb_file = "bmw.glb" if "bmw" in vehicle_model else "damaged.glb"
+        
+        # We use rotating_llm to 'verify' the feasibility, then return the demo paths
+        response = await rotating_llm.send_message_get_json(
+            prompt,
+            temperature=0.0,
+            mock_data={
+                "data": {
+                    "status": "success",
+                    "model_glb": f"/3d/{glb_file}",
+                    "model_damaged_obj": "/3d/damaged.obj",
+                    "model_original_obj": "/3d/original.obj",
+                    "vertex_count": 145200,
+                    "reconstruction_fidelity": "high",
+                    "car_type": "BMW" if "bmw" in vehicle_model else "Generic Sedan"
+                },
+                "reasoning": f"Video footage for {vehicle_model if vehicle_model else 'vehicle'} contains sufficient parallax for high-fidelity photogrammetry."
+            }
+        )
+        raw = response.json_data if response.json_data else {}
+        data = raw.get("data", raw)
+        
+        # Add a mock citation for the video source
+        citation = {
+            "filename": video_doc["filename"] or "car_video.mp4",
+            "source_type": "image" if "photo" in video_doc["filename"] else "text",
+            "excerpt": None,
+            "comment": "Input source for 3D photogrammetry pipeline.",
+            "conclusion": "3D reconstruction complete.",
+            "node_id": node_id,
+            "field_path": "model_glb"
+        }
+
+        return {
+            "reconstruction_results": data,
+            "reconstruction_citations": [citation],
+            "trace_log": [raw.get("reasoning", "Reconstruction complete")]
+        }
+    except Exception as e:
+        return {
+            "reconstruction_results": {"status": "error", "error": str(e)},
+            "reconstruction_citations": [],
+            "trace_log": [f"Reconstruction failed: {e}"]
+        }

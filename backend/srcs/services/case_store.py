@@ -155,6 +155,7 @@ class CaseState:
     payout_recommendation: Optional[dict[str, Any]] = None
     adjuster_request: Optional[dict[str, Any]] = None
     audit_result: Optional[dict[str, Any]] = None
+    reconstruction_result: Optional[dict[str, Any]] = None
 
     # Per-section citations. Reruns replace the entire list (no append).
     policy_citations: list[dict[str, Any]] = field(default_factory=list)
@@ -163,6 +164,7 @@ class CaseState:
     fraud_citations: list[dict[str, Any]] = field(default_factory=list)
     adjuster_citations: list[dict[str, Any]] = field(default_factory=list)
     auditor_citations: list[dict[str, Any]] = field(default_factory=list)
+    reconstruction_citations: list[dict[str, Any]] = field(default_factory=list)
 
     # Runtime state
     agent_states: dict[AgentId, AgentRuntimeState] = field(
@@ -204,6 +206,7 @@ class CaseState:
             BlackboardSection.PAYOUT_RECOMMENDATION: self.payout_recommendation,
             BlackboardSection.ADJUSTER_REQUEST: self.adjuster_request,
             BlackboardSection.AUDIT_RESULT: self.audit_result,
+            BlackboardSection.RECONSTRUCTION_RESULT: self.reconstruction_result,
         }.get(section)
 
     def set_section_data(
@@ -225,6 +228,8 @@ class CaseState:
             self.adjuster_request = data
         elif section is BlackboardSection.AUDIT_RESULT:
             self.audit_result = data
+        elif section is BlackboardSection.RECONSTRUCTION_RESULT:
+            self.reconstruction_result = data
 
     def section_citations(
         self, section: BlackboardSection
@@ -236,6 +241,7 @@ class CaseState:
             BlackboardSection.FRAUD_ASSESSMENT: self.fraud_citations,
             BlackboardSection.ADJUSTER_REQUEST: self.adjuster_citations,
             BlackboardSection.AUDIT_RESULT: self.auditor_citations,
+            BlackboardSection.RECONSTRUCTION_RESULT: self.reconstruction_citations,
         }.get(section, [])
 
     def set_section_citations(
@@ -255,6 +261,8 @@ class CaseState:
             self.adjuster_citations = normalized
         elif section is BlackboardSection.AUDIT_RESULT:
             self.auditor_citations = normalized
+        elif section is BlackboardSection.RECONSTRUCTION_RESULT:
+            self.reconstruction_citations = normalized
 
 
 # -- Store --------------------------------------------------------------------
