@@ -3,6 +3,7 @@ import asyncio
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 from srcs.schemas.citations import CitationValidationError
+from srcs.schemas.citations import Citation
 from srcs.schemas.state import ClusterState
 from srcs.services.citation_validator import validate_citations
 from srcs.services.agents.validator import cluster_validator_task
@@ -12,6 +13,7 @@ from srcs.services.case_store import CaseStore, now_iso
 from srcs.schemas.case_dto import (
     AgentId,
     AgentStatus,
+    LogEntry,
     SseAgentStatusChangedData
 )
 
@@ -24,6 +26,8 @@ async def _emit_subtask_status(
     parent_agent_id: AgentId,
     sub_task_name: str,
     status: AgentStatus,
+    logs: list[str] | None = None,
+    log_entries: list[LogEntry] | None = None,
 ) -> None:
     case = CaseStore.get(case_id)
     timestamp = now_iso()
@@ -40,6 +44,10 @@ async def _emit_subtask_status(
                 sub_rs.started_at = timestamp
             elif status in (AgentStatus.COMPLETED, AgentStatus.ERROR):
                 sub_rs.completed_at = timestamp
+                if logs:
+                    sub_rs.logs.extend(logs)
+                if log_entries:
+                    sub_rs.log_entries.extend(log_entries)
 
     await SseService.emit(case_id, SseAgentStatusChangedData(
         case_id=case_id,
@@ -47,8 +55,41 @@ async def _emit_subtask_status(
         agent=parent_agent_id,
         status=status,
         sub_task=sub_task_name,
-        parent_agent=parent_agent_id
+        parent_agent=parent_agent_id,
+        logs=logs or [],
+        log_entries=log_entries or [],
     ))
+
+
+def _ensure_citation_ids(citations: list[dict]) -> list[dict]:
+    stamped: list[dict] = []
+    for citation in citations:
+        if not isinstance(citation, dict):
+            continue
+        next_citation = dict(citation)
+        if not next_citation.get("id"):
+            next_citation["id"] = Citation.make_id(
+                str(next_citation.get("field_path") or ""),
+                str(next_citation.get("filename") or ""),
+                next_citation.get("excerpt"),
+            )
+        stamped.append(next_citation)
+    return stamped
+
+
+def _build_citation_log_entries(citations: list[dict]) -> list[LogEntry]:
+    entries: list[LogEntry] = []
+    for citation in citations:
+        field_path = (citation.get("field_path") or "").strip()
+        citation_id = (citation.get("id") or "").strip() or None
+        filename = citation.get("filename") or "source document"
+        conclusion = citation.get("conclusion") or citation.get("comment") or "evidence reviewed"
+        entries.append(LogEntry(
+            text=f"Cited {filename} for {field_path}: {conclusion}",
+            citation_id=citation_id,
+            citation_ref=field_path or None,
+        ))
+    return entries
 
 
 def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> StateGraph:
@@ -129,21 +170,27 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                     node_id=sub_task_name,
                 )
 
-                # 4. Emit COMPLETED status for sub-task
+                # 4+5. Build trace log, emit COMPLETED with it, and format output
+                citations = _ensure_citation_ids(list(result.get("citations") or []))
+                subtask_log = [f"[{cluster_id}] {result.get('reasoning', 'No reasoning provided.')}"]
+                log_entries = [
+                    LogEntry(text=line)
+                    for line in subtask_log
+                ] + _build_citation_log_entries(citations)
+                # 4. Emit COMPLETED with subtask-specific trace
                 await _emit_subtask_status(
                     case_id=case_id,
                     parent_agent_id=parent_agent_id,
                     sub_task_name=sub_task_name,
                     status=AgentStatus.COMPLETED,
+                    logs=subtask_log,
+                    log_entries=log_entries,
                 )
-
-                # 5. Format output for the sub-graph state
-                citations = list(result.get("citations") or [])
                 return {
                     "results": result.get("data", {}),
                     # Keyed by node_id; dict_merge overwrites the same key on rerun.
                     "citations": {sub_task_name: citations},
-                    "trace_log": [f"[{cluster_id}] {result.get('reasoning', 'No reasoning provided.')}"]
+                    "trace_log": subtask_log,
                 }
             except CitationValidationError as e:
                 # Citation gate hard failure — preserve whatever data the agent
@@ -151,11 +198,13 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                 # of wiping the result. This lets downstream agents (payout,
                 # auditor) continue with best-effort data rather than an empty
                 # section, while the flag surfaces for human review.
+                error_log = [f"[{cluster_id}] CITATION GATE FAILED (data preserved): {e}"]
                 await _emit_subtask_status(
                     case_id=case_id,
                     parent_agent_id=parent_agent_id,
                     sub_task_name=sub_task_name,
                     status=AgentStatus.ERROR,
+                    logs=error_log,
                 )
 
                 preserved_data = e.last_result.get("data", {}) if e.last_result else {}
@@ -167,17 +216,16 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                         },
                     },
                     "citations": {sub_task_name: []},
-                    "trace_log": [
-                        f"[{cluster_id}] CITATION GATE FAILED (data preserved): {e}"
-                    ],
+                    "trace_log": error_log,
                 }
             except Exception as e:
-                # 4. Emit ERROR status for sub-task
+                error_log = [f"[{cluster_id}] CRITICAL ERROR: {str(e)}"]
                 await _emit_subtask_status(
                     case_id=case_id,
                     parent_agent_id=parent_agent_id,
                     sub_task_name=sub_task_name,
                     status=AgentStatus.ERROR,
+                    logs=error_log,
                 )
 
                 # ERROR GRANULARITY: Catch and mark section as error
@@ -189,7 +237,7 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                         }
                     },
                     "citations": {sub_task_name: []},
-                    "trace_log": [f"[{cluster_id}] CRITICAL ERROR: {str(e)}"]
+                    "trace_log": error_log,
                 }
             
         builder.add_node(f"task_{i}", reflection_wrapper)
@@ -237,23 +285,29 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                 state,
                 feedback=feedback,
             )
+            validation_log = [f"[{cluster_id}] Validator: {reasoning}"]
             await _emit_subtask_status(
                 case_id=case_id,
                 parent_agent_id=parent_agent_id,
                 sub_task_name=VALIDATOR_SUBTASK_NAME,
                 status=AgentStatus.COMPLETED,
+                logs=validation_log,
+                log_entries=[LogEntry(text=line) for line in validation_log],
             )
             return {
                 "results": {"_validation": validation},
-                "trace_log": [f"[{cluster_id}] Validator: {reasoning}"],
+                "trace_log": validation_log,
             }
         except Exception as e:
             logger.exception("[ClusterFactory] Validator failed for %s: %s", cluster_id, e)
+            error_log = [f"[{cluster_id}] VALIDATOR FAILED: {e}"]
             await _emit_subtask_status(
                 case_id=case_id,
                 parent_agent_id=parent_agent_id,
                 sub_task_name=VALIDATOR_SUBTASK_NAME,
                 status=AgentStatus.ERROR,
+                logs=error_log,
+                log_entries=[LogEntry(text=line) for line in error_log],
             )
             return {
                 "results": {
@@ -264,7 +318,7 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                         "suggested_action": "challenge",
                     }
                 },
-                "trace_log": [f"[{cluster_id}] VALIDATOR FAILED: {e}"],
+                "trace_log": error_log,
             }
 
     async def aggregate(state: ClusterState):

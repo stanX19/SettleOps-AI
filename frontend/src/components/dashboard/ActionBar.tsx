@@ -63,6 +63,7 @@ export function ActionBar({ onOpenAdjusterUpload }: ActionBarProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: "", visible: false });
+  const artifacts = useCaseStore(state => state.artifacts);
 
   // The action bar UI itself only makes sense while the case is awaiting an
   // operator decision. The signature modal and toast are intentionally rendered
@@ -106,12 +107,15 @@ export function ActionBar({ onOpenAdjusterUpload }: ActionBarProps) {
   };
 
   const handleDownloadReport = () => {
-    const artifacts = useCaseStore.getState().artifacts;
-    const signedArtifact = artifacts.find(a => a.artifact_type === ArtifactType.DECISION_PDF_SIGNED && !a.superseded);
-    if (signedArtifact) {
-      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
-      window.open(`${apiBase}${signedArtifact.url}`, "_blank");
+    const reportArtifact =
+      artifacts.find(a => a.artifact_type === ArtifactType.DECISION_PDF_SIGNED && !a.superseded) ||
+      artifacts.find(a => a.artifact_type === ArtifactType.DECISION_PDF && !a.superseded);
+    if (!reportArtifact) {
+      setToast({ message: "Final report is not ready yet", visible: true });
+      return;
     }
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+    window.open(`${apiBase}${reportArtifact.url}`, "_blank");
   };
 
   return (

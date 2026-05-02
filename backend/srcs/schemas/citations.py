@@ -6,6 +6,7 @@ documents, images, or upstream agent outputs. Citations are validated by
 """
 from __future__ import annotations
 
+import hashlib
 from enum import Enum
 from typing import Optional
 
@@ -61,6 +62,38 @@ class Citation(BaseModel):
     char_start: Optional[int] = None
     char_end: Optional[int] = None
     page: Optional[int] = None
+    # Deterministic 12-char hex key: stable across reruns unless content changes
+    id: str = ""
+
+    @staticmethod
+    def make_id(field_path: str, filename: str, excerpt: Optional[str]) -> str:
+        key = f"{field_path}:{filename}:{(excerpt or '')[:60]}"
+        return hashlib.md5(key.encode()).hexdigest()[:12]
+
+
+class CitationTopicGroup(BaseModel):
+    """A named group of supporting citations sharing a common business topic."""
+    topic: str
+    citations: list[Citation]
+
+
+class CitationSummary(BaseModel):
+    """Structured citation output emitted per blackboard section.
+
+    The backend classifies every citation into one of three roles before
+    emission so the frontend can render tiers without re-deriving semantics:
+    - key_evidence: one citation per decision-critical field (deduped, capped at 1)
+    - supporting_groups: remaining non-auditor citations bucketed by topic
+    - audit_cross_check: auditor confirmation citations (low visual weight)
+    """
+    key_evidence: list[Citation] = Field(default_factory=list)
+    supporting_groups: list[CitationTopicGroup] = Field(default_factory=list)
+    audit_cross_check: list[Citation] = Field(default_factory=list)
+    hidden_duplicates_count: int = 0
+
+    @classmethod
+    def empty(cls) -> "CitationSummary":
+        return cls()
 
 
 class CitationValidationError(Exception):

@@ -51,6 +51,10 @@ def test_adjuster_review_accepts_panel_quote_within_range():
     assert review["adjuster_verdict"] == "acceptable"
     assert review["recommended_action_to_auditor"] == "approve"
     assert review["variance_myr"] == 0.0
+    assert "MYR 4,300.00 to MYR 7,800.00" in review["adjuster_summary_to_auditor"]
+    assert "MYR 7,500.00" in review["adjuster_summary_to_auditor"]
+    assert "within the recommended range" in review["adjuster_summary_to_auditor"]
+    assert "appears reasonable" in review["adjuster_summary_to_auditor"]
 
 
 def test_adjuster_review_declines_panel_quote_outside_range():
@@ -62,3 +66,7 @@ def test_adjuster_review_declines_panel_quote_outside_range():
     assert review["recommended_action_to_auditor"] == "decline"
     assert review["variance_myr"] == 200.0
     assert "Recommend decline" in review["recommendation_to_auditor"]
+    assert "MYR 4,300.00 to MYR 7,800.00" in review["adjuster_summary_to_auditor"]
+    assert "MYR 8,000.00" in review["adjuster_summary_to_auditor"]
+    assert "outside the recommended range by MYR 200.00" in review["adjuster_summary_to_auditor"]
+    assert "may not be reasonable" in review["adjuster_summary_to_auditor"]

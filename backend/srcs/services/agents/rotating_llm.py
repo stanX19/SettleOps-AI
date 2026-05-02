@@ -8,6 +8,7 @@ import json
 import re
 import time
 from collections import OrderedDict
+from contextvars import ContextVar
 from typing import Any
 
 from dotenv import load_dotenv
@@ -29,6 +30,23 @@ from srcs.logger import logger
 
 # Type aliases
 MessagesType = str | dict[str, Any] | BaseMessage | list[str | dict[str, Any] | BaseMessage] | None
+_CACHE_OVERRIDE: ContextVar[bool | None] = ContextVar("rotating_llm_cache_override", default=None)
+
+
+class llm_cache_override:
+    """Context-local cache override for nested LLM calls."""
+
+    def __init__(self, use_cache: bool | None):
+        self.use_cache = use_cache
+        self._token = None
+
+    def __enter__(self):
+        self._token = _CACHE_OVERRIDE.set(self.use_cache)
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if self._token is not None:
+            _CACHE_OVERRIDE.reset(self._token)
 
 
 class _Outcome(enum.Enum):
@@ -387,7 +405,10 @@ class RotatingLLM:
         if get_settings().DONT_RUN_LLM:
             logger.warning("[RotatingLLM] DONT_RUN_LLM is enabled. Returning mock response.")
             return AIMessage(content="LLM execution is disabled (DONT_RUN_LLM=True). Mock response generated."), LLMConfig(provider="mock", api_key="mock", model="mock")
-        use_cache = bool(kwargs.pop("use_cache", self.use_cache))
+        cache_default = _CACHE_OVERRIDE.get()
+        if cache_default is None:
+            cache_default = self.use_cache
+        use_cache = bool(kwargs.pop("use_cache", cache_default))
         cache_key: str | None = None
         if use_cache:
             cache_key = self._make_cache_key(messages, temperature, model, kwargs)

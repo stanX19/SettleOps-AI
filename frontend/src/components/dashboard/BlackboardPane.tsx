@@ -26,12 +26,13 @@ import {
   Gavel
 } from "lucide-react"
 import { useCaseStore } from "@/stores/case-store"
-import { BlackboardSection, CaseStatus, OfficerMessageInfo, AgentId, SseAgentOutput, Citation } from "@/lib/types"
+import { BlackboardSection, CaseStatus, OfficerMessageInfo, AgentId, SseAgentOutput, Citation, CitationSummary } from "@/lib/types"
 import { api } from "@/lib/api"
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer"
 import { Button } from "@/components/primitives/Button"
 import { CitationPanel } from "@/components/dashboard/CitationPanel"
 import { CitationEvidenceModal } from "@/components/dashboard/CitationEvidenceModal"
+import { isCitationSummary, getSupportingCount } from "@/lib/citation-utils"
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -68,14 +69,23 @@ function OutputCard({
   icon: React.ReactNode;
   children: React.ReactNode;
   status?: 'success' | 'warning' | 'danger';
-  citationCount?: number;
+  citationCount?: { key: number; supporting: number };
   onCitationClick?: () => void;
 }) {
   let headerColor = "text-neutral-text-primary";
   if (status === "warning") headerColor = "text-semantic-warning";
   if (status === "danger") headerColor = "text-semantic-danger";
 
-  const showBadge = citationCount !== undefined && citationCount > 0 && onCitationClick;
+  const total = citationCount ? citationCount.key + citationCount.supporting : 0;
+  const showBadge = total > 0 && !!onCitationClick;
+
+  const badgeLabel = citationCount
+    ? citationCount.key > 0 && citationCount.supporting > 0
+      ? `${citationCount.key} key · ${citationCount.supporting}`
+      : citationCount.key > 0
+      ? `${citationCount.key} key`
+      : `${citationCount.supporting}`
+    : "";
 
   return (
     <div className="bg-neutral-surface border border-neutral-border rounded-md shadow-card mb-4 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -89,12 +99,12 @@ function OutputCard({
             <button
               onClick={onCitationClick}
               className="relative group/tip flex items-center gap-1 rounded-sm border border-brand-primary/30 bg-brand-primary/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/15"
-              aria-label={`View ${citationCount} citation${citationCount === 1 ? '' : 's'}`}
+              aria-label={`View citations: ${badgeLabel}`}
             >
               <BookOpen className="h-2.5 w-2.5" />
-              {citationCount}
+              {badgeLabel}
               <div className="absolute top-full mt-1.5 right-0 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap normal-case tracking-normal font-medium">
-                {`${citationCount} citation${citationCount === 1 ? '' : 's'}`}
+                {badgeLabel} citations
               </div>
             </button>
           )}
@@ -202,10 +212,15 @@ export function BlackboardPane() {
   const isSyncing = status === CaseStatus.RUNNING;
   const isAwaitingApproval = status === CaseStatus.AWAITING_APPROVAL || status === CaseStatus.ESCALATED;
 
-  const sectionCitationCount = (section: BlackboardSection) =>
-    (citations?.[section] ?? []).length;
+  const sectionCitationCount = (section: BlackboardSection): { key: number; supporting: number } => {
+    const s = citations?.[section];
+    if (!s || !isCitationSummary(s)) return { key: 0, supporting: 0 };
+    return { key: s.key_evidence.length, supporting: getSupportingCount(s) };
+  };
   const openCitations = (section: BlackboardSection) => setActiveCitationSection(section);
-  const activeCitations = activeCitationSection ? (citations?.[activeCitationSection] ?? []) : [];
+  const activeSummary: CitationSummary | null = activeCitationSection
+    ? (citations?.[activeCitationSection] ?? null) as CitationSummary | null
+    : null;
   const activeTitle = activeCitationSection ? (SECTION_TITLES[activeCitationSection] ?? activeCitationSection) : "";
 
   // SSE for chat is now handled globally in SseClient via the main stream
@@ -869,7 +884,7 @@ export function BlackboardPane() {
 
       <CitationPanel
         title={activeTitle}
-        citations={activeCitations}
+        summary={activeSummary}
         documents={documents}
         isOpen={activeCitationSection !== null}
         onClose={() => setActiveCitationSection(null)}

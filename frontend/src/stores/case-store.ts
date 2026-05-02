@@ -93,24 +93,30 @@ export const useCaseStore = create<CaseState>((set) => ({
   handleAgentStatusChanged: (data) => set((state) => {
     const agentId = data.agent;
     const subTaskName = data.sub_task;
-    
+
     const newAgents = { ...state.agents };
-    
+
     if (subTaskName) {
-      // Update sub-task status
       const parentState = newAgents[agentId] || { status: AgentStatus.IDLE, sub_tasks: {} };
+      const prevSubTask = parentState.sub_tasks?.[subTaskName] || { status: AgentStatus.IDLE };
+      const incomingLogs = data.logs && data.logs.length > 0 ? data.logs : undefined;
+      const incomingLogEntries = data.log_entries && data.log_entries.length > 0 ? data.log_entries : undefined;
       newAgents[agentId] = {
         ...parentState,
         sub_tasks: {
           ...(parentState.sub_tasks || {}),
           [subTaskName]: {
-            ...(parentState.sub_tasks?.[subTaskName] || { status: AgentStatus.IDLE }),
+            ...prevSubTask,
             status: data.status,
+            // Extend existing logs with incoming subtask logs (no clobber)
+            ...(incomingLogs ? { logs: [...(prevSubTask.logs ?? []), ...incomingLogs] } : {}),
+            ...(incomingLogEntries
+              ? { log_entries: [...(prevSubTask.log_entries ?? []), ...incomingLogEntries] }
+              : {}),
           }
         }
       };
     } else {
-      // Update parent agent status
       newAgents[agentId] = {
         ...(newAgents[agentId] || { status: AgentStatus.IDLE, sub_tasks: {} }),
         status: data.status,
@@ -129,13 +135,14 @@ export const useCaseStore = create<CaseState>((set) => ({
       [data.section]: data.data
     };
 
-    // Update logs for the agent if provided
+    // Update logs + log_entries for the agent if provided
     const newAgents = { ...state.agents };
-    if (data.logs && data.logs.length > 0 && data.agent) {
+    if (data.agent && (data.logs?.length || data.log_entries?.length)) {
       const agentId = data.agent;
       newAgents[agentId] = {
         ...(newAgents[agentId] || { status: AgentStatus.IDLE, sub_tasks: {} }),
-        logs: data.logs
+        ...(data.logs?.length ? { logs: data.logs } : {}),
+        ...(data.log_entries?.length ? { log_entries: data.log_entries } : {}),
       };
     }
 
@@ -161,9 +168,9 @@ export const useCaseStore = create<CaseState>((set) => ({
       });
     }
 
-    // Citations are top-level on the event, not nested under data.
-    // Replace (not merge) the section's citations so reruns overwrite cleanly.
-    const incomingCitations = data.citations;
+    // citation_summary is top-level on the event (not nested under data).
+    // Replace (not merge) so reruns overwrite cleanly.
+    const incomingCitations = data.citation_summary;
     const nextCitations =
       incomingCitations !== undefined
         ? { ...state.citations, [data.section]: incomingCitations }

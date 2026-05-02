@@ -75,6 +75,7 @@ from srcs.services.workflow_engine import (
     resume_workflow_with_sse as resume_workflow_with_sse_engine,
     TOPOLOGY,
 )
+from srcs.services.citation_validator import build_citation_summary
 from srcs.services.pdf_service import (
     RepairApprovalData,
     CostBreakdown,
@@ -277,12 +278,14 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
                 purpose=AGENT_METADATA.get(agent, {}).get("purpose"),
                 system_prompt=AGENT_METADATA.get(agent, {}).get("prompt"),
                 logs=rs.logs,
+                log_entries=rs.log_entries,
                 sub_tasks={
                     name: AgentStateInfo(
                         status=sub_rs.status,
                         started_at=sub_rs.started_at,
                         completed_at=sub_rs.completed_at,
-                        logs=sub_rs.logs
+                        logs=sub_rs.logs,
+                        log_entries=sub_rs.log_entries,
                     )
                     for name, sub_rs in rs.sub_tasks.items()
                 }
@@ -293,11 +296,11 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
         # Citations keyed by exact BlackboardSection.value strings so the
         # frontend hydrates directly from snapshot.citations[section].
         citations={
-            BlackboardSection.POLICY_VERDICT.value: list(state.policy_citations),
-            BlackboardSection.LIABILITY_VERDICT.value: list(state.liability_citations),
-            BlackboardSection.DAMAGE_RESULT.value: list(state.damage_citations),
-            BlackboardSection.FRAUD_ASSESSMENT.value: list(state.fraud_citations),
-            BlackboardSection.AUDIT_RESULT.value: list(state.auditor_citations),
+            BlackboardSection.POLICY_VERDICT.value: build_citation_summary(list(state.policy_citations)).model_dump(),
+            BlackboardSection.LIABILITY_VERDICT.value: build_citation_summary(list(state.liability_citations)).model_dump(),
+            BlackboardSection.DAMAGE_RESULT.value: build_citation_summary(list(state.damage_citations)).model_dump(),
+            BlackboardSection.FRAUD_ASSESSMENT.value: build_citation_summary(list(state.fraud_citations)).model_dump(),
+            BlackboardSection.AUDIT_RESULT.value: build_citation_summary(list(state.auditor_citations)).model_dump(),
         },
         artifacts=_artifact_info_for(state),
         officer_messages=[
@@ -487,7 +490,12 @@ def build_repair_approval_data(state: CaseState) -> RepairApprovalData:
             labour=float(breakdown.get("verified_labour") or 0.0),
             paint=float(breakdown.get("verified_paint") or 0.0),
             towing=float(breakdown.get("verified_towing") or 0.0),
-            misc=0.0
+            misc=0.0,
+            repair_estimate_myr=float(breakdown.get("repair_estimate_myr") or 0.0),
+            depreciation_deducted_myr=float(breakdown.get("depreciation_deducted_myr") or 0.0),
+            excess_deducted_myr=float(breakdown.get("excess_deducted_myr") or 0.0),
+            liability_adjusted_myr=float(breakdown.get("liability_adjusted_myr") or 0.0),
+            final_payout_myr=float(breakdown.get("final_payout_myr") or 0.0),
         ),
         approved_by="MyClaim Agentic Engine",
         designation="Autonomous Claims Strategist",
