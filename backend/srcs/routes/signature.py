@@ -29,12 +29,36 @@ class ApproveSignRequest(BaseModel):
     stamp_path: str = Field("")
 
 
+async def _ensure_current_decision_pdf(state) -> None:
+    current = next(
+        (
+            artifact
+            for artifact in state.artifacts
+            if artifact.artifact_type == ArtifactType.DECISION_PDF
+            and not artifact.superseded
+        ),
+        None,
+    )
+    if current is None or not os.path.isfile(current.path):
+        await generate_artifacts(state)
+        current = next(
+            (
+                artifact
+                for artifact in state.artifacts
+                if artifact.artifact_type == ArtifactType.DECISION_PDF
+                and not artifact.superseded
+            ),
+            None,
+        )
+    if current is not None:
+        state.decision_pdf_path = current.path
+
+
 @router.get("/{claim_no}/preview")
 async def preview_artifact(claim_no: str):
     """Ensure artifacts are generated for preview."""
     state = require_case(claim_no)
-    if not state.decision_pdf_path or not os.path.isfile(state.decision_pdf_path):
-        await generate_artifacts(state)
+    await _ensure_current_decision_pdf(state)
     
     return {
         "status": "success",
@@ -60,8 +84,7 @@ async def preview_signed_artifact(
     """
     state = require_case(claim_no)
 
-    if not state.decision_pdf_path or not os.path.isfile(state.decision_pdf_path):
-        await generate_artifacts(state)
+    await _ensure_current_decision_pdf(state)
 
     pdf_path = state.decision_pdf_path
     if not pdf_path or not os.path.isfile(pdf_path):
@@ -124,8 +147,7 @@ async def approve_and_sign(claim_no: str, body: ApproveSignRequest):
     """
     state = require_case(claim_no)
 
-    if not state.decision_pdf_path or not os.path.isfile(state.decision_pdf_path):
-        await generate_artifacts(state)
+    await _ensure_current_decision_pdf(state)
 
     unsigned_path = state.decision_pdf_path
     if not unsigned_path or not os.path.isfile(unsigned_path):

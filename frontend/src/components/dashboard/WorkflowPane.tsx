@@ -17,7 +17,7 @@ import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/primitives/Button';
 import { Settings, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useCaseStore } from '@/stores/case-store';
-import { AgentId, AgentStatus, CaseStatus } from '@/lib/types';
+import { AgentId, AgentStatus, CaseStatus, Citation } from '@/lib/types';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -94,6 +94,9 @@ const nodeTypes = {
   cluster: ClusterNode,
 };
 
+const formatAgentName = (agentId: string) =>
+  agentId.charAt(0).toUpperCase() + agentId.slice(1);
+
 // Layout engine constants
 const CANVAS_CENTER_X = 400;
 const CLUSTER_SPACING = 240;
@@ -106,6 +109,8 @@ const Y_AUDITOR = 700; // Reduced distance from Payout (was 720)
 const Y_DECISION_GATE = Y_AUDITOR + (Y_AUDITOR - Y_PAYOUT);
 
 import { AgentDetailsModal } from './AgentDetailsModal';
+import { CitationEvidenceModal } from './CitationEvidenceModal';
+import { AGENT_SECTION_MAP } from '@/lib/citation-utils';
 
 export function WorkflowPane() {
   const params = useParams();
@@ -115,12 +120,17 @@ export function WorkflowPane() {
   const caseStatus = useCaseStore(state => state.status);
   const agents = useCaseStore(state => state.agents);
   const topology = useCaseStore(state => state.topology);
+  const citations = useCaseStore(state => state.citations);
+  const documents = useCaseStore(state => state.documents);
   const setSelectedAgentId = useCaseStore(state => state.setSelectedAgentId);
   const setBlackboardMode = useCaseStore(state => state.setBlackboardMode);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedAgentForModal, setSelectedAgentForModal] = useState<AgentId | null>(null);
+  const [selectedSubtaskForModal, setSelectedSubtaskForModal] = useState<string | null>(null);
+  const [selectedModalTitle, setSelectedModalTitle] = useState<string | null>(null);
+  const [activeEvidenceCitation, setActiveEvidenceCitation] = useState<Citation | null>(null);
 
   // 1. Calculate the initial layout (nodes and edges)
   const { initialNodes, initialEdges } = useMemo(() => {
@@ -151,7 +161,8 @@ export function WorkflowPane() {
       id: 'decision_gate',
       type: 'agent',
       position: { x: CANVAS_CENTER_X - 80, y: Y_DECISION_GATE },
-      data: { label: 'Decision Gate', status: AgentStatus.IDLE, detail: 'Awaiting Auditor' }
+      data: { label: 'Review Decision', status: AgentStatus.IDLE, detail: 'Awaiting Auditor' },
+      hidden: true,
     });
 
     // Dynamic Clusters
@@ -265,7 +276,8 @@ export function WorkflowPane() {
       source: AgentId.AUDITOR,
       target: 'decision_gate',
       style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
+      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' },
+      hidden: true,
     });
 
     // Decision Gate → cluster retry edges (hidden by default, shown only when retry is triggered)
@@ -358,6 +370,23 @@ export function WorkflowPane() {
 
   // Update node DATA (status, processing) based on live agent state
   useEffect(() => {
+    const newlyRetriedClusters = new Set<string>();
+    for (const [agentId, state] of Object.entries(agents)) {
+      if (state.status === AgentStatus.WORKING) {
+        const prevStatus = prevAgentStatesRef.current[agentId]?.status;
+        if (prevStatus === AgentStatus.COMPLETED) {
+          newlyRetriedClusters.add(agentId);
+          retriedClustersRef.current.add(agentId);
+        }
+      }
+    }
+
+    const hasRetryHistory = retriedClustersRef.current.size > 0;
+    const auditorIsRouting =
+      caseStatus === CaseStatus.RUNNING &&
+      agents[AgentId.AUDITOR]?.status === AgentStatus.COMPLETED;
+    const showDecisionGate = hasRetryHistory || auditorIsRouting;
+
     setNodes((nds) => nds.map((node) => {
       // 0. Handle Decision Gate — derive status from case status
       if (node.id === 'decision_gate') {
@@ -374,7 +403,11 @@ export function WorkflowPane() {
             : gateStatus === AgentStatus.WORKING ? 'Routing...'
             : gateStatus === AgentStatus.COMPLETED ? 'Decision Made'
             : 'Awaiting Auditor';
-        return { ...node, data: { ...node.data, status: gateStatus, detail: gateDetail } };
+        return {
+          ...node,
+          hidden: !showDecisionGate,
+          data: { ...node.data, status: gateStatus, detail: gateDetail }
+        };
       }
 
       // 1. Handle Clusters (Glow)
@@ -456,24 +489,31 @@ export function WorkflowPane() {
 
     setEdges((eds) => {
       // Determine which clusters are being retried (COMPLETED → WORKING transition)
-      const retriedClusters = new Set<string>();
-      for (const [agentId, state] of Object.entries(agents)) {
-        if (state.status === AgentStatus.WORKING) {
-          // Check if the previous state was completed (meaning this is a retry)
-          const prevStatus = prevAgentStatesRef.current[agentId]?.status;
-          if (prevStatus === AgentStatus.COMPLETED) {
-            retriedClusters.add(agentId);
-            retriedClustersRef.current.add(agentId);
-          }
-        }
-      }
-
       return eds.map((edge) => {
+        if (edge.id === 'e-auditor-decision') {
+          return {
+            ...edge,
+            hidden: !showDecisionGate,
+            animated: auditorIsRouting,
+            style: {
+              ...edge.style,
+              stroke: auditorIsRouting ? 'var(--color-brand-primary)' : 'var(--color-neutral-border)',
+              strokeWidth: auditorIsRouting ? 2.5 : 2,
+            },
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: auditorIsRouting ? 'var(--color-brand-primary)' : 'var(--color-neutral-border)'
+            }
+          };
+        }
+
         // Retry edges: show only when a retry was triggered
         if (edge.id.startsWith('e-decision-retry-')) {
           const clusterId = edge.id.replace('e-decision-retry-', '');
           const hasBeenRetried = retriedClustersRef.current.has(clusterId);
-          const isActivelyRetrying = agents[clusterId]?.status === AgentStatus.WORKING && hasBeenRetried;
+          const isActivelyRetrying =
+            agents[clusterId]?.status === AgentStatus.WORKING &&
+            (hasBeenRetried || newlyRetriedClusters.has(clusterId));
 
           if (!hasBeenRetried) return edge; // Stay hidden
 
@@ -531,19 +571,28 @@ export function WorkflowPane() {
   }, [agents, caseStatus, setNodes, setEdges]);
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => {
-    // If it's a top-level agent or cluster ID that exists in agents store
     let agentId: AgentId | null = null;
+    let subtaskId: string | null = null;
+    let modalTitle: string | null = null;
+
     if (agents[node.id]) {
       agentId = node.id as AgentId;
     } else {
-      // Check if it's an aggregator or subtask by finding the parent
       for (const [parentId, parentState] of Object.entries(agents)) {
-        if (
-          node.id === `${parentId}-aggregator` ||
-          node.id === `${parentId}-validator` ||
-          (parentState.sub_tasks && parentState.sub_tasks[node.id])
-        ) {
+        if (node.id === `${parentId}-aggregator`) {
           agentId = parentId as AgentId;
+          modalTitle = `${formatAgentName(parentId)} → Cluster Aggregator`;
+          break;
+        }
+        if (node.id === `${parentId}-validator`) {
+          agentId = parentId as AgentId;
+          subtaskId = 'validator';
+          modalTitle = `${formatAgentName(parentId)} → Validator`;
+          break;
+        }
+        if (parentState.sub_tasks && parentState.sub_tasks[node.id]) {
+          agentId = parentId as AgentId;
+          subtaskId = node.id;
           break;
         }
       }
@@ -551,6 +600,8 @@ export function WorkflowPane() {
 
     if (agentId) {
       setSelectedAgentForModal(agentId);
+      setSelectedSubtaskForModal(subtaskId);
+      setSelectedModalTitle(modalTitle);
       setModalOpen(true);
     }
   };
@@ -558,15 +609,29 @@ export function WorkflowPane() {
   return (
     <div className="flex-1 w-full h-full relative">
       {/* Agent Details Modal */}
-      <AgentDetailsModal 
+      <AgentDetailsModal
         isOpen={modalOpen}
-        onClose={() => setModalOpen(false)}
+        onClose={() => {
+          setModalOpen(false);
+          setSelectedSubtaskForModal(null);
+          setSelectedModalTitle(null);
+        }}
         agentId={selectedAgentForModal}
         agentInfo={selectedAgentForModal ? agents[selectedAgentForModal] : null}
+        subtaskName={selectedSubtaskForModal ?? undefined}
+        titleOverride={selectedModalTitle ?? undefined}
+        citations={selectedAgentForModal ? citations[AGENT_SECTION_MAP[selectedAgentForModal]!] : null}
+        documents={documents}
+        onViewEvidence={(citation) => setActiveEvidenceCitation(citation)}
         onSelectForChat={(id) => {
           setSelectedAgentId(id);
           setBlackboardMode('chat');
         }}
+      />
+      <CitationEvidenceModal
+        citation={activeEvidenceCitation}
+        documents={documents}
+        onClose={() => setActiveEvidenceCitation(null)}
       />
 
       {/* Error Overlay for failed fetches */}

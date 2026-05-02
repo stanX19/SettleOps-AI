@@ -44,6 +44,11 @@ class CostBreakdown(BaseModel):
     paint: float = Field(..., ge=0)
     towing: float = Field(..., ge=0)
     misc: float = Field(..., ge=0)
+    repair_estimate_myr: float = Field(0.0, ge=0)
+    depreciation_deducted_myr: float = Field(0.0, ge=0)
+    excess_deducted_myr: float = Field(0.0, ge=0)
+    liability_adjusted_myr: float = Field(0.0, ge=0)
+    final_payout_myr: float = Field(0.0, ge=0)
 
 
 class RepairApprovalData(BaseModel):
@@ -266,9 +271,21 @@ def _build_content(elements, data: RepairApprovalData, styles):
         "Approved Repair Costs / Kos Pembaikan Diluluskan", styles["SectionTitle"],
     ))
 
-    total = (
+    component_total = (
         data.costs.parts + data.costs.labour + data.costs.paint
         + data.costs.towing + data.costs.misc
+    )
+    explicit_cost_fields = data.costs.model_fields_set
+    repair_estimate = (
+        data.costs.repair_estimate_myr
+        if "repair_estimate_myr" in explicit_cost_fields
+        else component_total
+    )
+    final_payout = data.costs.final_payout_myr if "final_payout_myr" in explicit_cost_fields else max(
+        repair_estimate
+        - data.costs.depreciation_deducted_myr
+        - data.costs.excess_deducted_myr,
+        0.0,
     )
 
     no_w = AVAIL_W * 0.08
@@ -296,8 +313,30 @@ def _build_content(elements, data: RepairApprovalData, styles):
         ])
     rows.append([
         "",
-        Paragraph("TOTAL APPROVED AMOUNT / JUMLAH KELULUSAN (RM)", styles["BodyBold"]),
-        Paragraph(f"{total:,.2f}", styles["BodyBoldRight"]),
+        Paragraph("VERIFIED REPAIR ESTIMATE / ANGGARAN PEMBAIKAN DISAHKAN (RM)", styles["BodyBold"]),
+        Paragraph(f"{repair_estimate:,.2f}", styles["BodyBoldRight"]),
+    ])
+    deduction_rows = [
+        ("Less: Depreciation / Tolak: Susut Nilai", data.costs.depreciation_deducted_myr),
+        ("Less: Excess / Tolak: Lebihan", data.costs.excess_deducted_myr),
+    ]
+    for label, amount in deduction_rows:
+        if amount > 0:
+            rows.append([
+                "",
+                Paragraph(label, styles["Body"]),
+                Paragraph(f"({amount:,.2f})", styles["BodyRight"]),
+            ])
+    if data.costs.liability_adjusted_myr and data.costs.liability_adjusted_myr != repair_estimate:
+        rows.append([
+            "",
+            Paragraph("Liability-adjusted amount / Amaun selepas liabiliti (RM)", styles["Body"]),
+            Paragraph(f"{data.costs.liability_adjusted_myr:,.2f}", styles["BodyRight"]),
+        ])
+    rows.append([
+        "",
+        Paragraph("FINAL APPROVED PAYOUT / JUMLAH BAYARAN DILULUSKAN (RM)", styles["BodyBold"]),
+        Paragraph(f"{final_payout:,.2f}", styles["BodyBoldRight"]),
     ])
 
     cost_table = Table(rows, colWidths=[no_w, desc_w, amt_w], hAlign="LEFT")

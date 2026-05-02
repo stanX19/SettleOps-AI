@@ -25,13 +25,16 @@ from srcs.services.agents.analysis_tasks import (
     fraud_assessment_task
 )
 from srcs.utils.cluster_factory import create_cluster_subgraph
+from srcs.services.citation_validator import build_citation_summary
+from srcs.schemas.citations import stamp_citation_ids
 from srcs.services.sse_service import SseService
 from srcs.schemas.case_dto import (
     SseAgentStatusChangedData,
     SseAgentOutputData,
     SseWorkflowCompletedData,
     CaseStatus,
-    ArtifactType
+    ArtifactType,
+    LogEntry,
 )
 from srcs.services.case_store import CaseStore, now_iso
 
@@ -62,6 +65,36 @@ def _assert_no_upstream_citations_in_cluster_input(
         )
 
 
+def _normalize_citation_key(value: object) -> str:
+    return " ".join(str(value or "").split()).lower()
+
+
+def _dedupe_citations(citations: list[dict], max_per_field: int = 2) -> list[dict]:
+    """Remove repeated citations before storing/emitting section evidence."""
+    deduped: list[dict] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    field_counts: dict[str, int] = {}
+    for citation in citations:
+        if not isinstance(citation, dict):
+            continue
+        field_path = _normalize_citation_key(citation.get("field_path"))
+        count_key = field_path or "__unknown__"
+        if field_counts.get(count_key, 0) >= max_per_field:
+            continue
+        key = (
+            _normalize_citation_key(citation.get("filename")),
+            _normalize_citation_key(citation.get("source_type")),
+            _normalize_citation_key(citation.get("excerpt")),
+            field_path,
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        field_counts[count_key] = field_counts.get(count_key, 0) + 1
+        deduped.append(citation)
+    return deduped
+
+
 # -- Cluster Definitions -----------------------------------------------------
 
 async def _run_cluster(graph, cluster_id: str, state: ClaimWorkflowState):
@@ -89,6 +122,7 @@ async def _run_cluster(graph, cluster_id: str, state: ClaimWorkflowState):
     for node_citations in citations_by_node.values():
         if isinstance(node_citations, list):
             flattened.extend(node_citations)
+    flattened = _dedupe_citations(flattened)
 
     return {
         f"{cluster_id}_results": result["results"],
@@ -347,37 +381,48 @@ def node_sse_wrapper(node_name: str, func):
 
             # Citations for this section come from {agent}_citations (e.g.
             # policy_citations, auditor_citations).
-            citations: list[dict] = []
+            raw_flat: list[dict] = []
             if agent_id:
                 citations_key = f"{agent_id.value.lower()}_citations"
                 raw_citations = result.get(citations_key, [])
                 if isinstance(raw_citations, list):
-                    citations = raw_citations
+                    raw_flat = stamp_citation_ids(_dedupe_citations(raw_citations))
+
+            # Build structured summary for emission; CaseStore keeps the flat
+            # list so downstream agents (auditor, payout) can still read it.
+            citation_summary = build_citation_summary(raw_flat)
+            citation_summary.hidden_duplicates_count = max(
+                0, len(raw_citations) - len(raw_flat)
+            ) if agent_id and isinstance(raw_citations, list) else 0
 
             # Sync to Store & Emit Output
             case = CaseStore.get(case_id)
             trace_log: list[str] = []
+            log_entries: list[LogEntry] = []
             if case:
                 async with CaseStore.lock(case_id):
                     # 1. Store Blackboard Data
                     if section and data is not None:
                         case.set_section_data(section, data)
 
-                    # 2. Store Citations (replace, not append; keeps reruns clean)
+                    # 2. Store flat citations for downstream agents (replace on rerun)
                     if section:
-                        case.set_section_citations(section, citations)
+                        case.set_section_citations(section, raw_flat)
 
-                    # 3. Store Trace Logs
+                    # 3. Store Trace Logs + structured LogEntries
                     trace_log = result.get("trace_log", [])
                     if trace_log and agent_id:
                         rs = case.agent_states.get(agent_id)
                         if rs:
                             rs.logs.extend(trace_log)
+                            # Build LogEntries: tag lines that reference a citation field
+                            log_entries = _build_log_entries(trace_log, raw_flat)
+                            rs.log_entries.extend(log_entries)
 
                     if "auditor_loop_count" in result:
                         case.auditor_loop_count = int(result.get("auditor_loop_count") or 0)
 
-            # Emit Output SSE
+            # Emit Output SSE with structured CitationSummary + LogEntries
             if section and data is not None:
                 await SseService.emit(case_id, SseAgentOutputData(
                     case_id=case_id,
@@ -386,7 +431,8 @@ def node_sse_wrapper(node_name: str, func):
                     section=section,
                     data=data,
                     logs=trace_log,
-                    citations=citations,
+                    log_entries=log_entries,
+                    citation_summary=citation_summary,
                 ))
 
             # Emit Status: COMPLETED or ERROR
@@ -398,6 +444,44 @@ def node_sse_wrapper(node_name: str, func):
         
         return result
     return wrapper
+
+def _build_log_entries(trace_log: list[str], citations: list[dict]) -> list[LogEntry]:
+    """Convert plain log lines to LogEntry, tagging lines that reference a citation field.
+
+    Only operational evidence lines are tagged — generic lines like
+    "Cluster analysis complete" stay plain (citation_id=None).
+    """
+    # Build a lookup: field_path → first matching citation id
+    field_to_citation: dict[str, str] = {}
+    for c in citations:
+        fp = (c.get("field_path") or "").strip()
+        cid = c.get("id") or ""
+        if fp and cid and fp not in field_to_citation:
+            field_to_citation[fp] = cid
+
+    entries: list[LogEntry] = []
+    for line in trace_log:
+        line_lower = line.lower()
+        matched_id: str | None = None
+        matched_ref: str | None = None
+        for fp, cid in field_to_citation.items():
+            if fp.replace("_", " ") in line_lower or fp in line_lower:
+                matched_id = cid
+                matched_ref = fp
+                break
+        entries.append(LogEntry(text=line, citation_id=matched_id, citation_ref=matched_ref))
+    for citation in citations:
+        field_path = (citation.get("field_path") or "").strip()
+        citation_id = (citation.get("id") or "").strip() or None
+        filename = citation.get("filename") or "source document"
+        conclusion = citation.get("conclusion") or citation.get("comment") or "evidence reviewed"
+        entries.append(LogEntry(
+            text=f"Cited {filename} for {field_path}: {conclusion}",
+            citation_id=citation_id,
+            citation_ref=field_path or None,
+        ))
+    return entries
+
 
 async def _emit_agent_status(case_id: str, agent: AgentId, status: AgentStatus):
     """Sync status to CaseStore and emit SSE."""
