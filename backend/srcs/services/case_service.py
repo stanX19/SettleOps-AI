@@ -47,6 +47,7 @@ from srcs.schemas.case_dto import (
     AgentStateInfo,
     OfficerMessageInfo,
     OfficerMessageType,
+    RerunKind,
     SseAgentMessageToAgentData,
     SseAgentOutputData,
     SseAgentStatusChangedData,
@@ -405,6 +406,12 @@ async def emit_message_to_agent(
     trigger: AuditorTrigger,
     loop_count: int,
     message_id: Optional[str] = None,
+    rerun_kind: Optional[RerunKind] = None,
+    retry_scope: Optional[str] = None,
+    target_agent: Optional[AgentId] = None,
+    target_cluster: Optional[str] = None,
+    target_subtask: Optional[str] = None,
+    trigger_node_id: Optional[str] = None,
 ) -> None:
     await SseService.emit(
         state.case_id,
@@ -419,6 +426,12 @@ async def emit_message_to_agent(
             loop_count=loop_count,
             trigger=trigger,
             message_id=message_id,
+            rerun_kind=rerun_kind,
+            retry_scope=retry_scope,
+            target_agent=target_agent,
+            target_cluster=target_cluster,
+            target_subtask=target_subtask,
+            trigger_node_id=trigger_node_id,
         ),
     )
 
@@ -782,6 +795,7 @@ def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
         "damage_results": case.damage_result or {},
         "fraud_results": case.fraud_assessment or {},
         "payout_results": case.payout_recommendation or {},
+        "adjuster_results": case.adjuster_request or {},
         "auditor_results": case.audit_result or {},
         "policy_citations": list(case.policy_citations),
         "liability_citations": list(case.liability_citations),
@@ -792,6 +806,8 @@ def _to_workflow_state(case: CaseState) -> ClaimWorkflowState:
         "reconstruction_citations": list(case.reconstruction_citations),
         "trace_log": [],
         "active_challenge": None,
+        "active_rerun_target": None,
+        "active_rerun_source": None,
         "auditor_loop_count": case.auditor_loop_count,
         "status": case.status.value,
         "current_agent": case.current_agent.value if case.current_agent else None,
@@ -910,6 +926,75 @@ _RERUN_CHAINS: dict[AgentId, list[tuple[AgentId, BlackboardSection]]] = {
     ],
 }
 
+_CLUSTER_RERUN_TARGETS: set[AgentId] = {
+    AgentId.POLICY,
+    AgentId.LIABILITY,
+    AgentId.DAMAGE,
+    AgentId.FRAUD,
+}
+
+
+def _clear_rerun_outputs(state: CaseState, target_agent: AgentId) -> None:
+    """Clear stale downstream blackboard sections before a targeted rerun."""
+    if target_agent is AgentId.INTAKE:
+        state.case_facts = None
+        state.policy_verdict = None
+        state.liability_verdict = None
+        state.damage_result = None
+        state.fraud_assessment = None
+        state.payout_recommendation = None
+        state.adjuster_request = None
+        state.audit_result = None
+        state.reconstruction_result = None
+        state.policy_citations = []
+        state.liability_citations = []
+        state.damage_citations = []
+        state.fraud_citations = []
+        state.adjuster_citations = []
+        state.auditor_citations = []
+        state.reconstruction_citations = []
+        return
+
+    if target_agent in _CLUSTER_RERUN_TARGETS:
+        if target_agent is AgentId.POLICY:
+            state.policy_verdict = None
+            state.policy_citations = []
+        elif target_agent is AgentId.LIABILITY:
+            state.liability_verdict = None
+            state.liability_citations = []
+        elif target_agent is AgentId.DAMAGE:
+            state.damage_result = None
+            state.damage_citations = []
+        elif target_agent is AgentId.FRAUD:
+            state.fraud_assessment = None
+            state.fraud_citations = []
+        state.payout_recommendation = None
+        state.adjuster_request = None
+        state.audit_result = None
+        state.adjuster_citations = []
+        state.auditor_citations = []
+        return
+
+    if target_agent is AgentId.PAYOUT:
+        state.payout_recommendation = None
+        state.adjuster_request = None
+        state.audit_result = None
+        state.adjuster_citations = []
+        state.auditor_citations = []
+    elif target_agent is AgentId.ADJUSTER:
+        state.adjuster_request = None
+        state.audit_result = None
+        state.adjuster_citations = []
+        state.auditor_citations = []
+    elif target_agent is AgentId.AUDITOR:
+        state.audit_result = None
+        state.auditor_citations = []
+
+
+def _null_patch(value: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Return a reducer-friendly patch that clears existing dict keys."""
+    return {key: None for key in (value or {}).keys()}
+
 
 async def run_partial_pipeline(
     case_id: str, target_agent: AgentId, message_id: str, officer_message: str
@@ -935,18 +1020,117 @@ async def run_partial_pipeline(
         case_id,
         SseNotifData(message=f"Instruction received. Rerunning {target_agent.value} analysis...")
     )
-    
-    # Map the human feedback into the active_challenge for the graph
-    workflow_state = _to_workflow_state(state)
-    workflow_state["latest_user_message"] = officer_message
+
+    retry_scope = "cluster" if target_agent in _CLUSTER_RERUN_TARGETS else "agent"
+    await emit_message_to_agent(
+        state,
+        from_agent=AgentId.AUDITOR,
+        to_agent=target_agent,
+        message=officer_message,
+        reason="Officer Feedback",
+        trigger=AuditorTrigger.OFFICER_MESSAGE,
+        loop_count=state.officer_challenge_count,
+        message_id=message_id,
+        rerun_kind=RerunKind.OFFICER_RERUN,
+        retry_scope=retry_scope,
+        target_agent=target_agent,
+        target_cluster=target_agent.value if retry_scope == "cluster" else None,
+        trigger_node_id=WorkflowNodes.DECISION_GATE.value,
+    )
     
     try:
-        # Re-run the graph with the new challenge
-        await run_workflow_with_sse(case_id, workflow_state)
-
-        await generate_artifacts(state)
+        clear_patches = {
+            "case_facts": _null_patch(state.case_facts),
+            "policy_results": _null_patch(state.policy_verdict),
+            "liability_results": _null_patch(state.liability_verdict),
+            "damage_results": _null_patch(state.damage_result),
+            "fraud_results": _null_patch(state.fraud_assessment),
+            "payout_results": _null_patch(state.payout_recommendation),
+            "adjuster_results": _null_patch(state.adjuster_request),
+            "auditor_results": _null_patch(state.audit_result),
+            "reconstruction_results": _null_patch(state.reconstruction_result),
+        }
 
         async with CaseStore.lock(case_id):
+            _clear_rerun_outputs(state, target_agent)
+
+        if target_agent is AgentId.INTAKE:
+            workflow_state = _to_workflow_state(state)
+            workflow_state["status"] = "running"
+            final_state_wrapper = await run_workflow_with_sse(case_id, workflow_state)
+        elif target_agent in _CLUSTER_RERUN_TARGETS:
+            target_results_key = f"{target_agent.value}_results"
+            final_state_wrapper = await resume_workflow_with_sse_engine(
+                case_id,
+                {
+                    "active_challenge": {
+                        "target_cluster": target_agent.value,
+                        "feedback": officer_message,
+                        "iteration": state.officer_challenge_count,
+                    },
+                    "active_rerun_target": None,
+                    "active_rerun_source": "officer",
+                    "latest_user_message": None,
+                    "status": "running",
+                    target_results_key: clear_patches[target_results_key],
+                    f"{target_agent.value}_citations": [],
+                    "payout_results": clear_patches["payout_results"],
+                    "adjuster_results": clear_patches["adjuster_results"],
+                    "auditor_results": clear_patches["auditor_results"],
+                    "auditor_citations": [],
+                },
+                interrupt_for_adjuster=state.adjuster_report_path is None,
+            )
+        else:
+            updates: dict[str, Any] = {
+                "active_challenge": None,
+                "active_rerun_target": {
+                    "target_agent": target_agent.value,
+                    "feedback": officer_message,
+                    "iteration": state.officer_challenge_count,
+                },
+                "active_rerun_source": "officer",
+                "latest_user_message": None,
+                "status": "running",
+            }
+            if target_agent is AgentId.PAYOUT:
+                updates.update({
+                    "payout_results": clear_patches["payout_results"],
+                    "adjuster_results": clear_patches["adjuster_results"],
+                    "auditor_results": clear_patches["auditor_results"],
+                    "auditor_citations": [],
+                })
+            elif target_agent is AgentId.ADJUSTER:
+                updates.update({
+                    "adjuster_results": clear_patches["adjuster_results"],
+                    "auditor_results": clear_patches["auditor_results"],
+                    "auditor_citations": [],
+                })
+            elif target_agent is AgentId.AUDITOR:
+                updates.update({
+                    "auditor_results": clear_patches["auditor_results"],
+                    "auditor_citations": [],
+                })
+            final_state_wrapper = await resume_workflow_with_sse_engine(
+                case_id,
+                updates,
+                interrupt_for_adjuster=state.adjuster_report_path is None,
+            )
+
+        waiting_for_adjuster = bool(
+            final_state_wrapper
+            and final_state_wrapper.next
+            and WorkflowNodes.WAIT_FOR_ADJUSTER in final_state_wrapper.next
+        )
+        if not waiting_for_adjuster:
+            await generate_artifacts(state)
+
+        async with CaseStore.lock(case_id):
+            if final_state_wrapper and final_state_wrapper.next:
+                if WorkflowNodes.WAIT_FOR_ADJUSTER in final_state_wrapper.next:
+                    transition_status(state, CaseStatus.AWAITING_ADJUSTER)
+                elif WorkflowNodes.DECISION_GATE in final_state_wrapper.next:
+                    transition_status(state, CaseStatus.AWAITING_APPROVAL)
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
             state.current_agent = None
@@ -1039,7 +1223,11 @@ async def resume_workflow_with_sse(
 
         # 5. Execute Resumption
         from srcs.services.workflow_engine import resume_workflow_with_sse as resume_workflow_with_sse_engine
-        final_state_wrapper = await resume_workflow_with_sse_engine(case_id, updates)
+        final_state_wrapper = await resume_workflow_with_sse_engine(
+            case_id,
+            updates,
+            interrupt_for_adjuster=action != "upload_adjuster_report",
+        )
 
         # 6. Check for interrupts (HITL or Missing Docs)
         if final_state_wrapper and final_state_wrapper.next:
@@ -1111,8 +1299,16 @@ def _classify_freeform(message: str) -> Optional[AgentId]:
         return AgentId.POLICY
     if any(k in m for k in ("fraud", "suspicious", "fake")):
         return AgentId.FRAUD
+    if any(k in m for k in ("damage", "repair", "quotation", "quote", "pricing", "parts", "labour", "labor", "paint")):
+        return AgentId.DAMAGE
     if any(k in m for k in ("payout", "amount", "payment", "money", "settle")):
         return AgentId.PAYOUT
+    if any(k in m for k in ("intake", "document", "tag", "missing file")):
+        return AgentId.INTAKE
+    if any(k in m for k in ("adjuster", "inspection", "field report")):
+        return AgentId.ADJUSTER
+    if any(k in m for k in ("auditor", "audit", "final aggregation", "summary")):
+        return AgentId.AUDITOR
     return None
 
 
@@ -1138,7 +1334,10 @@ def ensure_action_allowed(state: CaseState) -> None:
 
 
 def classify_officer_message(
-    state: CaseState, body_message: str, body_type: OfficerMessageType
+    state: CaseState,
+    body_message: str,
+    body_type: OfficerMessageType,
+    explicit_target: Optional[AgentId] = None,
 ) -> tuple[Optional[AgentId], OfficerMessageRecord]:
     """Append the officer message, determine target agent.
 
@@ -1149,8 +1348,12 @@ def classify_officer_message(
         role="officer",
         message=body_message,
         type=body_type.value,
+        target_agent=explicit_target,
     )
     state.officer_messages.append(record)
+
+    if explicit_target is not None:
+        return explicit_target, record
 
     if body_type is OfficerMessageType.CATEGORY_SELECTION:
         target = resolve_category(body_message)

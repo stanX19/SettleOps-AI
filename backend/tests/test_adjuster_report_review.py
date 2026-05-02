@@ -18,14 +18,31 @@ J. CONCLUSION & RECOMMENDATION
 We recommend approving a maximum repair cost of RM 7,800.00.
 """
 
+APPROVED_TOTAL_REPORT_TEXT = """
+G. COST SUMMARY
 
-def _state(panel_quote: float) -> dict:
+Workshop Quoted Total
+
+RM 1,000,296.00
+
+Adjuster Approved Total
+
+RM 25,493.00
+
+K. CONCLUSION & RECOMMENDATION
+
+B. APPROVE REPAIR at the adjuster's recommended amount of RM 25,493.00,
+subject to physical re-inspection and photographic verification.
+"""
+
+
+def _state(panel_quote: float, report_text: str = REPORT_TEXT) -> dict:
     return {
         "documents": [
             {
                 "filename": "adjuster_report_sample.pdf",
                 "doc_type": "adjuster_report",
-                "content": REPORT_TEXT,
+                "content": report_text,
             }
         ],
         "damage_results": {
@@ -41,6 +58,12 @@ def test_extract_adjuster_cost_range_from_report_text():
     assert costs["adjuster_max_repair_myr"] == 7800.0
     assert costs["report_panel_quotation_myr"] == 8000.0
     assert costs["adjuster_recommended_myr"] == 7800.0
+
+
+def test_extract_adjuster_approved_amount_from_report_text():
+    costs = _extract_adjuster_costs(APPROVED_TOTAL_REPORT_TEXT)
+
+    assert costs["adjuster_recommended_myr"] == 25493.0
 
 
 def test_adjuster_review_accepts_panel_quote_within_range():
@@ -70,3 +93,18 @@ def test_adjuster_review_declines_panel_quote_outside_range():
     assert "MYR 8,000.00" in review["adjuster_summary_to_auditor"]
     assert "outside the recommended range by MYR 200.00" in review["adjuster_summary_to_auditor"]
     assert "may not be reasonable" in review["adjuster_summary_to_auditor"]
+
+
+def test_adjuster_review_declines_panel_quote_above_approved_amount():
+    result = wait_for_adjuster_node(_state(1_000_296.0, APPROVED_TOTAL_REPORT_TEXT))
+    review = result["adjuster_results"]
+
+    assert review["quotation_within_range"] is False
+    assert review["adjuster_verdict"] == "outside_approved_amount"
+    assert review["recommended_action_to_auditor"] == "decline"
+    assert review["adjuster_comparison_amount_myr"] == 25493.0
+    assert review["adjuster_comparison_mode"] == "approved_amount"
+    assert review["variance_myr"] == 974803.0
+    assert "exceeds the adjuster approved repair cost" in review["adjuster_audit_finding"]["finding"]
+    assert "MYR 974,803.00" in review["adjuster_summary_to_auditor"]
+    assert "unknown to unknown" not in review["adjuster_summary_to_auditor"]

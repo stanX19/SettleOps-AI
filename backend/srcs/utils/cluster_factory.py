@@ -12,7 +12,10 @@ from srcs.services.case_store import CaseStore, now_iso
 from srcs.schemas.case_dto import (
     AgentId,
     AgentStatus,
+    AuditorTrigger,
     LogEntry,
+    RerunKind,
+    SseAgentMessageToAgentData,
     SseAgentStatusChangedData
 )
 
@@ -151,6 +154,23 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                     task_fn=task,
                     feedback=feedback,
                     node_id=sub_task_name,
+                    on_retry=lambda attempt, errors: SseService.emit(case_id, SseAgentMessageToAgentData(
+                        case_id=case_id,
+                        timestamp=now_iso(),
+                        from_agent=parent_agent_id,
+                        to_agent=parent_agent_id,
+                        message_type="challenge",
+                        message="Citation validator requested this subtask to retry with corrected citations.",
+                        reason="; ".join(errors[:3]),
+                        loop_count=attempt,
+                        trigger=AuditorTrigger.AUTONOMOUS,
+                        rerun_kind=RerunKind.CITATION_RETRY,
+                        retry_scope="subtask",
+                        target_agent=parent_agent_id,
+                        target_cluster=cluster_id,
+                        target_subtask=sub_task_name,
+                        trigger_node_id="citation_validator",
+                    )),
                 )
 
                 # 4+5. Build trace log, emit COMPLETED with it, and format output

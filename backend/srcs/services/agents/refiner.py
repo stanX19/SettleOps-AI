@@ -2,7 +2,7 @@ from typing import Any
 from srcs.schemas.state import ClaimWorkflowState, ChallengeState
 from srcs.services.agents.rotating_llm import rotating_llm
 from srcs.services.sse_service import SseService
-from srcs.schemas.case_dto import SseAgentMessageToAgentData, AgentId, AuditorTrigger
+from srcs.schemas.case_dto import SseAgentMessageToAgentData, AgentId, AuditorTrigger, RerunKind
 from srcs.services.case_store import now_iso
 
 async def refiner_node(state: ClaimWorkflowState) -> dict[str, Any]:
@@ -77,11 +77,17 @@ async def refiner_node(state: ClaimWorkflowState) -> dict[str, Any]:
                 message=feedback,
                 reason="Officer Feedback",
                 loop_count=iteration,
-                trigger=AuditorTrigger.OFFICER_MESSAGE
+                trigger=AuditorTrigger.OFFICER_MESSAGE,
+                rerun_kind=RerunKind.OFFICER_RERUN,
+                retry_scope="cluster",
+                target_agent=target_agent_map.get(target, AgentId.LIABILITY),
+                target_cluster=target,
+                trigger_node_id="refiner",
             ))
         
         return {
             "active_challenge": challenge,
+            "active_rerun_source": "officer",
             "latest_user_message": None,
             "trace_log": [f"[Refiner] Feedback mapped to {target} (Iteration {iteration}). Instruction: {feedback}"]
         }

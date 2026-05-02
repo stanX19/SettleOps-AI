@@ -74,6 +74,12 @@ class AuditorTrigger(str, Enum):
     OFFICER_MESSAGE = "officer_message"
 
 
+class RerunKind(str, Enum):
+    OFFICER_RERUN = "officer_rerun"
+    AUDITOR_RERUN = "auditor_rerun"
+    CITATION_RETRY = "citation_retry"
+
+
 # -- Error codes --------------------------------------------------------------
 
 class ErrorCode(str, Enum):
@@ -187,6 +193,7 @@ class DeclineResponse(BaseModel):
 class MessageRequest(BaseModel):
     message: str = Field(min_length=1)
     type: OfficerMessageType = OfficerMessageType.FREEFORM
+    target_agent: Optional[AgentId] = None
 
 
 class MessageRerunResponse(BaseModel):
@@ -259,6 +266,12 @@ class SseAgentMessageToAgentData(_CaseSseBase):
     loop_count: int
     trigger: AuditorTrigger
     message_id: Optional[str] = None
+    rerun_kind: Optional[RerunKind] = None
+    retry_scope: Optional[Literal["cluster", "agent", "subtask"]] = None
+    target_agent: Optional[AgentId] = None
+    target_cluster: Optional[str] = None
+    target_subtask: Optional[str] = None
+    trigger_node_id: Optional[str] = None
 
 
 class SseArtifactCreatedData(_CaseSseBase):

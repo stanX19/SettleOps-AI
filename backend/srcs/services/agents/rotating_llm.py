@@ -466,12 +466,9 @@ class RotatingLLM:
                 self._log_health()
                 last_exc = exc
 
-                # Exponential backoff on rate limit so we don't hammer the
-                # provider with a single-key pool. 1s, 2s, 4s, ...
-                if (
-                    outcome is _Outcome.RATE_LIMIT
-                    and attempt < self.MAX_RETRIES
-                ):
+                # Back off on transient provider failures so a brief 5xx burst
+                # does not fail a user-triggered rerun immediately.
+                if attempt < self.MAX_RETRIES:
                     await asyncio.sleep(2 ** attempt)
 
         raise last_exc
@@ -491,6 +488,8 @@ class RotatingLLM:
 
         status: int = getattr(getattr(exc, 'response', None), 'status_code', 0)
         if status == 429 or "429" in str(exc):
+            return _Outcome.RATE_LIMIT
+        if status >= 500 or "InternalServerError" in type(exc).__name__:
             return _Outcome.RATE_LIMIT
 
         return _Outcome.ERROR
