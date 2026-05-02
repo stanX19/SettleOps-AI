@@ -17,6 +17,8 @@ from srcs.logger import logger
 from srcs.schemas.citations import (
     Citation,
     CitationSourceType,
+    CitationSummary,
+    CitationTopicGroup,
     CitationValidationError,
 )
 from srcs.tools.mcp_tools import (
@@ -24,7 +26,7 @@ from srcs.tools.mcp_tools import (
     fetch_parts_pricing_guide,
     fetch_quotation_workflow_guide,
 )
-from srcs.services.agents.rotating_llm import rotating_llm as _rotating_llm
+from srcs.services.agents.rotating_llm import llm_cache_override
 
 MAX_RETRIES = 2
 
@@ -62,11 +64,10 @@ async def _call_task(
     state: Mapping[str, Any],
     feedback: str,
 ) -> Mapping[str, Any]:
-    # Disable the local LLM response cache for citation retries so the model
-    # cannot replay the same invalid output from a prior cached call.
-    old_cache = _rotating_llm.use_cache
-    _rotating_llm.use_cache = False
-    try:
+    # Disable local response caching for citation retries without mutating the
+    # shared RotatingLLM singleton. Task functions call the LLM internally, so a
+    # context-local override is the least invasive per-call control point.
+    with llm_cache_override(False):
         if _accepts_feedback(task_fn):
             result = task_fn(state, feedback=feedback)
         else:
@@ -74,8 +75,6 @@ async def _call_task(
         if inspect.isawaitable(result):
             result = await result
         return result
-    finally:
-        _rotating_llm.use_cache = old_cache
 
 
 async def validate_citations(
@@ -528,6 +527,81 @@ def _candidate_values_from_excerpt(excerpt: str) -> list[str]:
             seen.add(key)
             deduped.append(candidate)
     return deduped
+
+
+_KEY_EVIDENCE_FIELDS: frozenset[str] = frozenset({
+    "max_payout_myr",
+    "excess_myr",
+    "verified_total",
+    "final_payout_myr",
+    "fault_split",
+    "liability_percent",
+    "adjuster_verdict",
+})
+
+_NODE_TOPIC_MAP: dict[str, str] = {
+    "policy_analysis_task": "Policy Terms",
+    "liability_narrative_task": "Accident & Liability",
+    "liability_poi_task": "Accident & Liability",
+    "visual_damage_assessment_task": "Damage / Quotation",
+    "damage_quote_audit_task": "Damage / Quotation",
+    "pricing_validation_task": "Pricing Benchmark",
+    "fraud_assessment_task": "Fraud Assessment",
+    "wait_for_adjuster": "Adjuster Report",
+    "adjuster_request": "Adjuster Report",
+    "auditor_node": "Final Audit",
+}
+
+
+def build_citation_summary(citations: list[dict]) -> CitationSummary:
+    """Classify a flat validated citation list into a structured CitationSummary.
+
+    Deduplication and per-field capping are expected to have already been
+    applied by _dedupe_citations() in workflow_engine before this is called.
+    This function only classifies: key evidence, supporting groups, audit trail.
+    """
+    key_evidence: list[Citation] = []
+    key_seen: set[str] = set()
+    audit: list[Citation] = []
+    supporting: list[Citation] = []
+
+    for raw in citations:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            c = Citation(**raw)
+        except Exception:
+            continue
+
+        # Stamp deterministic ID if not already set
+        if not c.id:
+            c = c.model_copy(update={"id": Citation.make_id(c.field_path, c.filename, c.excerpt)})
+
+        field = (raw.get("field_path") or "").strip().lower()
+        node = raw.get("node_id") or ""
+
+        if node == "auditor_node":
+            audit.append(c)
+        elif field in _KEY_EVIDENCE_FIELDS and field not in key_seen:
+            key_evidence.append(c)
+            key_seen.add(field)
+        else:
+            supporting.append(c)
+
+    topic_groups: dict[str, list[Citation]] = {}
+    for c in supporting:
+        topic = _NODE_TOPIC_MAP.get(c.node_id, "Other")
+        topic_groups.setdefault(topic, []).append(c)
+
+    return CitationSummary(
+        key_evidence=key_evidence,
+        supporting_groups=[
+            CitationTopicGroup(topic=t, citations=cs)
+            for t, cs in topic_groups.items()
+        ],
+        audit_cross_check=audit,
+        hidden_duplicates_count=0,
+    )
 
 
 def _build_retry_feedback(errors: list[str], available_filenames: list[str]) -> str:

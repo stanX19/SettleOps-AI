@@ -80,6 +80,12 @@ export interface ArtifactInfo {
   superseded: boolean;
 }
 
+export interface LogEntry {
+  text: string;
+  citation_id?: string | null;
+  citation_ref?: string | null;
+}
+
 export interface AgentStateInfo {
   status: AgentStatus;
   started_at?: string;
@@ -88,6 +94,7 @@ export interface AgentStateInfo {
   purpose?: string;
   system_prompt?: string;
   logs?: string[];
+  log_entries?: LogEntry[];
 }
 
 // -- Citation types ----------------------------------------------------------
@@ -95,6 +102,7 @@ export interface AgentStateInfo {
 export type CitationSourceType = "text" | "image" | "agent_output" | "reference";
 
 export interface Citation {
+  id?: string;
   filename: string;
   source_type: CitationSourceType;
   /** Verbatim quote for text/agent_output/reference citations; null for images. */
@@ -110,6 +118,18 @@ export interface Citation {
   char_start?: number;
   char_end?: number;
   page?: number;
+}
+
+export interface CitationTopicGroup {
+  topic: string;
+  citations: Citation[];
+}
+
+export interface CitationSummary {
+  key_evidence: Citation[];
+  supporting_groups: CitationTopicGroup[];
+  audit_cross_check: Citation[];
+  hidden_duplicates_count: number;
 }
 
 export interface OfficerMessageInfo {
@@ -135,8 +155,8 @@ export interface CaseSnapshot {
   documents: DocumentInfo[];
   agents: Record<string, AgentStateInfo>;
   blackboard: Record<string, any>;
-  /** Citations keyed by BlackboardSection.value (e.g. "PolicyVerdict"). */
-  citations: Partial<Record<BlackboardSection, Citation[]>>;
+  /** Citations keyed by BlackboardSection.value; each value is a CitationSummary. */
+  citations: Partial<Record<BlackboardSection, CitationSummary>>;
   artifacts: ArtifactInfo[];
   officer_messages: OfficerMessageInfo[];
   auditor_loop_count: number;
@@ -175,6 +195,8 @@ export interface SseAgentStatusChanged extends SseBasePayload {
   status: AgentStatus;
   sub_task?: string;
   parent_agent?: AgentId;
+  logs?: string[];
+  log_entries?: LogEntry[];
 }
 
 export interface SseAgentOutput extends SseBasePayload {
@@ -182,8 +204,9 @@ export interface SseAgentOutput extends SseBasePayload {
   section: BlackboardSection;
   data: unknown;
   logs?: string[];
-  /** Top-level citations array — read from event.citations, not event.data.citations. */
-  citations?: Citation[];
+  log_entries?: LogEntry[];
+  /** Structured citation summary — read from event.citation_summary. */
+  citation_summary?: CitationSummary;
 }
 
 export interface SseAgentMessageToAgent extends SseBasePayload {

@@ -40,6 +40,7 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
   const [isApproved, setIsApproved] = useState(false);
 
   const artifacts = useCaseStore(state => state.artifacts);
+  const setCase = useCaseStore(state => state.setCase);
   const decisionPdf = artifacts.find(a => a.artifact_type === ArtifactType.DECISION_PDF && !a.superseded);
 
   const payoutBreakdown = useCaseStore(state => state.blackboard[BlackboardSection.PAYOUT_RECOMMENDATION]?.payout_breakdown);
@@ -61,11 +62,13 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
   }, [isOpen]);
 
   const ensurePreview = async () => {
-    if (decisionPdf) return;
     setIsPreviewLoading(true);
     const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
     try {
       await fetch(`${apiBase}/api/v1/signature/${caseId}/preview`);
+      const snapshot = await api.getCaseSnapshot(caseId);
+      setCase(snapshot);
+      setPdfRefreshKey(prev => prev + 1);
     } catch (error) {
       console.error("Failed to ensure preview:", error);
     } finally {

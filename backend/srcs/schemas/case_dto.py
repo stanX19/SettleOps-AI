@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
+from srcs.schemas.citations import CitationSummary
 
 
 # -- Fixed string values ------------------------------------------------------
@@ -109,6 +110,12 @@ class ArtifactInfo(BaseModel):
     superseded: bool = False
 
 
+class LogEntry(BaseModel):
+    text: str
+    citation_id: Optional[str] = None   # deterministic citation id (preferred)
+    citation_ref: Optional[str] = None  # field_path fallback
+
+
 class AgentStateInfo(BaseModel):
     status: AgentStatus = AgentStatus.IDLE
     started_at: Optional[str] = None
@@ -117,6 +124,7 @@ class AgentStateInfo(BaseModel):
     purpose: Optional[str] = None
     system_prompt: Optional[str] = None
     logs: list[str] = Field(default_factory=list)
+    log_entries: list[LogEntry] = Field(default_factory=list)
 
 
 class OfficerMessageInfo(BaseModel):
@@ -149,8 +157,8 @@ class CaseSnapshot(BaseModel):
     documents: list[DocumentInfo] = Field(default_factory=list)
     agents: dict[str, AgentStateInfo] = Field(default_factory=dict)
     blackboard: dict[str, Any] = Field(default_factory=dict)
-    # Citations keyed by BlackboardSection.value (e.g. "PolicyVerdict").
-    citations: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    # Citations keyed by BlackboardSection.value; each value is a CitationSummary dict.
+    citations: dict[str, dict[str, Any]] = Field(default_factory=dict)
     artifacts: list[ArtifactInfo] = Field(default_factory=list)
     officer_messages: list[OfficerMessageInfo] = Field(default_factory=list)
     auditor_loop_count: int = 0
@@ -226,6 +234,8 @@ class SseAgentStatusChangedData(_CaseSseBase):
     status: AgentStatus  # emitted values: working, waiting, completed, error
     sub_task: Optional[str] = None
     parent_agent: Optional[AgentId] = None
+    logs: list[str] = Field(default_factory=list)
+    log_entries: list[LogEntry] = Field(default_factory=list)
 
 
 class SseAgentOutputData(_CaseSseBase):
@@ -233,9 +243,9 @@ class SseAgentOutputData(_CaseSseBase):
     section: BlackboardSection
     data: dict[str, Any]
     logs: Optional[list[str]] = None
-    # Top-level citations (not nested under data) so the frontend reads
-    # event.citations directly. Each item conforms to schemas.citations.Citation.
-    citations: list[dict[str, Any]] = Field(default_factory=list)
+    log_entries: list[LogEntry] = Field(default_factory=list)
+    # Structured CitationSummary so the frontend renders tiers directly.
+    citation_summary: Optional[CitationSummary] = None
 
 
 class SseAgentMessageToAgentData(_CaseSseBase):

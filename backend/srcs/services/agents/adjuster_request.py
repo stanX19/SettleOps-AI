@@ -21,6 +21,10 @@ def _money_to_float(value: str) -> float:
     return float(value.replace(",", ""))
 
 
+def _format_myr(value: float | None) -> str:
+    return "unknown" if value is None else f"MYR {value:,.2f}"
+
+
 def _find_money_after(pattern: str, text: str) -> float | None:
     match = re.search(pattern + r".{0,120}?" + _MONEY_RE, text, flags=re.IGNORECASE | re.DOTALL)
     if not match:
@@ -68,6 +72,39 @@ def _extract_adjuster_costs(report_text: str) -> dict[str, float | None]:
             report_text,
         ),
     }
+
+
+def _build_adjuster_summary_to_auditor(
+    *,
+    min_cost: float | None,
+    max_cost: float | None,
+    panel_quote_myr: float | None,
+    within_range: bool | None,
+    variance_myr: float | None,
+) -> str:
+    range_text = f"{_format_myr(min_cost)} to {_format_myr(max_cost)}"
+    quote_text = _format_myr(panel_quote_myr)
+
+    if within_range is True:
+        return (
+            f"The adjuster assessed a repair quotation range of {range_text}. "
+            f"The panel quotation is {quote_text}, which is within the recommended range. "
+            "The quotation appears reasonable based on the adjuster report."
+        )
+
+    if within_range is False:
+        return (
+            f"The adjuster assessed a repair quotation range of {range_text}. "
+            f"The panel quotation is {quote_text}, which is outside the recommended range "
+            f"by {_format_myr(variance_myr)}. The quotation may not be reasonable based "
+            "on the adjuster report."
+        )
+
+    return (
+        f"The adjuster report could not be fully interpreted. Extracted range: {range_text}; "
+        f"panel quotation: {quote_text}. Auditor should escalate or request a clearer "
+        "adjuster report before relying on the quotation."
+    )
 
 
 def should_request_adjuster(state: ClaimWorkflowState) -> bool:
@@ -151,11 +188,19 @@ def wait_for_adjuster_node(state: ClaimWorkflowState) -> dict[str, Any]:
     damage_res = state.get("damage_results", {}) or {}
 
     if report_doc is None:
+        summary = _build_adjuster_summary_to_auditor(
+            min_cost=None,
+            max_cost=None,
+            panel_quote_myr=None,
+            within_range=None,
+            variance_myr=None,
+        )
         return {
             "adjuster_results": {
                 "inspection_required": True,
                 "adjuster_verdict": "insufficient_adjuster_data",
                 "quotation_within_range": None,
+                "adjuster_summary_to_auditor": summary,
                 "recommendation_to_auditor": (
                     "Adjuster report was expected but could not be found in uploaded documents."
                 ),
@@ -200,6 +245,13 @@ def wait_for_adjuster_node(state: ClaimWorkflowState) -> dict[str, Any]:
                 f"MYR {variance_myr:,.2f}. Recommend decline or request a revised quotation."
             )
         )
+    summary_to_auditor = _build_adjuster_summary_to_auditor(
+        min_cost=min_cost,
+        max_cost=max_cost,
+        panel_quote_myr=panel_quote_myr,
+        within_range=within_range,
+        variance_myr=variance_myr,
+    )
 
     return {
         "adjuster_results": {
@@ -214,10 +266,13 @@ def wait_for_adjuster_node(state: ClaimWorkflowState) -> dict[str, Any]:
             "adjuster_verdict": verdict,
             "recommended_action_to_auditor": recommended_action,
             "variance_myr": variance_myr,
+            "adjuster_summary_to_auditor": summary_to_auditor,
             "recommendation_to_auditor": recommendation,
             "status": "adjuster_report_reviewed",
         },
         "trace_log": [
-            f"[AdjusterRequest] Adjuster report reviewed. Verdict: {verdict}."
+            f"[AdjusterRequest] Adjuster report reviewed. Verdict: {verdict}. "
+            f"Panel quotation {_format_myr(panel_quote_myr)} vs adjuster range "
+            f"{_format_myr(min_cost)} to {_format_myr(max_cost)}."
         ],
     }

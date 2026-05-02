@@ -18,6 +18,7 @@ from srcs.schemas.case_dto import (
     ArtifactType,
     BlackboardSection,
     CaseStatus,
+    LogEntry,
 )
 
 
@@ -126,6 +127,7 @@ class AgentRuntimeState:
     completed_at: Optional[str] = None
     sub_tasks: dict[str, AgentRuntimeState] = field(default_factory=dict)
     logs: list[str] = field(default_factory=list)
+    log_entries: list[LogEntry] = field(default_factory=list)
 
 
 @dataclass
