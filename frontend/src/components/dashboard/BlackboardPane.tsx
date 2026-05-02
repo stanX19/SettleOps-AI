@@ -172,9 +172,11 @@ function AuditBulletList({ items }: { items: string[] }) {
   }
 
   return (
-    <ul className="list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-neutral-text-primary marker:text-brand-primary">
+    <ul className="list-disc space-y-2 pl-5 marker:text-brand-primary">
       {items.map((item, idx) => (
-        <li key={`${item}-${idx}`}>{item}</li>
+        <li key={`${item}-${idx}`} className="text-sm leading-relaxed text-neutral-text-primary">
+          <MarkdownRenderer content={item} className="prose-p:inline prose-p:m-0" />
+        </li>
       ))}
     </ul>
   );
@@ -396,7 +398,10 @@ export function BlackboardPane() {
           <div className="text-sm text-neutral-text-primary mt-1">
             <div><span className="font-semibold">Time:</span> {data.incident_time || "N/A"}</div>
             <div><span className="font-semibold">Location:</span> {data.location || "N/A"}</div>
-            <div className="italic text-neutral-text-secondary mt-1.5 line-clamp-3" title={data.description}>{data.description || "No narrative found."}</div>
+            <MarkdownRenderer 
+              content={data.description || "No narrative found."} 
+              className="italic text-neutral-text-secondary mt-1.5 line-clamp-3 prose-p:m-0" 
+            />
           </div>
         } />
         <Field label="Point of Impact" value={
@@ -449,9 +454,10 @@ export function BlackboardPane() {
               <span className="text-xs font-bold text-semantic-danger uppercase tracking-wider">Escalated — Missing Data</span>
             </div>
 
-            <p className="text-sm text-neutral-text-secondary leading-relaxed line-clamp-3" title={data.rationale}>
-              {data.rationale || "The payout engine cannot compute a final amount because required data is missing from upstream analysis."}
-            </p>
+            <MarkdownRenderer 
+              content={data.rationale || "The payout engine cannot compute a final amount because required data is missing from upstream analysis."} 
+              className="text-sm text-neutral-text-secondary leading-relaxed line-clamp-3 prose-p:m-0" 
+            />
 
             {missingFields.length > 0 && (
               <div className="p-3 bg-semantic-danger/5 rounded-lg border border-semantic-danger/15 space-y-2">
@@ -502,9 +508,10 @@ export function BlackboardPane() {
             </div>
           </div>
         ) : (
-          <div className="text-sm text-neutral-text-secondary italic line-clamp-3" title={data.rationale}>
-            {data.rationale || "Calculating final payout..."}
-          </div>
+          <MarkdownRenderer 
+            content={data.rationale || "Calculating final payout..."} 
+            className="text-sm text-neutral-text-secondary italic line-clamp-3 prose-p:m-0" 
+          />
         )}
       </OutputCard>
     );
