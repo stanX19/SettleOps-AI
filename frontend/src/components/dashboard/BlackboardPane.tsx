@@ -33,7 +33,7 @@ import { Button } from "@/components/primitives/Button"
 import { CitationPanel } from "@/components/dashboard/CitationPanel"
 import { CitationEvidenceModal } from "@/components/dashboard/CitationEvidenceModal"
 import { isCitationSummary, getSupportingCount } from "@/lib/citation-utils"
-import DamageAnalyzer from "@/components/ThreeD/DamageAnalyzer"
+import DamageAnalyzer, { type ReconstructionData } from "@/components/ThreeD/DamageAnalyzer"
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -539,10 +539,8 @@ export function BlackboardPane() {
     );
   };
 
-  const renderReconstructionResult = (data: any) => (
-    <div className="mb-6">
-      <DamageAnalyzer data={data} />
-    </div>
+  const renderReconstructionResult = (data: ReconstructionData) => (
+    <DamageAnalyzer data={data} />
   );
 
   const renderArtifacts = () => {
