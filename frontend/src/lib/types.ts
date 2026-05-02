@@ -111,7 +111,7 @@ export interface Citation {
 
 export interface OfficerMessageInfo {
   message_id: string;
-  role: "officer" | "system";
+  role: "officer" | "system" | "assistant";
   message: string;
   type?: string;
   target_agent?: AgentId;
@@ -141,6 +141,7 @@ export interface CaseSnapshot {
   awaiting_clarification: boolean;
   chatbox_enabled: boolean;
   current_agent: AgentId | null;
+  pdf_ready: boolean;
   topology?: Record<string, string[]>;
 }
 

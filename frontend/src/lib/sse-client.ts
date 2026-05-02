@@ -1,7 +1,7 @@
 import { useCaseStore } from "../stores/case-store";
 import { CaseSseEventName } from "./types";
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/$/, "");
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 export class SseClient {
   private eventSource: EventSource | null = null;

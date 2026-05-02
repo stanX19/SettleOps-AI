@@ -6,7 +6,7 @@ import {
   CaseListItem
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {

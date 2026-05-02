@@ -37,7 +37,7 @@ interface CaseState extends CaseSnapshot {
   addAudioUrl: (text: string, url: string) => void;
 }
 
-const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; selectedAgentId: AgentId | null } = {
+const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; selectedAgentId: AgentId | null; audio_urls: Record<string, string> } = {
   case_id: "",
   status: CaseStatus.SUBMITTED,
   submitted_at: "",
@@ -51,6 +51,7 @@ const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; sel
   officer_challenge_count: 0,
   awaiting_clarification: false,
   chatbox_enabled: false,
+  pdf_ready: false,
   blackboard_mode: 'blackboard',
   audio_urls: {},
   current_agent: null,
