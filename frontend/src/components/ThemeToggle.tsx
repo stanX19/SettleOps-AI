@@ -15,11 +15,10 @@ export function ThemeToggle() {
     } else if (savedTheme === "light") {
       document.documentElement.classList.remove("dark");
       setIsDark(false);
-    } else if (document.documentElement.classList.contains("dark")) {
-      setIsDark(true);
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      document.documentElement.classList.add("dark");
-      setIsDark(true);
+    } else {
+      // Default to light mode if no preference is saved
+      document.documentElement.classList.remove("dark");
+      setIsDark(false);
     }
   }, []);
 

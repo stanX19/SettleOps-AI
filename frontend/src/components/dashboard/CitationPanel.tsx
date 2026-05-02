@@ -66,28 +66,28 @@ export function CitationPanel({
         aria-label={isOpen ? `${title} citations` : undefined}
         aria-modal={isOpen ? "true" : undefined}
         aria-hidden={!isOpen}
-        className={`fixed inset-y-0 right-0 z-50 flex w-[22rem] max-w-[100vw] flex-col border-l border-neutral-border bg-neutral-background shadow-2xl transition-transform duration-300 ease-out ${
+        className={`fixed inset-y-0 right-0 z-50 flex w-lg max-w-[100vw] flex-col border-l border-neutral-border bg-neutral-background shadow-2xl transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
         {/* Header */}
-        <header className="flex items-start justify-between border-b border-neutral-border px-4 py-3">
+        <header className="flex items-start justify-between border-b border-neutral-border px-5 py-4 bg-neutral-surface">
           <div>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-brand-primary">
-              <BookOpen className="h-3 w-3" />
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-brand-primary">
+              <BookOpen className="h-4 w-4" />
               Citations
             </div>
-            <h2 className="mt-1 text-sm font-semibold text-neutral-text-primary">{title}</h2>
-            <p className="mt-0.5 text-[10px] text-neutral-text-tertiary">
+            <h2 className="mt-2 text-xl font-semibold text-neutral-text-primary">{title}</h2>
+            <p className="mt-1 text-xs text-neutral-text-tertiary">
               {keyCount > 0 && <span className="text-brand-primary font-semibold">{keyCount} key</span>}
-              {keyCount > 0 && supportingCount > 0 && <span className="mx-1 opacity-40">·</span>}
+              {keyCount > 0 && supportingCount > 0 && <span className="mx-1.5 opacity-40">·</span>}
               {supportingCount > 0 && <span>{supportingCount} supporting</span>}
               {auditCount > 0 && (
-                <span className="ml-1 opacity-60">· {auditCount} audit</span>
+                <span className="ml-1.5 opacity-60">· {auditCount} audit</span>
               )}
               {totalVisible === 0 && "No citations"}
               {safeSummary.hidden_duplicates_count > 0 && (
-                <span className="ml-1 opacity-40">
+                <span className="ml-1.5 opacity-40">
                   ({safeSummary.hidden_duplicates_count} duplicate{safeSummary.hidden_duplicates_count !== 1 ? "s" : ""} collapsed)
                 </span>
               )}
@@ -95,17 +95,17 @@ export function CitationPanel({
           </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1 text-neutral-text-tertiary transition-colors hover:bg-neutral-surface hover:text-neutral-text-primary"
+            className="rounded-md p-1.5 text-neutral-text-tertiary transition-colors hover:bg-neutral-border hover:text-neutral-text-primary"
             aria-label="Close citations panel"
           >
-            <X className="h-4 w-4" />
+            <X className="h-5 w-5" />
           </button>
         </header>
 
-        <div className="custom-scrollbar flex-1 overflow-y-auto px-4 py-3">
+        <div className="custom-scrollbar flex-1 overflow-y-auto px-5 py-4">
           {totalVisible === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center text-center text-xs text-neutral-text-tertiary">
-              <BookOpen className="mb-2 h-8 w-8 opacity-30" />
+            <div className="flex h-full flex-col items-center justify-center text-center text-sm text-neutral-text-tertiary">
+              <BookOpen className="mb-3 h-10 w-10 opacity-30" />
               No citations recorded for this section.
             </div>
           ) : (
@@ -129,7 +129,7 @@ export function CitationPanel({
                     citations={citations}
                     documents={documents}
                     onViewEvidence={onViewEvidence}
-                    defaultOpen={false}
+                    defaultOpen={true}
                   />
                 ) : null
               )}
@@ -141,7 +141,7 @@ export function CitationPanel({
                   citations={safeSummary.audit_cross_check}
                   documents={documents}
                   onViewEvidence={onViewEvidence}
-                  defaultOpen={false}
+                  defaultOpen={true}
                   dimmed
                   icon={<ShieldCheck className="h-3 w-3" />}
                 />
@@ -167,11 +167,11 @@ function KeyEvidenceGroup({
 }) {
   return (
     <section>
-      <div className="mb-1.5 flex items-center gap-1.5 px-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-primary">
-        <KeyRound className="h-3 w-3" />
+      <div className="mb-2 flex items-center gap-1.5 px-1 text-xs font-bold uppercase tracking-widest text-brand-primary">
+        <KeyRound className="h-4 w-4" />
         Key Evidence
       </div>
-      <ul className="rounded-md border border-brand-primary/30 bg-neutral-surface overflow-hidden">
+      <ul className="rounded-lg border border-brand-primary/40 bg-neutral-surface overflow-hidden shadow-sm">
         {citations.map((c, idx) => (
           <CitationRow
             key={citationRowKey(c, `key-${idx}`)}
@@ -216,20 +216,20 @@ function CollapsibleCitationGroup({
     <section>
       <button
         onClick={() => setOpen((o) => !o)}
-        className={`w-full flex items-center justify-between px-0.5 mb-1.5 text-left ${
+        className={`w-full flex items-center justify-between px-1 mb-1.5 text-left ${
           dimmed ? "opacity-60 hover:opacity-100" : ""
         } transition-opacity`}
       >
-        <div className={`flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest ${dimmed ? "text-neutral-text-tertiary" : "text-neutral-text-secondary"}`}>
-          {icon ?? <Bot className="h-3 w-3" />}
+        <div className={`flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest ${dimmed ? "text-neutral-text-tertiary" : "text-neutral-text-secondary"}`}>
+          {icon ?? <Bot className="h-4 w-4" />}
           {title}
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-neutral-text-tertiary tabular-nums">
+          <span className="text-xs text-neutral-text-tertiary tabular-nums">
             {citations.length}
           </span>
           <ChevronDown
-            className={`h-3 w-3 text-neutral-text-tertiary transition-transform duration-150 ${
+            className={`h-4 w-4 text-neutral-text-tertiary transition-transform duration-150 ${
               open ? "rotate-180" : ""
             }`}
           />
@@ -237,7 +237,7 @@ function CollapsibleCitationGroup({
       </button>
 
       {open && (
-        <ul className="rounded-md border border-neutral-border bg-neutral-surface overflow-hidden">
+        <ul className="rounded-lg border border-neutral-border bg-neutral-surface overflow-hidden shadow-sm">
           {visible.map((c, idx) => (
             <CitationRow
               key={citationRowKey(c, `${title}-${idx}`)}
@@ -251,7 +251,7 @@ function CollapsibleCitationGroup({
             <li>
               <button
                 onClick={() => setShowAll(true)}
-                className="w-full px-2.5 py-2 text-left text-[9px] font-bold uppercase tracking-widest text-brand-primary hover:bg-neutral-background/60 transition-colors"
+                className="w-full px-3 py-2.5 text-left text-xs font-bold uppercase tracking-widest text-brand-primary hover:bg-neutral-background/80 transition-colors"
               >
                 Show {hidden} more
               </button>
@@ -281,7 +281,7 @@ export function CitationRow({
   /** Compact mode: hides the heavier View Evidence button for use in tight spaces. */
   compact?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const url = resolveDocUrl(citation.filename, documents);
 
   const Icon =
@@ -297,24 +297,24 @@ export function CitationRow({
     <li className={!isLast ? "border-b border-neutral-border/50" : undefined}>
       {/* Collapsed row */}
       <button
-        className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-neutral-background/60 transition-colors"
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-neutral-background/80 transition-colors"
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
       >
-        <Icon className="h-3 w-3 shrink-0 text-neutral-text-tertiary mt-0.5" />
+        <Icon className="h-4 w-4 shrink-0 text-neutral-text-tertiary mt-0.5" />
         <div className="min-w-0 flex-1">
           {/* Conclusion is more useful at a glance than raw comment */}
-          <p className="text-[10px] text-neutral-text-primary leading-snug line-clamp-2">
+          <p className="text-sm text-neutral-text-primary leading-relaxed line-clamp-2">
             {citation.conclusion}
           </p>
           {showFieldPath && (
-            <span className="mt-0.5 inline-block rounded border border-neutral-border/70 bg-neutral-background px-1 font-mono text-[8px] uppercase tracking-wider text-neutral-text-tertiary">
+            <span className="mt-1.5 inline-block rounded-md border border-neutral-border/70 bg-neutral-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-text-tertiary">
               {citation.field_path}
             </span>
           )}
         </div>
         <ChevronDown
-          className={`h-3 w-3 shrink-0 text-neutral-text-tertiary transition-transform duration-150 ${
+          className={`h-4 w-4 shrink-0 text-neutral-text-tertiary transition-transform duration-150 ${
             expanded ? "rotate-180" : ""
           }`}
         />
@@ -322,47 +322,49 @@ export function CitationRow({
 
       {/* Expanded detail */}
       {expanded && (
-        <div className="px-3 pb-3 space-y-2 border-t border-neutral-border/30 bg-neutral-background/40">
+        <div className="px-3 pb-3 space-y-2.5 border-t border-neutral-border/30 bg-neutral-background/50">
           {/* Source + field_path badge (detail only) */}
-          <div className="pt-2 flex items-center justify-between gap-1.5 text-[9px] text-neutral-text-tertiary">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Icon className="h-2.5 w-2.5 shrink-0" />
+          <div className="pt-2.5 flex items-center justify-between gap-2 text-xs text-neutral-text-tertiary">
+            <div className="flex items-center gap-2 min-w-0">
+              <Icon className="h-3.5 w-3.5 shrink-0" />
               {url ? (
-                <a href={url} target="_blank" rel="noopener noreferrer" className="truncate hover:text-brand-primary transition-colors">
+                <a href={url} target="_blank" rel="noopener noreferrer" className="truncate hover:text-brand-primary transition-colors font-medium">
                   {shortName}
                 </a>
               ) : (
-                <span className="truncate">{shortName}</span>
+                <span className="truncate font-medium">{shortName}</span>
               )}
             </div>
-            <span className="shrink-0 rounded border border-neutral-border/70 bg-neutral-background px-1 font-mono text-[8px] uppercase tracking-wider">
+            <span className="shrink-0 rounded-md border border-neutral-border/70 bg-neutral-background px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider">
               {citation.field_path}
             </span>
           </div>
 
           {/* Verbatim excerpt */}
           {!compact && citation.excerpt && (
-            <blockquote className="border-l-2 border-brand-primary/40 bg-neutral-surface/60 px-2 py-1 italic text-[10px] text-neutral-text-secondary">
+            <blockquote className="border-l-4 border-brand-primary/40 bg-neutral-surface/80 px-2.5 py-2 italic text-sm text-neutral-text-secondary rounded-r-md">
               "{citation.excerpt}"
             </blockquote>
           )}
 
           {/* What this evidence shows */}
-          <p className="text-[10px] leading-relaxed text-neutral-text-secondary">
-            <span className="font-bold uppercase tracking-wider text-[8px] text-neutral-text-tertiary mr-1">Evidence:</span>
+          <p className="text-sm leading-relaxed text-neutral-text-secondary">
+            <span className="font-bold uppercase tracking-wider text-[10px] text-neutral-text-tertiary mr-2">Evidence:</span>
             {citation.comment}
           </p>
 
           {/* View Evidence button — hidden in compact mode */}
           {!compact && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onViewEvidence(citation); }}
-              disabled={!url && citation.source_type !== "image"}
-              className="inline-flex items-center gap-1 rounded border border-brand-primary/30 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/10 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <Icon className="h-2.5 w-2.5" />
-              View Evidence
-            </button>
+            <div className="pt-0.5">
+              <button
+                onClick={(e) => { e.stopPropagation(); onViewEvidence(citation); }}
+                disabled={!url && citation.source_type !== "image"}
+                className="inline-flex items-center gap-1.5 rounded-md border border-brand-primary/40 bg-brand-primary/10 px-2.5 py-1 text-xs font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/20 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                View Evidence
+              </button>
+            </div>
           )}
         </div>
       )}

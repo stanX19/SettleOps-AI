@@ -95,13 +95,13 @@ function FileChip({ url, filename, status, tags, onPreview }: {
 }
 
 const DocumentSkeleton = () => (
-  <div className="relative overflow-hidden p-3 rounded-md bg-white border border-neutral-border/50">
-    <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-linear-to-r from-transparent via-neutral-text-primary/5 to-transparent" />
+  <div className="relative overflow-hidden p-3 rounded-md bg-neutral-surface border border-neutral-border/50">
+    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-linear-to-r from-transparent via-neutral-text-primary/10 to-transparent z-10" />
     <div className="flex items-center gap-3">
-      <div className="w-9 h-9 rounded-md bg-neutral-border/60 shrink-0 animate-pulse" />
+      <div className="w-9 h-9 rounded-md bg-neutral-border/60 shrink-0" />
       <div className="space-y-1.5 flex-1">
-        <div className="h-2.5 bg-neutral-border/60 rounded w-2/3 animate-pulse" />
-        <div className="h-2 bg-neutral-border/40 rounded w-1/3 animate-pulse" />
+        <div className="h-2.5 bg-neutral-border/60 rounded w-2/3" />
+        <div className="h-2 bg-neutral-border/40 rounded w-1/3" />
       </div>
     </div>
   </div>

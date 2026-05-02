@@ -36,7 +36,7 @@ import { isCitationSummary, getSupportingCount } from "@/lib/citation-utils"
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
-    <span className="px-1.5 py-0.5 rounded text-[10px] font-medium border bg-neutral-border/30 text-neutral-text-secondary border-neutral-border/50 mr-1.5 mb-1 inline-block">
+    <span className="px-2 py-1 rounded-md text-xs font-medium border bg-neutral-border/30 text-neutral-text-secondary border-neutral-border/50 inline-block">
       {children}
     </span>
   )
@@ -44,12 +44,12 @@ function Tag({ children }: { children: React.ReactNode }) {
 
 function LiabilityBar({ claimant, thirdParty }: { claimant: number, thirdParty: number }) {
   return (
-    <div className="mt-1 space-y-1">
-      <div className="flex justify-between text-[9px] font-bold uppercase tracking-tighter">
+    <div className="mt-1 space-y-1.5">
+      <div className="flex justify-between text-xs font-bold uppercase tracking-tighter">
         <span className={claimant > 0 ? "text-semantic-danger" : "text-neutral-text-tertiary"}>Claimant {claimant}%</span>
         <span className={thirdParty > 0 ? "text-semantic-danger" : "text-neutral-text-tertiary"}>Third Party {thirdParty}%</span>
       </div>
-      <div className="h-1.5 w-full bg-neutral-border/30 rounded-full overflow-hidden flex">
+      <div className="h-2 w-full bg-neutral-border/30 rounded-full overflow-hidden flex">
         <div className="h-full bg-neutral-text-tertiary transition-all duration-500" style={{ width: `${claimant}%` }} />
         <div className="h-full bg-semantic-danger transition-all duration-500" style={{ width: `${thirdParty}%` }} />
       </div>
@@ -88,17 +88,17 @@ function OutputCard({
     : "";
 
   return (
-    <div className="bg-neutral-surface border border-neutral-border rounded-md shadow-card mb-4 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
-      <div className="bg-neutral-background px-3 py-2 border-b border-neutral-border flex items-center justify-between gap-2">
+    <div className="bg-neutral-surface border border-neutral-border rounded-lg shadow-card mb-5 overflow-hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-neutral-background px-4 py-3 border-b border-neutral-border flex items-center justify-between gap-2">
         <div className={`flex items-center text-sm font-semibold ${headerColor}`}>
-          <span className="mr-2 opacity-80">{icon}</span>
+          <span className="mr-2.5 opacity-80">{icon}</span>
           {title}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           {showBadge && (
             <button
               onClick={onCitationClick}
-              className="relative group/tip flex items-center gap-1 rounded-sm border border-brand-primary/30 bg-brand-primary/5 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/15"
+              className="relative group/tip flex items-center gap-1 rounded-md border border-brand-primary bg-brand-primary px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-black transition-colors hover:bg-brand-primary-hover shadow-sm"
               aria-label={`View citations: ${badgeLabel}`}
             >
               <BookOpen className="h-2.5 w-2.5" />
@@ -108,10 +108,10 @@ function OutputCard({
               </div>
             </button>
           )}
-          <CheckCircle2 className="w-4 h-4 text-semantic-success opacity-80" />
+          <CheckCircle2 className="w-5 h-5 text-semantic-success opacity-80" />
         </div>
       </div>
-      <div className="p-3">
+      <div className="p-4">
         {children}
       </div>
     </div>
@@ -120,9 +120,9 @@ function OutputCard({
 
 function Field({ label, value }: { label: string, value: React.ReactNode }) {
   return (
-    <div className="flex flex-col mb-3 last:mb-0">
-      <span className="text-[10px] text-neutral-text-tertiary uppercase tracking-wider font-bold mb-0.5">{label}</span>
-      <div className="text-xs text-neutral-text-primary font-medium leading-relaxed">
+    <div className="flex flex-col mb-4 last:mb-0">
+      <span className="text-xs text-neutral-text-tertiary uppercase tracking-wider font-bold mb-1">{label}</span>
+      <div className="text-sm text-neutral-text-primary font-medium leading-relaxed">
         {value}
       </div>
     </div>
@@ -149,26 +149,27 @@ interface AuditResultData {
 
 function BlackboardSkeleton() {
   return (
-    <div className="bg-neutral-surface border border-neutral-border rounded-md shadow-card mb-4 overflow-hidden opacity-60">
+    <div className="relative bg-neutral-surface border border-neutral-border rounded-md shadow-card mb-4 overflow-hidden opacity-80">
+      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-linear-to-r from-transparent via-neutral-text-primary/10 to-transparent z-10" />
       <div className="bg-neutral-background px-3 py-2 border-b border-neutral-border flex items-center justify-between">
         <div className="flex items-center space-x-2">
-          <div className="w-4 h-4 rounded bg-neutral-border/50 animate-pulse" />
-          <div className="w-24 h-3 rounded bg-neutral-border/50 animate-pulse" />
+          <div className="w-4 h-4 rounded bg-neutral-border/60" />
+          <div className="w-24 h-3 rounded bg-neutral-border/60" />
         </div>
       </div>
       <div className="p-3 space-y-4">
         <div className="space-y-2">
-          <div className="w-16 h-2 rounded bg-neutral-border/30 animate-pulse" />
-          <div className="w-full h-3 rounded bg-neutral-border/30 animate-pulse" />
+          <div className="w-16 h-2 rounded bg-neutral-border/40" />
+          <div className="w-full h-3 rounded bg-neutral-border/40" />
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <div className="w-12 h-2 rounded bg-neutral-border/30 animate-pulse" />
-            <div className="w-full h-3 rounded bg-neutral-border/30 animate-pulse" />
+            <div className="w-12 h-2 rounded bg-neutral-border/40" />
+            <div className="w-full h-3 rounded bg-neutral-border/40" />
           </div>
           <div className="space-y-2">
-            <div className="w-12 h-2 rounded bg-neutral-border/30 animate-pulse" />
-            <div className="w-full h-3 rounded bg-neutral-border/30 animate-pulse" />
+            <div className="w-12 h-2 rounded bg-neutral-border/40" />
+            <div className="w-full h-3 rounded bg-neutral-border/40" />
           </div>
         </div>
       </div>
@@ -203,14 +204,11 @@ export function BlackboardPane() {
   const [isSending, setIsSending] = useState(false);
   const [isChallengeMode, setIsChallengeMode] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [isEditingPayout, setIsEditingPayout] = useState(false);
-  const [overrideData, setOverrideData] = useState<any>(null);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [activeCitationSection, setActiveCitationSection] = useState<BlackboardSection | null>(null);
   const [activeEvidenceCitation, setActiveEvidenceCitation] = useState<Citation | null>(null);
   const audio_urls = useCaseStore(state => state.audio_urls);
   const isSyncing = status === CaseStatus.RUNNING;
-  const isAwaitingApproval = status === CaseStatus.AWAITING_APPROVAL || status === CaseStatus.ESCALATED;
 
   const sectionCitationCount = (section: BlackboardSection): { key: number; supporting: number } => {
     const s = citations?.[section];
@@ -307,10 +305,10 @@ export function BlackboardPane() {
         <Field label="Processed Documents" value={tagged.length} />
         {missing.length > 0 && (
           <div className="mt-3 p-3 bg-red-50/80 dark:bg-red-500/10 rounded-lg border border-red-200/80 dark:border-red-500/20 shadow-sm">
-            <span className="text-[10px] text-red-600 dark:text-red-400 font-bold uppercase tracking-widest block mb-2">Missing</span>
+            <span className="text-xs text-red-600 dark:text-red-400 font-bold uppercase tracking-widest block mb-2">Missing</span>
             <div className="flex flex-wrap gap-1.5">
               {missing.map((m: string) => (
-                <span key={m} className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-red-100/50 dark:bg-red-500/20 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30">
+                <span key={m} className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-red-100/50 dark:bg-red-500/20 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30">
                   {m.replace(/_/g, " ")}
                 </span>
               ))}
@@ -319,8 +317,8 @@ export function BlackboardPane() {
         )}
         {tagged.length > 0 && (
           <div className="mt-2">
-            <span className="text-[9px] text-neutral-text-tertiary font-bold uppercase tracking-wider block mb-1">Tags Found</span>
-            <div className="flex flex-wrap gap-1 mt-1">
+            <span className="text-[10px] text-neutral-text-tertiary font-bold uppercase tracking-wider block mb-1">Tags Found</span>
+            <div className="flex flex-wrap gap-2 mt-1">
               {tagged.map((t: string, i: number) => <Tag key={i}>{t}</Tag>)}
             </div>
           </div>
@@ -337,8 +335,8 @@ export function BlackboardPane() {
       citationCount={sectionCitationCount(BlackboardSection.POLICY_VERDICT)}
       onCitationClick={() => openCitations(BlackboardSection.POLICY_VERDICT)}
     >
-      <Field label="Claim Type" value={<Badge variant="secondary">{data.claim_type || "N/A"}</Badge>} />
-      <div className="grid grid-cols-2 gap-3 mt-2">
+      <Field label="Claim Type" value={<Badge variant="secondary" className="text-xs">{data.claim_type || "N/A"}</Badge>} />
+      <div className="grid grid-cols-2 gap-4 mt-3">
         <Field label="Max Payout" value={data.max_payout_myr != null ? `RM ${data.max_payout_myr.toLocaleString()}` : "N/A"} />
         <Field label="Excess" value={data.excess_myr != null ? `RM ${data.excess_myr.toLocaleString()}` : "N/A"} />
       </div>
@@ -362,16 +360,16 @@ export function BlackboardPane() {
           <Field label="Fault Split" value={<LiabilityBar claimant={insured} thirdParty={thirdParty} />} />
         )}
         <Field label="Incident Details" value={
-          <div className="text-[11px] text-neutral-text-primary mt-1">
+          <div className="text-sm text-neutral-text-primary mt-1">
             <div><span className="font-semibold">Time:</span> {data.incident_time || "N/A"}</div>
             <div><span className="font-semibold">Location:</span> {data.location || "N/A"}</div>
-            <div className="italic text-neutral-text-secondary mt-1">{data.description || "No narrative found."}</div>
+            <div className="italic text-neutral-text-secondary mt-1.5 line-clamp-3" title={data.description}>{data.description || "No narrative found."}</div>
           </div>
         } />
         <Field label="Point of Impact" value={
           <div className="flex items-center space-x-2 mt-1">
-            <Badge variant="outline">{data.poi_location || "N/A"}</Badge>
-            <span className="text-[10px] text-neutral-text-tertiary">Severity: {data.damage_severity || "N/A"}</span>
+            <Badge variant="outline" className="text-xs">{data.poi_location || "N/A"}</Badge>
+            <span className="text-xs text-neutral-text-tertiary">Severity: {data.damage_severity || "N/A"}</span>
           </div>
         } />
       </OutputCard>
@@ -386,13 +384,13 @@ export function BlackboardPane() {
       citationCount={sectionCitationCount(BlackboardSection.FRAUD_ASSESSMENT)}
       onCitationClick={() => openCitations(BlackboardSection.FRAUD_ASSESSMENT)}
     >
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between mb-2">
         <Field label="Risk Score" value={<span className="text-lg font-mono">{data.suspicion_score?.toFixed(2)}</span>} />
-        <Badge variant={data.suspicion_score > 0.5 ? "distructive" : "success"}>
+        <Badge variant={data.suspicion_score > 0.5 ? "distructive" : "success"} className="text-xs">
           {data.suspicion_score > 0.5 ? "High Risk" : "Low Risk"}
         </Badge>
       </div>
-      <div className="flex flex-wrap gap-1 mt-2">
+      <div className="flex flex-col gap-2 mt-3">
         {data.red_flags?.map((f: string) => <Tag key={f}>{f}</Tag>)}
       </div>
     </OutputCard>
@@ -402,121 +400,6 @@ export function BlackboardPane() {
     const breakdown = data.payout_breakdown;
     const isEscalated = data.status === "escalated" || data.recommended_action === "escalate";
     const missingFields: string[] = data.missing_fields || [];
-
-    const handleSaveOverride = async () => {
-      if (!caseId || !overrideData) return;
-      setIsSending(true);
-      try {
-        // Recalculate final payout based on overrides
-        const total = (overrideData.verified_parts || 0) + (overrideData.verified_labour || 0) + (overrideData.verified_paint || 0) + (overrideData.verified_towing || 0);
-        const depr = total * ((overrideData.depreciation_percent || 0) / 100);
-        const adjusted = total - depr;
-        const final = Math.max(adjusted - (overrideData.excess_deducted_myr || 0), 0);
-
-        const updatedBreakdown = {
-          ...overrideData,
-          repair_estimate_myr: total,
-          depreciation_deducted_myr: depr,
-          liability_adjusted_myr: adjusted,
-          final_payout_myr: final,
-        };
-
-        const updatedPayout = {
-          ...data,
-          payout_breakdown: updatedBreakdown,
-          status: "approved_manual",
-          rationale: "Manual override by officer."
-        };
-
-        await api.updateBlackboardSection(caseId, BlackboardSection.PAYOUT_RECOMMENDATION, updatedPayout);
-        // Update local store
-        useCaseStore.getState().handleAgentOutput({
-          agent: AgentId.PAYOUT,
-          case_id: caseId,
-          timestamp: new Date().toISOString(),
-          section: BlackboardSection.PAYOUT_RECOMMENDATION,
-          data: updatedPayout
-        } as SseAgentOutput);
-        setIsEditingPayout(false);
-      } catch (err) {
-        console.error("Failed to save override:", err);
-      } finally {
-        setIsSending(false);
-      }
-    };
-
-    if (isEditingPayout && overrideData) {
-      return (
-        <OutputCard title="Manual Payout Override" icon={<Edit3 className="w-4 h-4" />} status="warning">
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Parts (RM)</label>
-                <input
-                  type="number"
-                  value={overrideData.verified_parts}
-                  onChange={e => setOverrideData({ ...overrideData, verified_parts: parseFloat(e.target.value) })}
-                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Labour (RM)</label>
-                <input
-                  type="number"
-                  value={overrideData.verified_labour}
-                  onChange={e => setOverrideData({ ...overrideData, verified_labour: parseFloat(e.target.value) })}
-                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Paint (RM)</label>
-                <input
-                  type="number"
-                  value={overrideData.verified_paint}
-                  onChange={e => setOverrideData({ ...overrideData, verified_paint: parseFloat(e.target.value) })}
-                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Towing (RM)</label>
-                <input
-                  type="number"
-                  value={overrideData.verified_towing}
-                  onChange={e => setOverrideData({ ...overrideData, verified_towing: parseFloat(e.target.value) })}
-                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Excess (RM)</label>
-                <input
-                  type="number"
-                  value={overrideData.excess_deducted_myr}
-                  onChange={e => setOverrideData({ ...overrideData, excess_deducted_myr: parseFloat(e.target.value) })}
-                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[9px] uppercase font-bold text-neutral-text-tertiary">Depreciation (%)</label>
-                <input
-                  type="number"
-                  value={overrideData.depreciation_percent || 0}
-                  onChange={e => setOverrideData({ ...overrideData, depreciation_percent: parseFloat(e.target.value) })}
-                  className="w-full bg-neutral-background border border-neutral-border rounded p-1.5 text-xs text-neutral-text-primary"
-                />
-              </div>
-            </div>
-            <div className="flex space-x-2 pt-2">
-              <Button size="sm" variant="default" className="flex-1 bg-brand-primary text-black" onClick={handleSaveOverride} disabled={isSending}>
-                {isSending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Save Changes"}
-              </Button>
-              <Button size="sm" variant="secondary" className="flex-1" onClick={() => setIsEditingPayout(false)} disabled={isSending}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </OutputCard>
-      );
-    }
 
     // Human-readable labels for missing fields
     const fieldLabels: Record<string, string> = {
@@ -533,20 +416,20 @@ export function BlackboardPane() {
               <span className="text-xs font-bold text-semantic-danger uppercase tracking-wider">Escalated — Missing Data</span>
             </div>
 
-            <p className="text-[11px] text-neutral-text-secondary leading-relaxed">
+            <p className="text-sm text-neutral-text-secondary leading-relaxed line-clamp-3" title={data.rationale}>
               {data.rationale || "The payout engine cannot compute a final amount because required data is missing from upstream analysis."}
             </p>
 
             {missingFields.length > 0 && (
-              <div className="p-2.5 bg-semantic-danger/5 rounded border border-semantic-danger/15 space-y-1.5">
-                <span className="text-[9px] text-semantic-danger font-bold uppercase tracking-wider block">Missing Fields</span>
+              <div className="p-3 bg-semantic-danger/5 rounded-lg border border-semantic-danger/15 space-y-2">
+                <span className="text-xs text-semantic-danger font-bold uppercase tracking-wider block">Missing Fields</span>
                 {missingFields.map((field: string) => (
-                  <div key={field} className="flex items-start space-x-1.5">
-                    <span className="text-semantic-danger text-[10px] mt-0.5">•</span>
+                  <div key={field} className="flex items-start space-x-2">
+                    <span className="text-semantic-danger text-sm mt-0.5">•</span>
                     <div>
-                      <span className="text-[11px] font-semibold text-neutral-text-primary font-mono">{field}</span>
+                      <span className="text-sm font-semibold text-neutral-text-primary font-mono">{field}</span>
                       {fieldLabels[field] && (
-                        <span className="text-[10px] text-neutral-text-tertiary ml-1">— {fieldLabels[field]}</span>
+                        <span className="text-xs text-neutral-text-tertiary ml-1.5">— {fieldLabels[field]}</span>
                       )}
                     </div>
                   </div>
@@ -554,9 +437,9 @@ export function BlackboardPane() {
               </div>
             )}
 
-            <div className="pt-1">
-              <p className="text-[10px] text-neutral-text-tertiary italic">
-                Upload the missing document(s) via the Manage Hub, or approve manually to override with safe defaults.
+            <div className="pt-2">
+              <p className="text-xs text-neutral-text-tertiary italic">
+                Upload the missing document(s) via the Manage Hub.
               </p>
             </div>
           </div>
@@ -567,48 +450,26 @@ export function BlackboardPane() {
     return (
       <OutputCard title="Payout Recommendation" icon={<Landmark className="w-4 h-4" />} status="success">
         {breakdown ? (
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center text-xs">
+          <div className="space-y-2">
+            <div className="flex justify-between items-center text-sm">
               <span className="text-neutral-text-secondary">Repair Estimate</span>
               <span className="font-semibold text-neutral-text-primary">RM {breakdown.repair_estimate_myr?.toLocaleString() || 0}</span>
             </div>
-            <div className="flex justify-between items-center text-xs">
+            <div className="flex justify-between items-center text-sm">
               <span className="text-neutral-text-tertiary italic">Depreciation</span>
               <span className="text-semantic-danger/80">- RM {breakdown.depreciation_deducted_myr?.toLocaleString() || 0}</span>
             </div>
-            <div className="flex justify-between items-center text-xs">
+            <div className="flex justify-between items-center text-sm">
               <span className="text-neutral-text-tertiary italic">Excess</span>
               <span className="text-semantic-danger/80">- RM {breakdown.excess_deducted_myr?.toLocaleString() || 0}</span>
             </div>
-            <div className="border-t border-neutral-border pt-2 mt-2 flex justify-between items-center">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-text-secondary">Final Payout</span>
-              <span className="text-sm font-bold text-brand-primary">RM {breakdown.final_payout_myr?.toLocaleString() || 0}</span>
+            <div className="border-t border-neutral-border pt-3 mt-3 flex justify-between items-center">
+              <span className="text-xs font-bold uppercase tracking-wider text-neutral-text-secondary">Final Payout</span>
+              <span className="text-base font-bold text-brand-primary">RM {breakdown.final_payout_myr?.toLocaleString() || 0}</span>
             </div>
-
-            {isAwaitingApproval && !isEditingPayout && (
-              <div className="pt-3 border-t border-neutral-border/50 mt-3">
-                <button
-                  onClick={() => {
-                    setOverrideData({
-                      verified_parts: breakdown.verified_parts || 0,
-                      verified_labour: breakdown.verified_labour || 0,
-                      verified_paint: breakdown.verified_paint || 0,
-                      verified_towing: breakdown.verified_towing || 0,
-                      excess_deducted_myr: breakdown.excess_deducted_myr || 0,
-                      depreciation_percent: 0 // Default to re-calculate
-                    });
-                    setIsEditingPayout(true);
-                  }}
-                  className="w-full py-1.5 border border-brand-primary/30 text-brand-primary rounded-md text-[10px] font-bold uppercase tracking-widest hover:bg-brand-primary/10 transition-colors flex items-center justify-center"
-                >
-                  <Edit3 className="w-3 h-3 mr-2" />
-                  Override Calculations
-                </button>
-              </div>
-            )}
           </div>
         ) : (
-          <div className="text-[11px] text-neutral-text-secondary italic">
+          <div className="text-sm text-neutral-text-secondary italic line-clamp-3" title={data.rationale}>
             {data.rationale || "Calculating final payout..."}
           </div>
         )}
@@ -626,9 +487,9 @@ export function BlackboardPane() {
     >
       <Field label="Verified Estimate" value={data.verified_total != null ? `RM ${data.verified_total.toLocaleString()}` : "N/A"} />
       {data.suspicious_parts?.length > 0 && (
-        <div className="mt-2">
-          <span className="text-[9px] text-semantic-warning font-bold uppercase tracking-wider block mb-1">Suspicious Parts</span>
-          <div className="flex flex-wrap gap-1 mt-1">
+        <div className="mt-3">
+          <span className="text-xs text-semantic-warning font-bold uppercase tracking-wider block mb-1.5">Suspicious Parts</span>
+          <div className="flex flex-wrap gap-2 mt-1">
             {data.suspicious_parts.map((p: string) => <Tag key={p}>{p}</Tag>)}
           </div>
         </div>
@@ -655,22 +516,23 @@ export function BlackboardPane() {
             </Badge>
           }
         />
-        <Field label="Summary" value={<span className="text-[11px] leading-relaxed">{data.summary || data.findings || "No issues."}</span>} />
-        <Field label="Final Recommendation" value={<Badge variant="outline">{data.final_recommendation || data.suggested_action || "N/A"}</Badge>} />
+        <Field label="Summary" value={<span className="text-sm leading-relaxed line-clamp-3" title={data.summary || data.findings}>{data.summary || data.findings || "No issues."}</span>} />
+        <Field label="Final Recommendation" value={<Badge variant="outline" className="text-xs">{data.final_recommendation || data.suggested_action || "N/A"}</Badge>} />
         {unresolved.length > 0 && (
           <Field
             label="Unresolved Issues"
             value={
-              <div className="space-y-1">
-                {unresolved.map((issue, idx: number) => (
-                  <div key={idx}>{typeof issue === "string" ? issue : issue.issue || JSON.stringify(issue)}</div>
-                ))}
+              <div className="space-y-1.5">
+                {unresolved.map((issue, idx: number) => {
+                  const text = typeof issue === "string" ? issue : issue.issue || JSON.stringify(issue);
+                  return <div key={idx} className="line-clamp-2" title={text}>{text}</div>
+                })}
               </div>
             }
           />
         )}
         {data.human_review_notes && (
-          <Field label="Human Review Notes" value={<span className="text-[11px] leading-relaxed">{data.human_review_notes}</span>} />
+          <Field label="Human Review Notes" value={<span className="text-sm leading-relaxed line-clamp-2" title={data.human_review_notes}>{data.human_review_notes}</span>} />
         )}
       </OutputCard>
     );
@@ -695,8 +557,8 @@ export function BlackboardPane() {
               <div className="flex items-center space-x-2 overflow-hidden">
                 <FileKey className="w-3.5 h-3.5 text-brand-primary" />
                 <div className="flex flex-col overflow-hidden">
-                  <span className="text-[11px] font-medium text-neutral-text-primary truncate">{art.filename}</span>
-                  <span className="text-[9px] text-neutral-text-tertiary uppercase">v{art.version} • {art.artifact_type.replace(/_/g, ' ')}</span>
+                  <span className="text-xs font-medium text-neutral-text-primary truncate">{art.filename}</span>
+                  <span className="text-[10px] text-neutral-text-tertiary uppercase">v{art.version} • {art.artifact_type.replace(/_/g, ' ')}</span>
                 </div>
               </div>
               <ArrowUp className="w-3 h-3 rotate-90 text-neutral-text-tertiary group-hover:text-brand-primary transition-colors" />

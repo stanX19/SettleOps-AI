@@ -31,6 +31,16 @@
   --spacing-u-md: 16px;
   --spacing-u-lg: 24px;
   --spacing-u-xl: 32px;
+
+  --animate-shimmer: shimmer 2s infinite linear;
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
 }
 
 :root {
@@ -96,12 +106,6 @@ body {
 
   50% {
     box-shadow: 0 0 0 4px rgba(255, 193, 7, 0);
-  }
-}
-
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
   }
 }
 

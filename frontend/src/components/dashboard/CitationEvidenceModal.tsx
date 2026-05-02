@@ -34,40 +34,40 @@ export function CitationEvidenceModal({
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-120 bg-black/70 backdrop-blur-sm animate-in fade-in" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-130 h-[88vh] w-[94vw] max-w-6xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-neutral-border bg-neutral-background shadow-2xl animate-in fade-in zoom-in-95 focus:outline-none">
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-130 flex h-[88vh] w-[94vw] max-w-6xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-neutral-border bg-neutral-background shadow-2xl animate-in fade-in zoom-in-95 focus:outline-none">
           {citation && (
             <>
-              <div className="flex items-start justify-between gap-3 border-b border-neutral-border px-5 py-3">
+              <div className="flex-none flex items-start justify-between gap-4 border-b border-neutral-border px-6 py-4 bg-neutral-surface">
                 <div className="min-w-0">
-                  <Dialog.Title className="truncate text-sm font-semibold text-neutral-text-primary">
+                  <Dialog.Title className="truncate text-lg font-semibold text-neutral-text-primary">
                     {citation.filename}
                   </Dialog.Title>
-                  <Dialog.Description className="mt-0.5 flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-neutral-text-tertiary">
-                    <Bot className="h-3 w-3" />
+                  <Dialog.Description className="mt-1 flex items-center gap-2 text-xs uppercase tracking-widest text-neutral-text-tertiary">
+                    <Bot className="h-4 w-4" />
                     cited by {citation.node_id} - {citation.field_path}
                   </Dialog.Description>
                 </div>
                 <Dialog.Close
-                  className="rounded-md p-1 text-neutral-text-tertiary transition-colors hover:bg-neutral-surface hover:text-neutral-text-primary"
+                  className="rounded-md p-2 text-neutral-text-tertiary transition-colors hover:bg-neutral-border hover:text-neutral-text-primary"
                   aria-label="Close"
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-5 w-5" />
                 </Dialog.Close>
               </div>
 
-              <div className="grid h-[calc(88vh-57px)] gap-4 p-5 md:grid-cols-[minmax(0,1fr)_20rem]">
-                <div className="min-h-0 overflow-hidden rounded-md border border-neutral-border bg-neutral-surface">
+              <div className="flex-1 grid min-h-0 gap-6 p-6 md:grid-cols-[minmax(0,1fr)_24rem]">
+                <div className="min-h-0 overflow-hidden rounded-lg border border-neutral-border bg-neutral-surface shadow-sm">
                   {!url ? (
-                    <div className="flex h-full items-center justify-center px-6 py-12 text-center text-xs text-neutral-text-tertiary">
+                    <div className="flex h-full items-center justify-center px-6 py-12 text-center text-sm text-neutral-text-tertiary">
                       Source file not found in current documents.
                     </div>
                   ) : isImage ? (
-                    <div className="flex h-full min-h-88 items-center justify-center bg-neutral-background p-3">
+                    <div className="flex h-full min-h-88 items-center justify-center bg-neutral-background p-4">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={url}
                         alt={citation.filename}
-                        className="block max-h-full max-w-full object-contain"
+                        className="block max-h-full max-w-full object-contain rounded-md shadow-sm"
                       />
                     </div>
                   ) : isPdf && evidenceUrl ? (
@@ -86,10 +86,10 @@ export function CitationEvidenceModal({
                   )}
                 </div>
 
-                <div className="flex min-h-0 flex-col gap-3 overflow-y-auto text-xs leading-relaxed text-neutral-text-primary">
-                  <section className="rounded-md border border-neutral-border bg-neutral-surface p-3">
-                    <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-neutral-text-tertiary">
-                      {isImage ? <ImageIcon className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                <div className="flex min-h-0 flex-col gap-5 overflow-y-auto text-sm leading-relaxed text-neutral-text-primary pr-2 pb-2 custom-scrollbar">
+                  <section className="rounded-lg border border-neutral-border bg-neutral-surface p-4 shadow-sm">
+                    <div className="mb-2.5 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-neutral-text-tertiary">
+                      {isImage ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                       Evidence Type
                     </div>
                     <p className="font-medium text-neutral-text-primary">
@@ -98,38 +98,40 @@ export function CitationEvidenceModal({
                   </section>
 
                   {citation.excerpt && (
-                    <section className="rounded-md border border-brand-primary/30 bg-brand-primary/10 p-3">
-                      <h3 className="mb-1 text-[10px] font-bold uppercase tracking-widest text-brand-primary">
+                    <section className="rounded-lg border border-brand-primary/40 bg-brand-primary/10 p-4 shadow-sm">
+                      <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-brand-primary">
                         Cited excerpt
                       </h3>
-                      <mark className="bg-brand-primary/25 px-1 text-neutral-text-primary">
+                      <mark className="bg-brand-primary/25 px-1.5 py-0.5 rounded-sm text-neutral-text-primary inline-block">
                         {citation.excerpt}
                       </mark>
                     </section>
                   )}
 
                   <section>
-                    <h3 className="mb-1 text-[10px] font-bold uppercase tracking-widest text-neutral-text-tertiary">
+                    <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-neutral-text-tertiary">
                       {isImage ? "What is visible" : "What this source says"}
                     </h3>
-                    <p>{citation.comment}</p>
+                    <p className="text-neutral-text-secondary">{citation.comment}</p>
                   </section>
                   <section>
-                    <h3 className="mb-1 text-[10px] font-bold uppercase tracking-widest text-neutral-text-tertiary">
+                    <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-neutral-text-tertiary">
                       Supports conclusion
                     </h3>
-                    <p>{citation.conclusion}</p>
+                    <p className="text-neutral-text-secondary">{citation.conclusion}</p>
                   </section>
                   {url && (
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-auto inline-flex items-center gap-1.5 self-start rounded-md border border-brand-primary/30 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/10"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      Open original
-                    </a>
+                    <div className="mt-auto pt-2">
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-md border border-brand-primary/40 bg-brand-primary/10 px-4 py-2.5 text-xs font-bold uppercase tracking-widest text-brand-primary transition-colors hover:bg-brand-primary/20 shadow-sm"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        Open original
+                      </a>
+                    </div>
                   )}
                 </div>
               </div>
