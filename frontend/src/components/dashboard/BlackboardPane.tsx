@@ -150,7 +150,6 @@ interface AuditResultData {
 function BlackboardSkeleton() {
   return (
     <div className="relative bg-neutral-surface border border-neutral-border rounded-md shadow-card mb-4 overflow-hidden opacity-80">
-      <div className="absolute inset-0 -translate-x-full animate-shimmer bg-linear-to-r from-transparent via-neutral-text-primary/10 to-transparent z-10" />
       <div className="bg-neutral-background px-3 py-2 border-b border-neutral-border flex items-center justify-between">
         <div className="flex items-center space-x-2">
           <div className="w-4 h-4 rounded bg-neutral-border/60" />

@@ -12,6 +12,7 @@ import {
   MarkerType,
   Edge,
   Node,
+  ReactFlowInstance,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/primitives/Button';
@@ -311,6 +312,9 @@ export function WorkflowPane() {
   // Track whether adjuster node has been injected
   const adjusterInjectedRef = useRef(false);
 
+  // ReactFlow instance ref — used to re-fit the view when visible nodes change
+  const reactFlowInstanceRef = useRef<ReactFlowInstance | null>(null);
+
   // Update ReactFlow nodes/edges whenever the derived initial layout changes
   useEffect(() => {
     if (initialNodes.length > 0) {
@@ -570,6 +574,23 @@ export function WorkflowPane() {
     );
   }, [agents, caseStatus, setNodes, setEdges]);
 
+  // Re-fit the view whenever the set of visible nodes changes structurally
+  // (e.g. Decision Gate becomes visible, Adjuster node is injected, topology changes).
+  // This ensures dynamically added nodes don't get cut off below the viewport.
+  const visibleNodeSignature = useMemo(
+    () => nodes.filter(n => !n.hidden).map(n => n.id).sort().join('|'),
+    [nodes]
+  );
+
+  useEffect(() => {
+    if (!reactFlowInstanceRef.current) return;
+    // Defer to next frame so layout/measurements settle before fitting
+    const rafId = requestAnimationFrame(() => {
+      reactFlowInstanceRef.current?.fitView({ padding: 0.2, duration: 400 });
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [visibleNodeSignature]);
+
   const onNodeClick = (_: React.MouseEvent, node: Node) => {
     let agentId: AgentId | null = null;
     let subtaskId: string | null = null;
@@ -702,10 +723,11 @@ export function WorkflowPane() {
         onEdgesChange={onEdgesChange}
         nodeTypes={nodeTypes}
         onNodeClick={onNodeClick}
+        onInit={(instance) => { reactFlowInstanceRef.current = instance; }}
         fitView
         fitViewOptions={{ padding: 0.2 }}
         className="bg-neutral-background"
-        minZoom={0.5}
+        minZoom={0.3}
         maxZoom={1.5}
         proOptions={{ hideAttribution: true }}
       >

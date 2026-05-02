@@ -225,7 +225,7 @@ export function AgentDetailsModal({
                 <textarea
                   value={promptDraft}
                   onChange={(e) => setPromptDraft(e.target.value)}
-                  className="w-full min-h-[160px] p-3 rounded-lg bg-neutral-background border border-brand-primary/30 text-sm text-neutral-text-primary font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                  className="w-full min-h-[160px] p-3 rounded-lg bg-white border border-brand-primary/30 text-sm text-neutral-text-primary font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
                 />
                 {promptError && (
                   <p className="text-xs text-semantic-danger">{promptError}</p>
@@ -234,9 +234,9 @@ export function AgentDetailsModal({
                   <Button
                     onClick={handleSavePrompt}
                     disabled={saving || !promptDraft.trim()}
-                    className="bg-brand-primary text-black hover:bg-brand-primary-hover font-semibold shadow-sm text-xs py-1 px-3"
+                    className="bg-brand-primary text-black hover:bg-brand-primary-hover font-semibold shadow-none text-xs py-0.5 px-2.5 h-7"
                   >
-                    <Save className="w-3.5 h-3.5 mr-1" />
+                    <Save className="w-3 h-3 mr-1" />
                     {saving ? "Saving..." : "Save"}
                   </Button>
                   <Button
@@ -245,7 +245,7 @@ export function AgentDetailsModal({
                       setIsEditing(false);
                       setPromptError(null);
                     }}
-                    className="text-xs py-1 px-3"
+                    className="text-xs py-0.5 px-2.5 h-7"
                   >
                     Cancel
                   </Button>
@@ -254,9 +254,9 @@ export function AgentDetailsModal({
                       variant="outline"
                       onClick={handleResetPrompt}
                       disabled={saving}
-                      className="ml-auto text-xs py-1 px-3 text-semantic-warning border-semantic-warning/30 hover:bg-semantic-warning/10"
+                      className="ml-auto text-xs py-0.5 px-2.5 h-7 text-semantic-warning border-semantic-warning/30 hover:bg-semantic-warning/10"
                     >
-                      <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                      <RotateCcw className="w-3 h-3 mr-1" />
                       Reset to Default
                     </Button>
                   )}
