@@ -1057,7 +1057,10 @@ async def run_partial_pipeline(
         if target_agent is AgentId.INTAKE:
             workflow_state = _to_workflow_state(state)
             workflow_state["status"] = "running"
-            final_state_wrapper = await run_workflow_with_sse(case_id, workflow_state)
+            final_state_wrapper = await run_workflow_with_sse(
+                case_id, workflow_state,
+                interrupt_for_adjuster=state.adjuster_report_path is None,
+            )
         elif target_agent in _CLUSTER_RERUN_TARGETS:
             target_results_key = f"{target_agent.value}_results"
             final_state_wrapper = await resume_workflow_with_sse_engine(

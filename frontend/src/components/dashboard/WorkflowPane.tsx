@@ -523,7 +523,7 @@ export function WorkflowPane() {
 
   // ── Node + static edge updates from live agent state ─────────────────────
   useEffect(() => {
-    const hasRerunHistory = rerun_events.length > 0;
+    const hasRerunHistory = rerun_events.some(ev => ev.kind !== RerunKind.CITATION_RETRY);
     const auditorIsRouting =
       caseStatus === CaseStatus.RUNNING &&
       agents[AgentId.AUDITOR]?.status === AgentStatus.COMPLETED;
@@ -557,14 +557,16 @@ export function WorkflowPane() {
       // Top-level agents
       if (agents[node.id]) {
         const s = agents[node.id];
+        const detail = node.id === AgentId.ADJUSTER
+          ? s.status === AgentStatus.WAITING    ? 'Upload Required'
+          : s.status === AgentStatus.WORKING    ? 'Reviewing Report'
+          : s.status === AgentStatus.COMPLETED  ? 'Report Reviewed'
+          : s.status === AgentStatus.ERROR      ? 'Review Failed' : 'Pending'
+          : s.status === AgentStatus.WORKING    ? 'Actively Processing'
+          : s.status === AgentStatus.COMPLETED  ? 'Task Finished' : 'Pending';
         return {
           ...node,
-          data: {
-            ...node.data,
-            status: s.status,
-            detail: s.status === AgentStatus.WORKING ? 'Actively Processing'
-                  : s.status === AgentStatus.COMPLETED ? 'Task Finished' : 'Pending'
-          }
+          data: { ...node.data, status: s.status, detail }
         };
       }
 

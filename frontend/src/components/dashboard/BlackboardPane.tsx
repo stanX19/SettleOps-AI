@@ -346,6 +346,12 @@ export function BlackboardPane() {
     if (!message.trim() || isSending || !caseId) return;
 
     const currentMessage = message;
+
+    if (isChallengeMode && (pendingChallengeAgent || undefined) === AgentId.INTAKE) {
+      const confirmed = window.confirm("Rerunning intake restarts the case pipeline and refreshes downstream outputs. Continue?");
+      if (!confirmed) return;
+    }
+
     setMessage("");
     setIsSending(true);
 
@@ -360,10 +366,6 @@ export function BlackboardPane() {
 
       if (isChallengeMode) {
         const targetAgent = pendingChallengeAgent || undefined;
-        if (targetAgent === AgentId.INTAKE) {
-          const confirmed = window.confirm("Rerunning intake restarts the case pipeline and refreshes downstream outputs. Continue?");
-          if (!confirmed) return;
-        }
         await api.sendMessage(caseId, currentMessage, undefined, targetAgent);
         setPendingChallengeAgent(null);
         // The clarification or rerun ack will be delivered via the global SSE stream

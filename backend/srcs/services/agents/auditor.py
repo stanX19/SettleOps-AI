@@ -164,7 +164,7 @@ def _ensure_adjuster_finding_in_audit(
     status = finding.get("status") if isinstance(finding, dict) else None
     point = f"Adjuster: {finding_text}"
 
-    if status == "within_range":
+    if status in ("within_range", "within_approved_amount"):
         summary = _as_display_points(result.get("summary"), max_items=3)
         summary.append(point)
         result["summary"] = "\n".join(summary[-3:])

@@ -7,7 +7,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from srcs.schemas.citations import CitationSummary
 
 
@@ -190,10 +190,24 @@ class DeclineResponse(BaseModel):
     status: CaseStatus
 
 
+_RERUNABLE_AGENTS = {
+    AgentId.INTAKE, AgentId.POLICY, AgentId.LIABILITY,
+    AgentId.DAMAGE, AgentId.FRAUD, AgentId.PAYOUT,
+    AgentId.ADJUSTER, AgentId.AUDITOR,
+}
+
+
 class MessageRequest(BaseModel):
     message: str = Field(min_length=1)
     type: OfficerMessageType = OfficerMessageType.FREEFORM
     target_agent: Optional[AgentId] = None
+
+    @field_validator("target_agent")
+    @classmethod
+    def validate_target_agent(cls, v: Optional[AgentId]) -> Optional[AgentId]:
+        if v is not None and v not in _RERUNABLE_AGENTS:
+            raise ValueError(f"Agent '{v}' cannot be targeted for rerun")
+        return v
 
 
 class MessageRerunResponse(BaseModel):

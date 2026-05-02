@@ -367,8 +367,11 @@ def adjuster_request_node(state: ClaimWorkflowState) -> dict[str, Any]:
         "trace_log": [
             f"[AdjusterRequest] Physical inspection requested. "
             + (
-                f"Damage severity {severity_pct}% > 40% threshold."
-                if severity_pct > 0
+                f"Damage severity {severity_pct}% > 40% threshold; "
+                f"verified total MYR {verified_total:,.2f} > {int(_THRESHOLD_RATIO * 100)}% of cap MYR {max_payout:,.2f}."
+                if adjuster_trigger_type == "both"
+                else f"Damage severity {severity_pct}% > 40% threshold."
+                if adjuster_trigger_type == "severity"
                 else f"Verified total MYR {verified_total:,.2f} > {int(_THRESHOLD_RATIO * 100)}% of cap MYR {max_payout:,.2f}."
             )
         ],

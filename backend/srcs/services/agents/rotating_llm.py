@@ -466,9 +466,9 @@ class RotatingLLM:
                 self._log_health()
                 last_exc = exc
 
-                # Back off on transient provider failures so a brief 5xx burst
-                # does not fail a user-triggered rerun immediately.
-                if attempt < self.MAX_RETRIES:
+                # Back off only on transient provider failures; deterministic
+                # errors (bad auth, invalid request) fail fast without delay.
+                if outcome == _Outcome.RATE_LIMIT and attempt < self.MAX_RETRIES:
                     await asyncio.sleep(2 ** attempt)
 
         raise last_exc
