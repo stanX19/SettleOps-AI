@@ -571,7 +571,7 @@ export function WorkflowPane() {
       {/* Error Overlay for failed fetches */}
       {!topology && caseStatus === CaseStatus.SUBMITTED && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-neutral-background/80 backdrop-blur-sm p-4">
-          <div className="bg-neutral-surface p-6 rounded-xl border border-neutral-border shadow-card min-w-[300px] max-w-md text-center">
+          <div className="bg-neutral-surface p-6 rounded-lg border border-neutral-border shadow-card min-w-[300px] max-w-md text-center">
             <div className="w-12 h-12 bg-semantic-danger/10 text-semantic-danger rounded-full flex items-center justify-center mx-auto mb-4">
               <Settings className="w-6 h-6 animate-spin" />
             </div>

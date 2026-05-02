@@ -260,7 +260,11 @@ async def policy_analysis_task(
     """
 
     try:
-        response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+        response = await rotating_llm.send_message_get_json(
+            prompt,
+            temperature=0.0,
+            mock_data={"data": _POLICY_DEFAULTS, "reasoning": "Mocked", "citations": []}
+        )
         raw = response.json_data if response.json_data else {}
         data = raw.get("data", raw)
         return {
@@ -295,7 +299,11 @@ async def liability_narrative_task(
     {citation_block}
     """
     try:
-        response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+        response = await rotating_llm.send_message_get_json(
+            prompt,
+            temperature=0.0,
+            mock_data={"data": {}, "reasoning": "Mocked", "citations": []}
+        )
         raw = response.json_data if response.json_data else {}
         return {
             "data": raw.get("data", raw),
@@ -337,7 +345,11 @@ async def liability_poi_task(
     {citation_block}
     """
     try:
-        response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+        response = await rotating_llm.send_message_get_json(
+            prompt,
+            temperature=0.0,
+            mock_data={"data": {"poi_location": "front", "damage_severity": "minor"}, "reasoning": "Mocked", "citations": []}
+        )
         raw = response.json_data if response.json_data else {}
         return {
             "data": raw.get("data", raw),
@@ -396,7 +408,11 @@ async def damage_quote_audit_task(
     {citation_block}
     """
     try:
-        response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+        response = await rotating_llm.send_message_get_json(
+            prompt,
+            temperature=0.0,
+            mock_data={"data": _DAMAGE_DEFAULTS, "reasoning": "Mocked", "citations": []}
+        )
         raw = response.json_data if response.json_data else {}
         return {
             "data": _ensure_damage_fields(raw),
@@ -507,7 +523,11 @@ async def fraud_assessment_task(
     {citation_block}
     """
     try:
-        response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+        response = await rotating_llm.send_message_get_json(
+            prompt,
+            temperature=0.0,
+            mock_data={"data": {"suspicion_score": 0.0, "red_flags": []}, "reasoning": "Mocked", "citations": []}
+        )
         raw = response.json_data if response.json_data else {}
         return {
             "data": raw.get("data", raw),
@@ -557,7 +577,20 @@ async def entity_extraction_task(
     Return JSON format: {{"data": {{...}}, "reasoning": "..."}}
     """
     try:
-        response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+        response = await rotating_llm.send_message_get_json(
+            prompt,
+            temperature=0.0,
+            mock_data={
+                "data": {
+                    "claim_no": "CLM-MOCK-999",
+                    "policy_no": "POL-MOCK-123",
+                    "insured_name": "MOCK USER",
+                    "vehicle_no": "MOCK 8888",
+                    "accident_date": "2024-01-01"
+                },
+                "reasoning": "Mock mode enabled."
+            }
+        )
         raw = response.json_data if response.json_data else {}
         return {"data": raw.get("data", raw), "reasoning": raw.get("reasoning", "Extracted")}
     except Exception as e:

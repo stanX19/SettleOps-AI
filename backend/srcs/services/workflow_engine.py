@@ -124,7 +124,7 @@ def build_workflow() -> StateGraph:
     # 3. Payout & Audit Phase
     builder.add_node("payout_node", node_sse_wrapper("payout_node", payout_node))
     builder.add_node(WorkflowNodes.ADJUSTER_REQUEST, node_sse_wrapper(WorkflowNodes.ADJUSTER_REQUEST, adjuster_request_node))
-    builder.add_node(WorkflowNodes.WAIT_FOR_ADJUSTER, wait_for_adjuster_node)
+    builder.add_node(WorkflowNodes.WAIT_FOR_ADJUSTER, node_sse_wrapper(WorkflowNodes.WAIT_FOR_ADJUSTER, wait_for_adjuster_node))
     builder.add_node("auditor_node", node_sse_wrapper("auditor_node", auditor_node))
 
     # 4. Refinement & Decision Phase
@@ -214,6 +214,7 @@ _NODE_TO_AGENT = {
     WorkflowNodes.FRAUD_CLUSTER: AgentId.FRAUD,
     "payout_node": AgentId.PAYOUT,
     WorkflowNodes.ADJUSTER_REQUEST: AgentId.ADJUSTER,
+    WorkflowNodes.WAIT_FOR_ADJUSTER: AgentId.ADJUSTER,
     "auditor_node": AgentId.AUDITOR,
 }
 
@@ -227,6 +228,7 @@ _NODE_TO_SECTION = {
     WorkflowNodes.FRAUD_CLUSTER: BlackboardSection.FRAUD_ASSESSMENT,
     "payout_node": BlackboardSection.PAYOUT_RECOMMENDATION,
     WorkflowNodes.ADJUSTER_REQUEST: BlackboardSection.ADJUSTER_REQUEST,
+    WorkflowNodes.WAIT_FOR_ADJUSTER: BlackboardSection.ADJUSTER_REQUEST,
     "auditor_node": BlackboardSection.AUDIT_RESULT,
 }
 

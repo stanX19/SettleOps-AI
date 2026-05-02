@@ -48,6 +48,7 @@ export enum BlackboardSection {
 
 export enum ArtifactType {
   DECISION_PDF = "decision_pdf",
+  DECISION_PDF_SIGNED = "decision_pdf_signed",
   AUDIT_TRAIL_JSON = "audit_trail_json",
 }
 
@@ -143,6 +144,7 @@ export interface CaseSnapshot {
   awaiting_clarification: boolean;
   chatbox_enabled: boolean;
   current_agent: AgentId | null;
+  pdf_ready: boolean;
   topology?: Record<string, string[]>;
 }
 

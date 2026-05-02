@@ -125,7 +125,7 @@ export default function WorkflowCasePage({ params }: PageProps) {
       </div>
       
       {/* Bottom Action Bar */}
-      <ActionBar />
+      <ActionBar onOpenAdjusterUpload={() => setAdjusterModalOpen(true)} />
 
       {/* Adjuster Upload Modal — auto-opens on AWAITING_ADJUSTER */}
       <AdjusterUploadModal

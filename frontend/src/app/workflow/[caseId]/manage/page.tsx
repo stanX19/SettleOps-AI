@@ -168,8 +168,12 @@ export default function ManageCasePage({ params }: PageProps) {
   };
 
   const handleStartWorkflow = async () => {
-    const localFiles = files.filter(f => !f.isRemote);
-    if (localFiles.length === 0 && files.filter(f => f.isRemote).length === 0) {
+    if (status !== CaseStatus.DRAFT) {
+      setError("This case has already been started.");
+      return;
+    }
+    const localFiles = files.filter(f => !f.isRemote && f.file);
+    if (localFiles.length === 0) {
       setError("Please upload evidence documents first.");
       return;
     }
@@ -178,11 +182,10 @@ export default function ManageCasePage({ params }: PageProps) {
     setError(null);
 
     try {
-      const documentFiles = files.filter(f => !f.isRemote && f.file).map(f => f.file!);
+      const documentFiles = localFiles.map(f => f.file!);
       await api.submitDocuments(caseId, documentFiles);
-
-      // Redirect to main workflow view
-      router.push(`/workflow/${caseId}`);
+      showToast("Redirecting to workflow view");
+      setTimeout(() => router.push(`/workflow/${caseId}`), 900);
     } catch (err: any) {
       console.error("Failed to start workflow:", err);
       setError(err.message || "An unexpected error occurred while starting the workflow.");
@@ -220,19 +223,21 @@ export default function ManageCasePage({ params }: PageProps) {
         </div>
 
         <div className="flex items-center space-x-3">
-          <Button
-            onClick={handleStartWorkflow}
-            disabled={isStarting || files.filter(f => !f.isRemote).length === 0}
-            variant="outline"
-            className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all disabled:opacity-50"
-          >
-            {isStarting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Play className="w-4 h-4 fill-current" />
-            )}
-            <span>{isStarting ? "Initializing..." : "Start Workflow"}</span>
-          </Button>
+          {status === CaseStatus.DRAFT && (
+            <Button
+              onClick={handleStartWorkflow}
+              disabled={isStarting || files.filter(f => !f.isRemote && f.file).length === 0}
+              variant="outline"
+              className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all disabled:opacity-50"
+            >
+              {isStarting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Play className="w-4 h-4 fill-current" />
+              )}
+              <span>{isStarting ? "Initializing..." : "Start Workflow"}</span>
+            </Button>
+          )}
           <Button onClick={handleUploadClick} className="flex items-center space-x-2">
             <Upload className="w-4 h-4" />
             <span>Upload New Evidence</span>
@@ -256,7 +261,7 @@ export default function ManageCasePage({ params }: PageProps) {
 
           {/* Document Management Hub */}
           <div className="bg-neutral-surface border border-neutral-border rounded-lg shadow-sm flex flex-col h-full overflow-hidden">
-            <div className="p-4 border-b border-neutral-border flex items-center justify-between flex-shrink-0 bg-neutral-background/30">
+            <div className="h-[60px] p-4 border-b border-neutral-border flex items-center justify-between flex-shrink-0 bg-neutral-background/30">
               <div className="flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-brand-primary" />
                 <h2 className="text-sm font-semibold text-neutral-text-primary">Document Evidence Slots</h2>
@@ -312,35 +317,48 @@ export default function ManageCasePage({ params }: PageProps) {
         {/* Right Column: PDF Report Preview */}
         <div className="col-span-12 lg:col-span-4 flex flex-col min-h-0">
           <div className="bg-neutral-surface border border-neutral-border rounded-lg h-full flex flex-col shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30 flex-shrink-0">
+            <div className="h-[60px] px-4 py-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30 flex-shrink-0">
               <div className="flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-brand-primary" />
                 <h3 className="text-sm font-semibold text-neutral-text-primary">Final Report Preview</h3>
               </div>
               <div className="flex items-center space-x-2">
-                {snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded) && (
-                  <a
-                    href={snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded).url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Button variant="ghost" size="sm" className="h-8 text-[11px] text-brand-primary hover:text-brand-primary/80">
-                      <Upload className="w-3 h-3 mr-1 rotate-180" /> Download PDF
-                    </Button>
-                  </a>
-                )}
+                {(() => {
+                  const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+                  const artifact = snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf_signed' && !a.superseded)
+                    || snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded);
+
+                  if (!artifact) return null;
+
+                  return (
+                    <a
+                      href={`${apiBase}${artifact.url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="ghost" size="sm" className="h-8 text-[11px] text-brand-primary hover:text-brand-primary/80">
+                        <Upload className="w-3 h-3 mr-1 rotate-180" /> Download PDF
+                      </Button>
+                    </a>
+                  );
+                })()}
               </div>
             </div>
 
             {(() => {
-              const pdfArtifact = snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded);
+              const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+              // Prefer the signed artifact if it exists (case approved with signature),
+              // otherwise fall back to the unsigned draft.
+              const pdfArtifact = snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf_signed' && !a.superseded)
+                || snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded);
 
               if (pdfArtifact) {
                 return (
-                  <div className="flex-1 w-full h-full bg-neutral-background">
+                  <div className="flex-1 w-full h-full bg-neutral-background overflow-hidden relative">
                     <iframe
-                      src={pdfArtifact.url}
-                      className="w-full h-full border-none"
+                      src={`${apiBase}${pdfArtifact.url}`}
+                      className="border-none absolute inset-0"
+                      style={{ width: "calc(100% + 18px)", height: "calc(100% + 18px)" }}
                       title="Settlement Report Preview"
                     />
                   </div>
@@ -436,8 +454,8 @@ function StatusBadge({ status }: { status: CaseStatus }) {
       styles: 'bg-brand-primary'
     },
     [CaseStatus.AWAITING_APPROVAL]: {
-      label: 'Completed',
-      styles: 'bg-semantic-success'
+      label: 'Pending Review',
+      styles: 'bg-semantic-warning'
     },
     [CaseStatus.AWAITING_ADJUSTER]: {
       label: 'Awaiting Adjuster',
@@ -445,7 +463,7 @@ function StatusBadge({ status }: { status: CaseStatus }) {
     },
     [CaseStatus.APPROVED]: {
       label: 'Approved',
-      styles: 'bg-blue-600'
+      styles: 'bg-semantic-success'
     },
     [CaseStatus.DECLINED]: {
       label: 'Rejected',

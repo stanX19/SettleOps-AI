@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from srcs.schemas.case_dto import (
     ApproveResponse,
     ArtifactType,
+    BlackboardSection,
     CaseCreateResponse,
     CaseListItem,
     CaseSnapshot,
@@ -517,7 +518,15 @@ async def upload_adjuster_report(
     """
     state = require_case(case_id)
 
-    if state.status != CaseStatus.AWAITING_ADJUSTER:
+    adjuster_request = state.adjuster_request or {}
+    is_awaiting_adjuster = (
+        state.status == CaseStatus.AWAITING_ADJUSTER
+        or (
+            state.status == CaseStatus.AWAITING_APPROVAL
+            and adjuster_request.get("status") == "awaiting_adjuster"
+        )
+    )
+    if not is_awaiting_adjuster:
         raise api_error(
             409,
             ErrorCode.INVALID_STATUS,
@@ -536,15 +545,28 @@ async def upload_adjuster_report(
 
     async with CaseStore.lock(case_id):
         state = require_case(case_id)
-        if state.status != CaseStatus.AWAITING_ADJUSTER:
+        adjuster_request = state.adjuster_request or {}
+        is_awaiting_adjuster = (
+            state.status == CaseStatus.AWAITING_ADJUSTER
+            or (
+                state.status == CaseStatus.AWAITING_APPROVAL
+                and adjuster_request.get("status") == "awaiting_adjuster"
+            )
+        )
+        if not is_awaiting_adjuster:
             raise api_error(
                 409,
                 ErrorCode.INVALID_STATUS,
                 "Adjuster report can only be uploaded when the case is awaiting an adjuster",
             )
+        existing_upload_count = len(state.uploaded_document_paths)
+        remapped_extractions = {
+            f"uploaded_{existing_upload_count + i}": value
+            for i, value in enumerate(extractions.values())
+        }
         state.adjuster_report_path = adjuster_path
         state.uploaded_document_paths.append(adjuster_path)
-        state.document_extractions.update(extractions)
+        state.document_extractions.update(remapped_extractions)
 
     background.add_task(
         resume_workflow_with_sse,
@@ -885,6 +907,7 @@ async def get_uploaded_document_text(case_id: str, index: int) -> dict[str, Any]
 
 _ARTIFACT_MEDIA = {
     ArtifactType.DECISION_PDF: "application/pdf",
+    ArtifactType.DECISION_PDF_SIGNED: "application/pdf",
     ArtifactType.AUDIT_TRAIL_JSON: "application/json",
 }
 
@@ -911,6 +934,7 @@ async def get_artifact(case_id: str, artifact_type: str) -> FileResponse:
         latest.path,
         media_type=_ARTIFACT_MEDIA[a_type],
         filename=latest.filename,
+        content_disposition_type="inline",
     )
 
 
@@ -944,9 +968,9 @@ async def approve_case(case_id: str, background: BackgroundTasks) -> ApproveResp
         pass
 
     background.add_task(
-        resume_workflow_with_sse, 
-        case_id, 
-        operator_name="Operator Jack", 
+        resume_workflow_with_sse,
+        case_id,
+        operator_name="Operator Jack",
         action="approve",
         reason="Manual override by Operator Jack",
         force_approve=True
@@ -957,8 +981,8 @@ async def approve_case(case_id: str, background: BackgroundTasks) -> ApproveResp
 
 @router.patch("/{case_id}/blackboard/{section}")
 async def update_blackboard_section(
-    case_id: str, 
-    section: str, 
+    case_id: str,
+    section: str,
     body: dict[str, Any]
 ) -> dict[str, Any]:
     state = require_case(case_id)

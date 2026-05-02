@@ -1,12 +1,12 @@
 'use client';
 
 import React from 'react';
-import { 
-  Brain, 
-  Terminal, 
-  ShieldCheck, 
-  Clock, 
-  CheckCircle2, 
+import {
+  Brain,
+  Terminal,
+  ShieldCheck,
+  Clock,
+  CheckCircle2,
   AlertCircle,
   MessageSquare,
   Activity,
@@ -24,10 +24,10 @@ interface AgentDetailsModalProps {
   onSelectForChat: (id: AgentId) => void;
 }
 
-export function AgentDetailsModal({ 
-  isOpen, 
-  onClose, 
-  agentId, 
+export function AgentDetailsModal({
+  isOpen,
+  onClose,
+  agentId,
   agentInfo,
   onSelectForChat
 }: AgentDetailsModalProps) {
@@ -53,7 +53,7 @@ export function AgentDetailsModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+      <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
         {/* Header */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
           <div className="flex items-center gap-3">
@@ -106,7 +106,7 @@ export function AgentDetailsModal({
                 <div className="space-y-1.5">
                   {agentInfo.logs.map((log, i) => (
                     <div key={i} className="flex gap-3">
-                      <span className="text-slate-700 flex-shrink-0">[{i+1}]</span>
+                      <span className="text-slate-700 flex-shrink-0">[{i + 1}]</span>
                       <span className="text-slate-400">{log}</span>
                     </div>
                   ))}
@@ -124,14 +124,14 @@ export function AgentDetailsModal({
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex justify-end gap-3">
-          <Button 
-            variant="secondary" 
+          <Button
+            variant="secondary"
             onClick={onClose}
             className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
           >
             Close
           </Button>
-          <Button 
+          <Button
             onClick={() => {
               onSelectForChat(agentId);
               onClose();

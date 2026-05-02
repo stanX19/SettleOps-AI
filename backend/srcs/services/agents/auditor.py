@@ -42,6 +42,7 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     damage = state.get("damage_results", {})
     fraud = state.get("fraud_results", {})
     payout = state.get("payout_results", {})
+    adjuster = state.get("adjuster_results", {})
     validation = {
         "policy": policy.get("_validation", {}),
         "liability": liability.get("_validation", {}),
@@ -57,6 +58,7 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
             "damage_results": damage,
             "fraud_results": fraud,
             "payout_results": payout,
+            "adjuster_results": adjuster,
             "cluster_validation": validation,
         }
     )
@@ -75,6 +77,7 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     Damage Analysis: {damage}
     Fraud Indicators: {fraud}
     Payout Calculation: {payout}
+    Adjuster Report Review: {adjuster}
     Cluster Validation Results: {validation}
 {feedback_block}
     Final response shape:
@@ -96,7 +99,20 @@ async def _auditor_llm_call(
 ) -> dict[str, Any]:
     """Single LLM round-trip for final synthesis."""
     prompt = _build_auditor_prompt(state, feedback=feedback)
-    response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+    response = await rotating_llm.send_message_get_json(
+        prompt,
+        temperature=0.0,
+        mock_data={
+            "data": {
+                "is_consistent": True,
+                "findings": "None (Mocked)",
+                "suggested_action": "approve",
+                "target_cluster": "none"
+            },
+            "reasoning": "Mock mode enabled.",
+            "citations": []
+        }
+    )
     raw = response.json_data if response.json_data else {}
     return raw if isinstance(raw, dict) else {}
 

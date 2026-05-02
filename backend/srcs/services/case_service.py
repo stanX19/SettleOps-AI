@@ -829,7 +829,10 @@ async def run_pipeline(case_id: str) -> None:
             async with CaseStore.lock(case_id):
                 if WorkflowNodes.WAIT_FOR_DOCS in final_state_wrapper.next:
                     transition_status(state, CaseStatus.AWAITING_DOCS)
-                elif WorkflowNodes.ADJUSTER_REQUEST in final_state_wrapper.next:
+                elif (
+                    WorkflowNodes.ADJUSTER_REQUEST in final_state_wrapper.next
+                    or WorkflowNodes.WAIT_FOR_ADJUSTER in final_state_wrapper.next
+                ):
                     transition_status(state, CaseStatus.AWAITING_ADJUSTER)
                 elif WorkflowNodes.DECISION_GATE in final_state_wrapper.next:
                     # Case reached auditor decision point, awaiting officer action
@@ -1020,7 +1023,10 @@ async def resume_workflow_with_sse(
             async with CaseStore.lock(case_id):
                 if WorkflowNodes.WAIT_FOR_DOCS in final_state_wrapper.next:
                     transition_status(state, CaseStatus.AWAITING_DOCS)
-                elif WorkflowNodes.ADJUSTER_REQUEST in final_state_wrapper.next:
+                elif (
+                    WorkflowNodes.ADJUSTER_REQUEST in final_state_wrapper.next
+                    or WorkflowNodes.WAIT_FOR_ADJUSTER in final_state_wrapper.next
+                ):
                     transition_status(state, CaseStatus.AWAITING_ADJUSTER)
                 elif WorkflowNodes.DECISION_GATE in final_state_wrapper.next:
                     transition_status(state, CaseStatus.AWAITING_APPROVAL)
@@ -1034,6 +1040,16 @@ async def resume_workflow_with_sse(
         async with CaseStore.lock(case_id):
             if state.status == CaseStatus.RUNNING:
                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
+                # When the operator triggered this resumption via approve+sign
+                # (force_approve=True from /cases/{id}/approve), advance through
+                # AWAITING_APPROVAL straight to APPROVED so dashboards and the
+                # action bar reflect the terminal state. Without this the case
+                # lingers as "pending review" forever.
+                if force_approve:
+                    try:
+                        transition_status(state, CaseStatus.APPROVED)
+                    except InvalidStatusTransition:
+                        pass
             state.current_agent = None
     except Exception:
         async with CaseStore.lock(case_id):

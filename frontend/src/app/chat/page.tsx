@@ -22,7 +22,7 @@ function makeBotMessage(text: string, extras?: Partial<ChatMessage>): ChatMessag
 function buildMissingDocsMessage(missing: string[]): ChatMessage {
   const labels = missing.map((k) => `- ${getSlot(k).label}`).join("\n");
   return makeBotMessage(
-    `I still need the following document${missing.length > 1 ? "s" : ""} before I can create your case:\n\n${labels}\n\nUse the paperclip to attach the missing file${missing.length > 1 ? "s" : ""}, then press Send again.`,
+    `I still need the following document${missing.length > 1 ? "s" : ""} before I can create your case:\n\n${labels}\n\nAttach the missing file${missing.length > 1 ? "s" : ""}, then press Send again.`,
     { missingDocs: missing }
   );
 }
@@ -34,7 +34,7 @@ function buildAckMessage(count: number): string {
 }
 
 const WELCOME_MESSAGE: ChatMessage = makeBotMessage(
-  "Hello! I'm here to help you create a new insurance claim.\n\nAttach your documents with the paperclip, describe the incident, and press Send. I'll check what is missing after that."
+  "Hello! I'm here to help you create a new insurance claim.\n\nAttach your documents, describe the incident, and press Send. I'll check what is missing after that."
 );
 
 // -- Welcome hero (shown in centered layout before first message) ----------

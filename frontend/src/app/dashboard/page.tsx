@@ -19,7 +19,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { CaseListItem, CaseStatus } from "@/lib/types";
 
-type DisplayStatus = "In Progress" | "Pending Review" | "Awaiting Docs" | "Completed" | "Escalated" | "Draft" | "Failed";
+type DisplayStatus = "In Progress" | "Pending Review" | "Awaiting Docs" | "Approved" | "Escalated" | "Draft" | "Failed";
 
 function mapCaseStatus(status: CaseStatus): DisplayStatus {
   switch (status) {
@@ -31,7 +31,7 @@ function mapCaseStatus(status: CaseStatus): DisplayStatus {
     case CaseStatus.AWAITING_DOCS:
       return "Awaiting Docs";
     case CaseStatus.APPROVED:
-      return "Completed";
+      return "Approved";
     case CaseStatus.ESCALATED:
       return "Escalated";
     case CaseStatus.DECLINED:
@@ -239,7 +239,7 @@ function StatusBadge({ status }: { status: DisplayStatus }) {
     "In Progress": "bg-semantic-info/10 text-semantic-info border-semantic-info/20",
     "Pending Review": "bg-semantic-warning/10 text-semantic-warning border-semantic-warning/20",
     "Awaiting Docs": "bg-neutral-text-tertiary/10 text-neutral-text-secondary border-neutral-text-tertiary/20",
-    "Completed": "bg-semantic-success/10 text-semantic-success border-semantic-success/20",
+    "Approved": "bg-semantic-success/10 text-semantic-success border-semantic-success/20",
     "Escalated": "bg-semantic-danger/10 text-semantic-danger border-semantic-danger/20",
     "Draft": "bg-neutral-text-tertiary/10 text-neutral-text-tertiary border-neutral-text-tertiary/20",
     "Failed": "bg-semantic-danger/10 text-semantic-danger border-semantic-danger/20",
@@ -249,7 +249,7 @@ function StatusBadge({ status }: { status: DisplayStatus }) {
     "In Progress": <Clock className="w-3 h-3 mr-1" />,
     "Pending Review": <AlertCircle className="w-3 h-3 mr-1" />,
     "Awaiting Docs": <Clock className="w-3 h-3 mr-1" />,
-    "Completed": <CheckCircle2 className="w-3 h-3 mr-1" />,
+    "Approved": <CheckCircle2 className="w-3 h-3 mr-1" />,
     "Escalated": <AlertCircle className="w-3 h-3 mr-1" />,
     "Draft": <Clock className="w-3 h-3 mr-1" />,
     "Failed": <AlertCircle className="w-3 h-3 mr-1" />,

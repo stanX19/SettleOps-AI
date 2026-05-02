@@ -55,6 +55,7 @@ const initialState: CaseSnapshot & {
   officer_challenge_count: 0,
   awaiting_clarification: false,
   chatbox_enabled: false,
+  pdf_ready: false,
   blackboard_mode: 'blackboard',
   audio_urls: {},
   current_agent: null,

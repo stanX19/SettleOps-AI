@@ -57,7 +57,11 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
     """
 
     try:
-        response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+        response = await rotating_llm.send_message_get_json(
+            prompt,
+            temperature=0.0,
+            mock_data={"0": REQUIRED_DOCS}
+        )
         tagged = response.json_data if response.json_data else {}
         
         # Validation: Ensure only allowed categories are used

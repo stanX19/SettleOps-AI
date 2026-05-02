@@ -93,7 +93,7 @@ function OutputCard({
             >
               <BookOpen className="h-2.5 w-2.5" />
               {citationCount}
-              <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap normal-case tracking-normal font-medium">
+              <div className="absolute top-full mt-1.5 right-0 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap normal-case tracking-normal font-medium">
                 {`${citationCount} citation${citationCount === 1 ? '' : 's'}`}
               </div>
             </button>
@@ -668,7 +668,7 @@ export function BlackboardPane() {
           {activeArtifacts.map((art, idx) => (
             <a
               key={idx}
-              href={art.url}
+              href={`${process.env.NEXT_PUBLIC_API_URL || ""}${art.url}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-between p-2 rounded-md border border-neutral-border bg-neutral-background hover:border-brand-primary transition-colors group"
@@ -677,7 +677,7 @@ export function BlackboardPane() {
                 <FileKey className="w-3.5 h-3.5 text-brand-primary" />
                 <div className="flex flex-col overflow-hidden">
                   <span className="text-[11px] font-medium text-neutral-text-primary truncate">{art.filename}</span>
-                  <span className="text-[9px] text-neutral-text-tertiary uppercase">v{art.version} • {art.artifact_type.replace('_', ' ')}</span>
+                  <span className="text-[9px] text-neutral-text-tertiary uppercase">v{art.version} • {art.artifact_type.replace(/_/g, ' ')}</span>
                 </div>
               </div>
               <ArrowUp className="w-3 h-3 rotate-90 text-neutral-text-tertiary group-hover:text-brand-primary transition-colors" />
