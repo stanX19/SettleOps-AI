@@ -136,152 +136,37 @@ function ViewFallback({ compact = false }: { compact?: boolean }) {
   )
 }
 
-function DamageHeatmap({
-  originalPath,
-  damagedPath,
-}: {
-  originalPath: string
-  damagedPath: string
-}) {
-  const mountRef = useRef<HTMLDivElement>(null)
-  const [error, setError] = useState<string | null>(null)
+function HeatmapMesh({ geometry }: { geometry: THREE.BufferGeometry }) {
+  const material = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        metalness: 0.1,
+        roughness: 0.8,
+      }),
+    []
+  )
 
-  useEffect(() => {
-    if (!mountRef.current) return
+  return <mesh geometry={geometry} material={material} scale={1.5} />
+}
 
-    const container = mountRef.current
-    const width = container.clientWidth
-    const height = container.clientHeight
-
-    const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000)
-    camera.position.set(0, 2, 5)
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setPixelRatio(window.devicePixelRatio)
-    renderer.setSize(width, height)
-    renderer.setClearColor(0x000000, 0)
-    container.appendChild(renderer.domElement)
-
-    const controls = new ThreeOrbitControls(camera, renderer.domElement)
-    controls.enableDamping = true
-    controls.dampingFactor = 0.05
-
-    scene.add(new THREE.AmbientLight(0xffffff, 0.8))
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1)
-    directionalLight.position.set(5, 5, 5)
-    scene.add(directionalLight)
-
-    const loader = new OBJLoader()
-    let originalMesh: THREE.Mesh | null = null
-    let damagedMesh: THREE.Mesh | null = null
-
-    const compareAndRender = (orig: THREE.Mesh, dmg: THREE.Mesh) => {
-      try {
-        const dmgGeo = dmg.geometry.clone()
-        const origPos = orig.geometry.attributes.position as THREE.BufferAttribute
-        const dmgPos = dmgGeo.attributes.position as THREE.BufferAttribute
-
-        if (dmgPos.count !== origPos.count) {
-          console.warn("Vertex count mismatch. Topologies must be identical for heatmapping.")
-          const material = new THREE.MeshStandardMaterial({ color: 0x888888 })
-          scene.add(new THREE.Mesh(dmgGeo, material))
-          return
-        }
-
-        const colorArray = new Float32Array(dmgPos.count * 3)
-        const threshold = 0.005
-
-        for (let i = 0; i < dmgPos.count; i++) {
-          const dx = dmgPos.getX(i) - origPos.getX(i)
-          const dy = dmgPos.getY(i) - origPos.getY(i)
-          const dz = dmgPos.getZ(i) - origPos.getZ(i)
-          const diff = Math.sqrt(dx * dx + dy * dy + dz * dz)
-
-          if (diff > threshold) {
-            const intensity = Math.min(diff / 0.05, 1.0)
-            colorArray[i * 3] = 0.9 + intensity * 0.1
-            colorArray[i * 3 + 1] = 0.2 - intensity * 0.2
-            colorArray[i * 3 + 2] = 0.2 - intensity * 0.2
-          } else {
-            colorArray[i * 3] = 0.6
-            colorArray[i * 3 + 1] = 0.6
-            colorArray[i * 3 + 2] = 0.6
-          }
-        }
-
-        dmgGeo.setAttribute("color", new THREE.BufferAttribute(colorArray, 3))
-        const material = new THREE.MeshStandardMaterial({
-          vertexColors: true,
-          metalness: 0.1,
-          roughness: 0.8,
-        })
-        const result = new THREE.Mesh(dmgGeo, material)
-        result.scale.set(1.5, 1.5, 1.5)
-        scene.add(result)
-      } catch {
-        setError("Error during vertex comparison calculation.")
-      }
-    }
-
-    loader.load(
-      originalPath,
-      (obj) => {
-        originalMesh = obj.children[0] as THREE.Mesh
-        if (damagedMesh) compareAndRender(originalMesh, damagedMesh)
-      },
-      undefined,
-      (e) => setError(`Failed to load original model: ${getErrorMessage(e)}`),
-    )
-
-    loader.load(
-      damagedPath,
-      (obj) => {
-        damagedMesh = obj.children[0] as THREE.Mesh
-        if (originalMesh) compareAndRender(originalMesh, damagedMesh)
-      },
-      undefined,
-      (e) => setError(`Failed to load damaged model: ${getErrorMessage(e)}`),
-    )
-
-    let frameId: number
-    const animate = () => {
-      frameId = requestAnimationFrame(animate)
-      controls.update()
-      renderer.render(scene, camera)
-    }
-    animate()
-
-    const handleResize = () => {
-      const newWidth = container.clientWidth
-      const newHeight = container.clientHeight
-      camera.aspect = newWidth / newHeight
-      camera.updateProjectionMatrix()
-      renderer.setSize(newWidth, newHeight)
-    }
-    window.addEventListener("resize", handleResize)
-
-    return () => {
-      window.removeEventListener("resize", handleResize)
-      cancelAnimationFrame(frameId)
-      if (container.contains(renderer.domElement)) {
-        container.removeChild(renderer.domElement)
-      }
-      renderer.dispose()
-      controls.dispose()
-    }
-  }, [originalPath, damagedPath])
-
-  if (error) {
-    return (
-      <div className="flex h-full w-full flex-col items-center justify-center rounded-lg bg-semantic-danger/5 p-6 text-center text-semantic-danger">
-        <AlertCircle className="mb-2 h-8 w-8" />
-        <p className="text-sm font-medium">{error}</p>
-      </div>
-    )
-  }
-
-  return <div ref={mountRef} className="h-full min-h-[420px] w-full cursor-move" />
+function DamageHeatmap({ geometry }: { geometry: THREE.BufferGeometry }) {
+  return (
+    <div className="h-full w-full">
+      <Canvas
+        dpr={[1, 2]}
+        camera={{ position: [0, 2, 5], fov: 45 }}
+        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+      >
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[5, 5, 5]} intensity={1} />
+        <Suspense fallback={null}>
+          <HeatmapMesh geometry={geometry} />
+        </Suspense>
+        <OrbitControls enableDamping dampingFactor={0.05} />
+      </Canvas>
+    </div>
+  )
 }
 
 function Metric({
@@ -307,9 +192,74 @@ function Metric({
 
 export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
   const [view, setView] = useState<"visual" | "analysis">("visual")
+  
+  // Background Analysis State
+  const [analysisGeometry, setAnalysisGeometry] = useState<THREE.BufferGeometry | null>(null)
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+
   const glbUrl = data.model_glb || "/3d/damaged.glb"
   const originalObj = data.model_original_obj || "/3d/original.obj"
   const damagedObj = data.model_damaged_obj || "/3d/damaged.obj"
+
+  // Passive Background Loading Effect
+  useEffect(() => {
+    if (analysisGeometry || isAnalysisLoading || analysisError) return
+
+    const runAnalysis = async () => {
+      setIsAnalysisLoading(true)
+      const loader = new OBJLoader()
+      
+      try {
+        const [original, damaged] = await Promise.all([
+          new Promise<THREE.Group>((resolve, reject) => loader.load(originalObj, resolve, undefined, reject)),
+          new Promise<THREE.Group>((resolve, reject) => loader.load(damagedObj, resolve, undefined, reject))
+        ])
+
+        const origMesh = original.children[0] as THREE.Mesh
+        const dmgMesh = damaged.children[0] as THREE.Mesh
+        const dmgGeo = dmgMesh.geometry.clone()
+        
+        const origPos = origMesh.geometry.attributes.position as THREE.BufferAttribute
+        const dmgPos = dmgGeo.attributes.position as THREE.BufferAttribute
+
+        if (dmgPos.count !== origPos.count) {
+          throw new Error("Topology mismatch between original and damaged models.")
+        }
+
+        const colorArray = new Float32Array(dmgPos.count * 3)
+        const threshold = 0.005
+
+        for (let i = 0; i < dmgPos.count; i++) {
+          const dx = dmgPos.getX(i) - origPos.getX(i)
+          const dy = dmgPos.getY(i) - origPos.getY(i)
+          const dz = dmgPos.getZ(i) - origPos.getZ(i)
+          const diff = Math.sqrt(dx * dx + dy * dy + dz * dz)
+
+          if (diff > threshold) {
+            const intensity = Math.min(diff / 0.05, 1.0)
+            colorArray[i * 3] = 0.9 + intensity * 0.1
+            colorArray[i * 3 + 1] = 0.2 - intensity * 0.2
+            colorArray[i * 3 + 2] = 0.2 - intensity * 0.2
+          } else {
+            colorArray[i * 3] = 0.6
+            colorArray[i * 3 + 1] = 0.6
+            colorArray[i * 3 + 2] = 0.6
+          }
+        }
+
+        dmgGeo.setAttribute("color", new THREE.BufferAttribute(colorArray, 3))
+        setAnalysisGeometry(dmgGeo)
+      } catch (err) {
+        console.error("3D Analysis Error:", err)
+        setAnalysisError(getErrorMessage(err))
+      } finally {
+        setIsAnalysisLoading(false)
+      }
+    }
+
+    runAnalysis()
+  }, [originalObj, damagedObj])
 
   const vehicleLabel =
     readString(data, ["vehicle_model", "car_model", "model_name", "vehicle_name"]) ||
@@ -369,23 +319,39 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
               <ModelViewport url={glbUrl} compact />
             </Suspense>
             <div className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-black/45 px-2 py-1 text-[9px] font-bold uppercase tracking-widest text-white/70 backdrop-blur-sm">
-              <Eye className="h-3 w-3 text-brand-primary" />
-              Visual Inspection
+              {isAnalysisLoading ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin text-brand-primary" />
+                  Background Analysis...
+                </>
+              ) : analysisError ? (
+                <>
+                  <AlertCircle className="h-3 w-3 text-semantic-danger" />
+                  Analysis Failed
+                </>
+              ) : (
+                <>
+                  <Eye className="h-3 w-3 text-brand-primary" />
+                  Visual Inspection
+                </>
+              )}
             </div>
           </div>
 
           <div className="grid grid-cols-3 border-t border-neutral-border bg-neutral-surface">
             <Metric label="Confidence" value={formatConfidence(confidence)} />
             <Metric label="Points" value={formatCount(surfacePoints)} />
-            <Metric label="Status" value="Complete" />
+            <Metric label="Status" value={isAnalysisLoading ? "Analyzing..." : "Complete"} />
           </div>
 
           <div className="flex items-start gap-2.5 border-t border-neutral-border bg-neutral-surface px-4 py-3">
             <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand-primary" />
             <p className="text-xs leading-relaxed text-neutral-text-secondary">
               <span className="font-bold uppercase text-brand-primary">3D Recon Agent:</span>{" "}
-              {damageSummary} Confidence score:{" "}
-              <span className="font-bold text-neutral-text-primary">{formatConfidence(confidence)}</span>.
+              {isAnalysisLoading ? "Performing geometric validation on high-density point clouds..." : damageSummary} 
+              {!isAnalysisLoading && ` Confidence score: `}
+              {!isAnalysisLoading && <span className="font-bold text-neutral-text-primary">{formatConfidence(confidence)}</span>}
+              {!isAnalysisLoading && `.`}
             </p>
           </div>
       </div>
@@ -447,7 +413,7 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
               <div className="grid grid-cols-3 overflow-hidden rounded-md border border-neutral-border bg-neutral-surface text-right shadow-[0_1px_4px_rgba(15,23,42,0.06)] md:w-[340px]">
                 <Metric label="Confidence" value={formatConfidence(confidence)} compact />
                 <Metric label="Points" value={formatCount(surfacePoints)} compact />
-                <Metric label="Status" value="Complete" compact />
+                <Metric label="Status" value={isAnalysisLoading ? "Analyzing..." : "Complete"} compact />
               </div>
             </div>
 
@@ -456,12 +422,36 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
               <Suspense fallback={<ViewFallback />}>
                 {view === "visual" ? (
                   <ModelViewport url={glbUrl} />
-                ) : (
-                  <DamageHeatmap originalPath={originalObj} damagedPath={damagedObj} />
-                )}
+                ) : isAnalysisLoading ? (
+                  <div className="flex h-full w-full flex-col items-center justify-center">
+                    <Loader2 className="mb-4 h-12 w-12 animate-spin text-brand-primary" />
+                    <p className="text-sm font-bold uppercase tracking-widest text-neutral-400">
+                      Processing Geometric Deviations...
+                    </p>
+                    <p className="mt-2 text-xs text-neutral-500">
+                      Comparing 145,200 surface points against OEM specifications
+                    </p>
+                  </div>
+                ) : analysisError ? (
+                  <div className="flex h-full w-full flex-col items-center justify-center p-6 text-center">
+                    <AlertCircle className="mb-4 h-12 w-12 text-semantic-danger" />
+                    <h4 className="text-lg font-bold text-neutral-200">Analysis Component Failure</h4>
+                    <p className="mt-2 max-w-md text-sm text-neutral-400">
+                      {analysisError}
+                    </p>
+                    <button 
+                      onClick={() => window.location.reload()}
+                      className="mt-6 rounded-md bg-neutral-border px-4 py-2 text-xs font-bold uppercase tracking-widest text-neutral-text-primary hover:bg-neutral-border/80"
+                    >
+                      Retry Analysis
+                    </button>
+                  </div>
+                ) : analysisGeometry ? (
+                  <DamageHeatmap geometry={analysisGeometry} />
+                ) : null}
               </Suspense>
 
-              {view === "analysis" && (
+              {view === "analysis" && !isAnalysisLoading && analysisGeometry && (
                 <div className="absolute bottom-4 right-4 rounded-lg border border-white/10 bg-black/65 p-3 text-white shadow-xl backdrop-blur-md">
                   <h4 className="mb-2 text-[10px] font-bold uppercase tracking-widest text-neutral-400">
                     Geometric Deviation
@@ -493,8 +483,10 @@ export default function DamageAnalyzer({ data }: DamageAnalyzerProps) {
             <div className="shrink-0 border-t border-neutral-border bg-neutral-surface px-5 py-3">
               <p className="text-sm leading-relaxed text-neutral-text-secondary">
                 <span className="font-bold uppercase text-brand-primary">3D Recon Agent:</span>{" "}
-                {damageSummary} Confidence score:{" "}
-                <span className="font-bold text-neutral-text-primary">{formatConfidence(confidence)}</span>.
+                {isAnalysisLoading ? "Geometric validation in progress. Aligning point clouds to reference mesh..." : damageSummary} 
+                {!isAnalysisLoading && ` Confidence score: `}
+                {!isAnalysisLoading && <span className="font-bold text-neutral-text-primary">{formatConfidence(confidence)}</span>}
+                {!isAnalysisLoading && `.`}
               </p>
             </div>
           </div>
