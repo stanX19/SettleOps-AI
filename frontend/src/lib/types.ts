@@ -45,6 +45,7 @@ export enum BlackboardSection {
 
 export enum ArtifactType {
   DECISION_PDF = "decision_pdf",
+  DECISION_PDF_SIGNED = "decision_pdf_signed",
   AUDIT_TRAIL_JSON = "audit_trail_json",
 }
 

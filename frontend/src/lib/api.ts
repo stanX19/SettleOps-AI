@@ -71,6 +71,34 @@ export const api = {
   },
 
   /**
+   * Render a signed PDF preview without persisting it as an artifact.
+   * Returns the raw PDF as a Blob — the caller is responsible for the
+   * object-URL lifecycle. Used by the Signature Modal to render the
+   * "Final Review (Signed)" step before the operator commits to final
+   * approval.
+   */
+  async previewSignedPdf(caseId: string, data: { signer_name: string, designation: string, sign_date: string }): Promise<Blob> {
+    const res = await fetch(`${API_BASE}/api/v1/signature/${caseId}/preview-signed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      let errorDetail = "Unknown error";
+      const cloned = res.clone();
+      try {
+        const error = await res.json();
+        errorDetail = error.detail || JSON.stringify(error);
+      } catch {
+        errorDetail = (await cloned.text()) || res.statusText;
+      }
+      console.error(`[API Error] ${res.status} ${res.url}:`, errorDetail);
+      throw new Error(errorDetail);
+    }
+    return res.blob();
+  },
+
+  /**
    * Decline a case with a reason
    */
   async declineCase(caseId: string, reason: string): Promise<{ status: CaseStatus }> {

@@ -32,7 +32,7 @@ function FileTypeBadge({ filename }: { filename: string }) {
   const ext = getExt(filename);
   const colors = EXT_COLORS[ext] || { bg: "bg-neutral-border/20", text: "text-neutral-text-tertiary" };
   return (
-    <div className={`w-9 h-11 shrink-0 rounded-md flex items-center justify-center font-mono font-bold text-[9px] uppercase tracking-wide ${colors.bg} ${colors.text}`}>
+    <div className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center font-mono font-bold text-[9px] uppercase tracking-wide ${colors.bg} ${colors.text}`}>
       {ext.slice(0, 4)}
     </div>
   );
@@ -95,7 +95,7 @@ const DocumentSkeleton = () => (
   <div className="relative overflow-hidden p-3 rounded-md bg-white border border-neutral-border/50">
     <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-neutral-text-primary/5 to-transparent" />
     <div className="flex items-center gap-3">
-      <div className="w-9 h-11 rounded-md bg-neutral-border/60 shrink-0 animate-pulse" />
+      <div className="w-9 h-9 rounded-md bg-neutral-border/60 shrink-0 animate-pulse" />
       <div className="space-y-1.5 flex-1">
         <div className="h-2.5 bg-neutral-border/60 rounded w-2/3 animate-pulse" />
         <div className="h-2 bg-neutral-border/40 rounded w-1/3 animate-pulse" />

@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from srcs.schemas.case_dto import (
     ApproveResponse,
     ArtifactType,
+    BlackboardSection,
     CaseCreateResponse,
     CaseListItem,
     CaseSnapshot,
@@ -830,6 +831,7 @@ async def get_uploaded_document_text(case_id: str, index: int) -> dict[str, Any]
 
 _ARTIFACT_MEDIA = {
     ArtifactType.DECISION_PDF: "application/pdf",
+    ArtifactType.DECISION_PDF_SIGNED: "application/pdf",
     ArtifactType.AUDIT_TRAIL_JSON: "application/json",
 }
 
@@ -856,6 +858,7 @@ async def get_artifact(case_id: str, artifact_type: str) -> FileResponse:
         latest.path,
         media_type=_ARTIFACT_MEDIA[a_type],
         filename=latest.filename,
+        content_disposition_type="inline",
     )
 
 
@@ -889,9 +892,9 @@ async def approve_case(case_id: str, background: BackgroundTasks) -> ApproveResp
         pass
 
     background.add_task(
-        resume_workflow_with_sse, 
-        case_id, 
-        operator_name="Operator Jack", 
+        resume_workflow_with_sse,
+        case_id,
+        operator_name="Operator Jack",
         action="approve",
         reason="Manual override by Operator Jack",
         force_approve=True
@@ -902,8 +905,8 @@ async def approve_case(case_id: str, background: BackgroundTasks) -> ApproveResp
 
 @router.patch("/{case_id}/blackboard/{section}")
 async def update_blackboard_section(
-    case_id: str, 
-    section: str, 
+    case_id: str,
+    section: str,
     body: dict[str, Any]
 ) -> dict[str, Any]:
     state = require_case(case_id)
