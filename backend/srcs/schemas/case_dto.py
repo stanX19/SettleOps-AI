@@ -35,6 +35,7 @@ class AgentId(str, Enum):
     PAYOUT = "payout"
     ADJUSTER = "adjuster"
     AUDITOR = "auditor"
+    RECONSTRUCTION = "reconstruction"
 
 
 class AgentStatus(str, Enum):
@@ -54,6 +55,7 @@ class BlackboardSection(str, Enum):
     PAYOUT_RECOMMENDATION = "PayoutRecommendation"
     ADJUSTER_REQUEST = "AdjusterRequest"
     AUDIT_RESULT = "AuditResult"
+    RECONSTRUCTION_RESULT = "ReconstructionResult"
 
 
 class ArtifactType(str, Enum):

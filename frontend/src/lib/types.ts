@@ -25,6 +25,7 @@ export enum AgentId {
   PAYOUT = "payout",
   ADJUSTER = "adjuster",
   AUDITOR = "auditor",
+  RECONSTRUCTION = "reconstruction",
 }
 
 export enum AgentStatus {
@@ -44,6 +45,7 @@ export enum BlackboardSection {
   PAYOUT_RECOMMENDATION = "PayoutRecommendation",
   ADJUSTER_REQUEST = "AdjusterRequest",
   AUDIT_RESULT = "AuditResult",
+  RECONSTRUCTION_RESULT = "ReconstructionResult",
 }
 
 export enum ArtifactType {

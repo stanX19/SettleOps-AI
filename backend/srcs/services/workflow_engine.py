@@ -22,7 +22,8 @@ from srcs.services.agents.analysis_tasks import (
     liability_poi_task,
     damage_quote_audit_task,
     pricing_validation_task,
-    fraud_assessment_task
+    fraud_assessment_task,
+    three_d_reconstruction_task
 )
 from srcs.utils.cluster_factory import create_cluster_subgraph
 from srcs.services.citation_validator import build_citation_summary
@@ -47,6 +48,7 @@ TOPOLOGY = {
     AgentId.LIABILITY.value: ["liability_narrative_task", "liability_poi_task"],
     AgentId.DAMAGE.value: ["damage_quote_audit_task", "pricing_validation_task"],
     AgentId.FRAUD.value: ["fraud_assessment_task"],
+    AgentId.RECONSTRUCTION.value: ["three_d_reconstruction_task"],
 }
 
 def _assert_no_upstream_citations_in_cluster_input(
@@ -139,6 +141,7 @@ def build_workflow() -> StateGraph:
     builder.add_node("entity_extraction", node_sse_wrapper("entity_extraction", entity_extraction_node))
     builder.add_node("validation_gate", node_sse_wrapper("validation_gate", validation_gate))
     builder.add_node("wait_for_docs", wait_for_docs_node)
+    builder.add_node(WorkflowNodes.RECONSTRUCTION, node_sse_wrapper(WorkflowNodes.RECONSTRUCTION, three_d_reconstruction_task))
     
     # 2. Analysis Phase (Clusters)
     policy_graph = create_cluster_subgraph("policy", [policy_analysis_task]).compile()
@@ -179,6 +182,7 @@ def build_workflow() -> StateGraph:
     builder.add_edge(START, "ingest_tagging")
     builder.add_edge("ingest_tagging", "entity_extraction")
     builder.add_edge("entity_extraction", "validation_gate")
+    builder.add_edge(WorkflowNodes.RECONSTRUCTION, "parallel_analysis_start")
     
     # 2. Analysis Phase (Parallel Clusters)
     builder.add_node("parallel_analysis_start", lambda x: {})
@@ -187,10 +191,10 @@ def build_workflow() -> StateGraph:
     def intake_router(state: ClaimWorkflowState):
         if state.get("status") == "awaiting_docs":
             return "wait_for_docs"
-        return "parallel_analysis_start"
+        return WorkflowNodes.RECONSTRUCTION
 
     builder.add_conditional_edges("validation_gate", intake_router, {
-        "parallel_analysis_start": "parallel_analysis_start",
+        WorkflowNodes.RECONSTRUCTION: WorkflowNodes.RECONSTRUCTION,
         "wait_for_docs": "wait_for_docs"
     })
     
@@ -251,6 +255,7 @@ _NODE_TO_AGENT = {
     WorkflowNodes.ADJUSTER_REQUEST: AgentId.ADJUSTER,
     WorkflowNodes.WAIT_FOR_ADJUSTER: AgentId.ADJUSTER,
     "auditor_node": AgentId.AUDITOR,
+    WorkflowNodes.RECONSTRUCTION: AgentId.RECONSTRUCTION,
 }
 
 _NODE_TO_SECTION = {
@@ -265,6 +270,7 @@ _NODE_TO_SECTION = {
     WorkflowNodes.ADJUSTER_REQUEST: BlackboardSection.ADJUSTER_REQUEST,
     WorkflowNodes.WAIT_FOR_ADJUSTER: BlackboardSection.ADJUSTER_REQUEST,
     "auditor_node": BlackboardSection.AUDIT_RESULT,
+    WorkflowNodes.RECONSTRUCTION: BlackboardSection.RECONSTRUCTION_RESULT,
 }
 
 def get_graph():
