@@ -118,7 +118,20 @@ async def _auditor_llm_call(
 ) -> dict[str, Any]:
     """Single LLM round-trip; the validator may invoke this multiple times."""
     prompt = _build_auditor_prompt(state, feedback=feedback)
-    response = await rotating_llm.send_message_get_json(prompt, temperature=0.0)
+    response = await rotating_llm.send_message_get_json(
+        prompt,
+        temperature=0.0,
+        mock_data={
+            "data": {
+                "is_consistent": True,
+                "findings": "None (Mocked)",
+                "suggested_action": "approve",
+                "target_cluster": "none"
+            },
+            "reasoning": "Mock mode enabled.",
+            "citations": []
+        }
+    )
     raw = response.json_data if response.json_data else {}
     if not isinstance(raw, dict):
         raw = {}

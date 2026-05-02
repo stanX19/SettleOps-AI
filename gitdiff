@@ -1,0 +1,1453 @@
+diff --git a/backend/srcs/routes/cases.py b/backend/srcs/routes/cases.py
+index 0847cc2..9aa33fd 100644
+--- a/backend/srcs/routes/cases.py
++++ b/backend/srcs/routes/cases.py
+@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, StreamingResponse
+ from srcs.schemas.case_dto import (
+     ApproveResponse,
+     ArtifactType,
++    BlackboardSection,
+     CaseCreateResponse,
+     CaseListItem,
+     CaseSnapshot,
+@@ -830,6 +831,7 @@ async def get_uploaded_document_text(case_id: str, index: int) -> dict[str, Any]
+ 
+ _ARTIFACT_MEDIA = {
+     ArtifactType.DECISION_PDF: "application/pdf",
++    ArtifactType.DECISION_PDF_SIGNED: "application/pdf",
+     ArtifactType.AUDIT_TRAIL_JSON: "application/json",
+ }
+ 
+@@ -856,6 +858,7 @@ async def get_artifact(case_id: str, artifact_type: str) -> FileResponse:
+         latest.path,
+         media_type=_ARTIFACT_MEDIA[a_type],
+         filename=latest.filename,
++        content_disposition_type="inline",
+     )
+ 
+ 
+@@ -889,9 +892,9 @@ async def approve_case(case_id: str, background: BackgroundTasks) -> ApproveResp
+         pass
+ 
+     background.add_task(
+-        resume_workflow_with_sse, 
+-        case_id, 
+-        operator_name="Operator Jack", 
++        resume_workflow_with_sse,
++        case_id,
++        operator_name="Operator Jack",
+         action="approve",
+         reason="Manual override by Operator Jack",
+         force_approve=True
+@@ -902,8 +905,8 @@ async def approve_case(case_id: str, background: BackgroundTasks) -> ApproveResp
+ 
+ @router.patch("/{case_id}/blackboard/{section}")
+ async def update_blackboard_section(
+-    case_id: str, 
+-    section: str, 
++    case_id: str,
++    section: str,
+     body: dict[str, Any]
+ ) -> dict[str, Any]:
+     state = require_case(case_id)
+diff --git a/backend/srcs/routes/signature.py b/backend/srcs/routes/signature.py
+index fc09ebd..fc9a0cb 100644
+--- a/backend/srcs/routes/signature.py
++++ b/backend/srcs/routes/signature.py
+@@ -1,12 +1,21 @@
+ import logging
+ import os
++import tempfile
+ 
+-from fastapi import APIRouter, HTTPException
++from fastapi import APIRouter, BackgroundTasks, HTTPException
+ from fastapi.responses import FileResponse
+ from pydantic import BaseModel, Field
+ 
+ from srcs.services.signature_service import sign_and_stamp
+-from srcs.services.case_service import require_case, generate_artifacts
++from srcs.services.case_service import (
++    require_case,
++    generate_artifacts,
++    case_artifact_dir,
++    _next_artifact_version,
++)
++from srcs.services.case_store import ArtifactRecord, now_iso
++from srcs.schemas.case_dto import ArtifactType, SseArtifactCreatedData
++from srcs.services.sse_service import SseService
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -33,18 +42,27 @@ async def preview_artifact(claim_no: str):
+     }
+ 
+ 
+-@router.post("/{claim_no}/approve")
+-async def approve_and_sign(claim_no: str, body: ApproveSignRequest):
+-    """Sign the existing generated PDF in-place and return it.
+-    
+-    If the PDF has not been generated yet, it will be auto-generated first.
++@router.post("/{claim_no}/preview-signed")
++async def preview_signed_artifact(
++    claim_no: str,
++    body: ApproveSignRequest,
++    background_tasks: BackgroundTasks,
++):
++    """Render a signed PDF on the fly and return it as binary.
++
++    This endpoint is **read-only** with respect to case state: it does NOT
++    persist the signed PDF as an artifact, does NOT supersede the unsigned
++    draft, and does NOT emit SSE. It exists so the Signature Modal's "Final
++    Review" step can show what the signed letter will look like before the
++    operator commits to final approval. The persisted signed artifact is
++    only created by `POST /{claim_no}/approve`, which itself is only
++    invoked at the moment of final approval.
+     """
+     state = require_case(claim_no)
+ 
+-    # Auto-generate if missing
+     if not state.decision_pdf_path or not os.path.isfile(state.decision_pdf_path):
+         await generate_artifacts(state)
+-        
++
+     pdf_path = state.decision_pdf_path
+     if not pdf_path or not os.path.isfile(pdf_path):
+         raise HTTPException(
+@@ -52,6 +70,11 @@ async def approve_and_sign(claim_no: str, body: ApproveSignRequest):
+             detail="No generated PDF found for this claim and auto-generation failed.",
+         )
+ 
++    tmp = tempfile.NamedTemporaryFile(
++        prefix=f"{claim_no}_preview_signed_", suffix=".pdf", delete=False
++    )
++    tmp.close()
++
+     try:
+         sign_and_stamp(
+             pdf_path=pdf_path,
+@@ -59,33 +82,104 @@ async def approve_and_sign(claim_no: str, body: ApproveSignRequest):
+             designation=body.designation,
+             sign_date=body.sign_date,
+             stamp_path=None if body.stamp_path == "" else body.stamp_path,
+-            output_path=pdf_path,
++            output_path=tmp.name,
++        )
++    except Exception:
++        try:
++            os.unlink(tmp.name)
++        except OSError:
++            pass
++        logger.exception("PDF signed-preview failed for %s", claim_no)
++        raise HTTPException(status_code=500, detail="PDF signed-preview failed")
++
++    def _cleanup(path: str) -> None:
++        try:
++            os.unlink(path)
++        except OSError:
++            pass
++
++    background_tasks.add_task(_cleanup, tmp.name)
++
++    return FileResponse(
++        tmp.name,
++        media_type="application/pdf",
++        filename=f"{claim_no}_signed_preview.pdf",
++        headers={"Cache-Control": "no-store"},
++    )
++
++
++@router.post("/{claim_no}/approve")
++async def approve_and_sign(claim_no: str, body: ApproveSignRequest):
++    """Persist a signed copy of the decision PDF as a separate artifact.
++
++    Behavior contract:
++      * The unsigned `decision_pdf` artifact is **never** modified or
++        superseded by this endpoint.
++      * A new `decision_pdf_signed` artifact is appended (or version-bumped
++        if re-signing) at a fresh file path. After approval, the case has
++        both the unsigned draft and the signed copy on disk and in
++        `state.artifacts`.
++      * SSE is emitted for the new signed artifact so the frontend can
++        pick it up reactively.
++    """
++    state = require_case(claim_no)
++
++    if not state.decision_pdf_path or not os.path.isfile(state.decision_pdf_path):
++        await generate_artifacts(state)
++
++    unsigned_path = state.decision_pdf_path
++    if not unsigned_path or not os.path.isfile(unsigned_path):
++        raise HTTPException(
++            status_code=404,
++            detail="No generated PDF found for this claim and auto-generation failed.",
++        )
++
++    version = _next_artifact_version(state, ArtifactType.DECISION_PDF_SIGNED)
++    filename = f"decision_signed_v{version}.pdf"
++    signed_path = os.path.join(case_artifact_dir(claim_no), filename)
++
++    try:
++        sign_and_stamp(
++            pdf_path=unsigned_path,
++            signer_name=body.signer_name,
++            designation=body.designation,
++            sign_date=body.sign_date,
++            stamp_path=None if body.stamp_path == "" else body.stamp_path,
++            output_path=signed_path,
+         )
+     except Exception:
+         logger.exception("PDF signing failed for %s", claim_no)
+         raise HTTPException(status_code=500, detail="PDF signing failed")
+ 
+-    # 2. Emit SSE so the frontend refreshes the artifact preview
+-    from srcs.services.sse_service import SseService
+-    from srcs.schemas.case_dto import SseArtifactCreatedData, ArtifactType
+-    from srcs.services.case_store import now_iso
+-    
+-    # Find the version from state artifacts
+-    artifact_rec = next((a for a in state.artifacts if a.path == pdf_path), None)
+-    version = artifact_rec.version if artifact_rec else 1
+-
+-    await SseService.emit(claim_no, SseArtifactCreatedData(
+-        case_id=claim_no,
+-        timestamp=now_iso(),
+-        artifact_type=ArtifactType.DECISION_PDF,
+-        filename=os.path.basename(pdf_path),
+-        url=f"/api/v1/cases/{claim_no}/artifacts/decision_pdf",
+-        version=version
+-    ))
++    for a in state.artifacts:
++        if a.artifact_type == ArtifactType.DECISION_PDF_SIGNED and not a.superseded:
++            a.superseded = True
++
++    state.artifacts.append(
++        ArtifactRecord(
++            artifact_type=ArtifactType.DECISION_PDF_SIGNED,
++            filename=filename,
++            version=version,
++            path=signed_path,
++        )
++    )
++
++    await SseService.emit(
++        claim_no,
++        SseArtifactCreatedData(
++            case_id=claim_no,
++            timestamp=now_iso(),
++            artifact_type=ArtifactType.DECISION_PDF_SIGNED,
++            filename=filename,
++            url=f"/api/v1/cases/{claim_no}/artifacts/decision_pdf_signed",
++            version=version,
++        ),
++    )
+ 
+     return {
+         "status": "success",
+         "claim_no": claim_no,
+-        "artifact_type": "decision_pdf",
+-        "url": f"/api/v1/cases/{claim_no}/artifacts/decision_pdf"
++        "artifact_type": ArtifactType.DECISION_PDF_SIGNED.value,
++        "url": f"/api/v1/cases/{claim_no}/artifacts/decision_pdf_signed",
++        "version": version,
+     }
+diff --git a/backend/srcs/schemas/case_dto.py b/backend/srcs/schemas/case_dto.py
+index 90af397..27389e8 100644
+--- a/backend/srcs/schemas/case_dto.py
++++ b/backend/srcs/schemas/case_dto.py
+@@ -54,6 +54,7 @@ class BlackboardSection(str, Enum):
+ 
+ class ArtifactType(str, Enum):
+     DECISION_PDF = "decision_pdf"
++    DECISION_PDF_SIGNED = "decision_pdf_signed"
+     AUDIT_TRAIL_JSON = "audit_trail_json"
+ 
+ 
+diff --git a/backend/srcs/services/case_service.py b/backend/srcs/services/case_service.py
+index b2369c5..19ce90b 100644
+--- a/backend/srcs/services/case_service.py
++++ b/backend/srcs/services/case_service.py
+@@ -1018,6 +1018,16 @@ async def resume_workflow_with_sse(
+         async with CaseStore.lock(case_id):
+             if state.status == CaseStatus.RUNNING:
+                 transition_status(state, CaseStatus.AWAITING_APPROVAL)
++                # When the operator triggered this resumption via approve+sign
++                # (force_approve=True from /cases/{id}/approve), advance through
++                # AWAITING_APPROVAL straight to APPROVED so dashboards and the
++                # action bar reflect the terminal state. Without this the case
++                # lingers as "pending review" forever.
++                if force_approve:
++                    try:
++                        transition_status(state, CaseStatus.APPROVED)
++                    except InvalidStatusTransition:
++                        pass
+             state.current_agent = None
+     except Exception:
+         async with CaseStore.lock(case_id):
+diff --git a/frontend/public/signature.png b/frontend/public/signature.png
+new file mode 100644
+index 0000000..e5402bb
+Binary files /dev/null and b/frontend/public/signature.png differ
+diff --git a/frontend/src/app/chat/page.tsx b/frontend/src/app/chat/page.tsx
+index f32de4f..7759389 100644
+--- a/frontend/src/app/chat/page.tsx
++++ b/frontend/src/app/chat/page.tsx
+@@ -22,7 +22,7 @@ function makeBotMessage(text: string, extras?: Partial<ChatMessage>): ChatMessag
+ function buildMissingDocsMessage(missing: string[]): ChatMessage {
+   const labels = missing.map((k) => `- ${getSlot(k).label}`).join("\n");
+   return makeBotMessage(
+-    `I still need the following document${missing.length > 1 ? "s" : ""} before I can create your case:\n\n${labels}\n\nUse the paperclip to attach the missing file${missing.length > 1 ? "s" : ""}, then press Send again.`,
++    `I still need the following document${missing.length > 1 ? "s" : ""} before I can create your case:\n\n${labels}\n\nAttach the missing file${missing.length > 1 ? "s" : ""}, then press Send again.`,
+     { missingDocs: missing }
+   );
+ }
+@@ -34,7 +34,7 @@ function buildAckMessage(count: number): string {
+ }
+ 
+ const WELCOME_MESSAGE: ChatMessage = makeBotMessage(
+-  "Hello! I'm here to help you create a new insurance claim.\n\nAttach your documents with the paperclip, describe the incident, and press Send. I'll check what is missing after that."
++  "Hello! I'm here to help you create a new insurance claim.\n\nAttach your documents, describe the incident, and press Send. I'll check what is missing after that."
+ );
+ 
+ // -- Welcome hero (shown in centered layout before first message) ----------
+diff --git a/frontend/src/app/dashboard/page.tsx b/frontend/src/app/dashboard/page.tsx
+index 6a861d7..e64bf38 100644
+--- a/frontend/src/app/dashboard/page.tsx
++++ b/frontend/src/app/dashboard/page.tsx
+@@ -19,7 +19,7 @@ import { useRouter } from "next/navigation";
+ import { api } from "@/lib/api";
+ import { CaseListItem, CaseStatus } from "@/lib/types";
+ 
+-type DisplayStatus = "In Progress" | "Pending Review" | "Awaiting Docs" | "Completed" | "Escalated" | "Draft" | "Failed";
++type DisplayStatus = "In Progress" | "Pending Review" | "Awaiting Docs" | "Approved" | "Escalated" | "Draft" | "Failed";
+ 
+ function mapCaseStatus(status: CaseStatus): DisplayStatus {
+   switch (status) {
+@@ -31,7 +31,7 @@ function mapCaseStatus(status: CaseStatus): DisplayStatus {
+     case CaseStatus.AWAITING_DOCS:
+       return "Awaiting Docs";
+     case CaseStatus.APPROVED:
+-      return "Completed";
++      return "Approved";
+     case CaseStatus.ESCALATED:
+       return "Escalated";
+     case CaseStatus.DECLINED:
+@@ -239,7 +239,7 @@ function StatusBadge({ status }: { status: DisplayStatus }) {
+     "In Progress": "bg-semantic-info/10 text-semantic-info border-semantic-info/20",
+     "Pending Review": "bg-semantic-warning/10 text-semantic-warning border-semantic-warning/20",
+     "Awaiting Docs": "bg-neutral-text-tertiary/10 text-neutral-text-secondary border-neutral-text-tertiary/20",
+-    "Completed": "bg-semantic-success/10 text-semantic-success border-semantic-success/20",
++    "Approved": "bg-semantic-success/10 text-semantic-success border-semantic-success/20",
+     "Escalated": "bg-semantic-danger/10 text-semantic-danger border-semantic-danger/20",
+     "Draft": "bg-neutral-text-tertiary/10 text-neutral-text-tertiary border-neutral-text-tertiary/20",
+     "Failed": "bg-semantic-danger/10 text-semantic-danger border-semantic-danger/20",
+@@ -249,7 +249,7 @@ function StatusBadge({ status }: { status: DisplayStatus }) {
+     "In Progress": <Clock className="w-3 h-3 mr-1" />,
+     "Pending Review": <AlertCircle className="w-3 h-3 mr-1" />,
+     "Awaiting Docs": <Clock className="w-3 h-3 mr-1" />,
+-    "Completed": <CheckCircle2 className="w-3 h-3 mr-1" />,
++    "Approved": <CheckCircle2 className="w-3 h-3 mr-1" />,
+     "Escalated": <AlertCircle className="w-3 h-3 mr-1" />,
+     "Draft": <Clock className="w-3 h-3 mr-1" />,
+     "Failed": <AlertCircle className="w-3 h-3 mr-1" />,
+diff --git a/frontend/src/app/workflow/[caseId]/manage/page.tsx b/frontend/src/app/workflow/[caseId]/manage/page.tsx
+index 59888f7..67dbd5e 100644
+--- a/frontend/src/app/workflow/[caseId]/manage/page.tsx
++++ b/frontend/src/app/workflow/[caseId]/manage/page.tsx
+@@ -168,8 +168,12 @@ export default function ManageCasePage({ params }: PageProps) {
+   };
+ 
+   const handleStartWorkflow = async () => {
+-    const localFiles = files.filter(f => !f.isRemote);
+-    if (localFiles.length === 0 && files.filter(f => f.isRemote).length === 0) {
++    if (status !== CaseStatus.DRAFT) {
++      setError("This case has already been started.");
++      return;
++    }
++    const localFiles = files.filter(f => !f.isRemote && f.file);
++    if (localFiles.length === 0) {
+       setError("Please upload evidence documents first.");
+       return;
+     }
+@@ -178,11 +182,10 @@ export default function ManageCasePage({ params }: PageProps) {
+     setError(null);
+ 
+     try {
+-      const documentFiles = files.filter(f => !f.isRemote && f.file).map(f => f.file!);
++      const documentFiles = localFiles.map(f => f.file!);
+       await api.submitDocuments(caseId, documentFiles);
+-
+-      // Redirect to main workflow view
+-      router.push(`/workflow/${caseId}`);
++      showToast("Redirecting to workflow view");
++      setTimeout(() => router.push(`/workflow/${caseId}`), 900);
+     } catch (err: any) {
+       console.error("Failed to start workflow:", err);
+       setError(err.message || "An unexpected error occurred while starting the workflow.");
+@@ -220,19 +223,21 @@ export default function ManageCasePage({ params }: PageProps) {
+         </div>
+ 
+         <div className="flex items-center space-x-3">
+-          <Button
+-            onClick={handleStartWorkflow}
+-            disabled={isStarting || files.filter(f => !f.isRemote).length === 0}
+-            variant="outline"
+-            className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all disabled:opacity-50"
+-          >
+-            {isStarting ? (
+-              <Loader2 className="w-4 h-4 animate-spin" />
+-            ) : (
+-              <Play className="w-4 h-4 fill-current" />
+-            )}
+-            <span>{isStarting ? "Initializing..." : "Start Workflow"}</span>
+-          </Button>
++          {status === CaseStatus.DRAFT && (
++            <Button
++              onClick={handleStartWorkflow}
++              disabled={isStarting || files.filter(f => !f.isRemote && f.file).length === 0}
++              variant="outline"
++              className="flex items-center space-x-2 bg-neutral-surface border-neutral-border text-neutral-text-primary hover:bg-neutral-background transition-all disabled:opacity-50"
++            >
++              {isStarting ? (
++                <Loader2 className="w-4 h-4 animate-spin" />
++              ) : (
++                <Play className="w-4 h-4 fill-current" />
++              )}
++              <span>{isStarting ? "Initializing..." : "Start Workflow"}</span>
++            </Button>
++          )}
+           <Button onClick={handleUploadClick} className="flex items-center space-x-2">
+             <Upload className="w-4 h-4" />
+             <span>Upload New Evidence</span>
+@@ -256,7 +261,7 @@ export default function ManageCasePage({ params }: PageProps) {
+ 
+           {/* Document Management Hub */}
+           <div className="bg-neutral-surface border border-neutral-border rounded-lg shadow-sm flex flex-col h-full overflow-hidden">
+-            <div className="p-4 border-b border-neutral-border flex items-center justify-between flex-shrink-0 bg-neutral-background/30">
++            <div className="h-[60px] p-4 border-b border-neutral-border flex items-center justify-between flex-shrink-0 bg-neutral-background/30">
+               <div className="flex items-center space-x-2">
+                 <FileText className="w-4 h-4 text-brand-primary" />
+                 <h2 className="text-sm font-semibold text-neutral-text-primary">Document Evidence Slots</h2>
+@@ -312,35 +317,48 @@ export default function ManageCasePage({ params }: PageProps) {
+         {/* Right Column: PDF Report Preview */}
+         <div className="col-span-12 lg:col-span-4 flex flex-col min-h-0">
+           <div className="bg-neutral-surface border border-neutral-border rounded-lg h-full flex flex-col shadow-sm overflow-hidden">
+-            <div className="p-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30 flex-shrink-0">
++            <div className="h-[60px] px-4 py-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30 flex-shrink-0">
+               <div className="flex items-center space-x-2">
+                 <FileText className="w-4 h-4 text-brand-primary" />
+                 <h3 className="text-sm font-semibold text-neutral-text-primary">Final Report Preview</h3>
+               </div>
+               <div className="flex items-center space-x-2">
+-                {snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded) && (
+-                  <a
+-                    href={snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded).url}
+-                    target="_blank"
+-                    rel="noopener noreferrer"
+-                  >
+-                    <Button variant="ghost" size="sm" className="h-8 text-[11px] text-brand-primary hover:text-brand-primary/80">
+-                      <Upload className="w-3 h-3 mr-1 rotate-180" /> Download PDF
+-                    </Button>
+-                  </a>
+-                )}
++                {(() => {
++                  const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
++                  const artifact = snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf_signed' && !a.superseded)
++                    || snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded);
++
++                  if (!artifact) return null;
++
++                  return (
++                    <a
++                      href={`${apiBase}${artifact.url}`}
++                      target="_blank"
++                      rel="noopener noreferrer"
++                    >
++                      <Button variant="ghost" size="sm" className="h-8 text-[11px] text-brand-primary hover:text-brand-primary/80">
++                        <Upload className="w-3 h-3 mr-1 rotate-180" /> Download PDF
++                      </Button>
++                    </a>
++                  );
++                })()}
+               </div>
+             </div>
+ 
+             {(() => {
+-              const pdfArtifact = snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded);
++              const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
++              // Prefer the signed artifact if it exists (case approved with signature),
++              // otherwise fall back to the unsigned draft.
++              const pdfArtifact = snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf_signed' && !a.superseded)
++                || snapshot?.artifacts?.find((a: any) => a.artifact_type === 'decision_pdf' && !a.superseded);
+ 
+               if (pdfArtifact) {
+                 return (
+-                  <div className="flex-1 w-full h-full bg-neutral-background">
++                  <div className="flex-1 w-full h-full bg-neutral-background overflow-hidden relative">
+                     <iframe
+-                      src={pdfArtifact.url}
+-                      className="w-full h-full border-none"
++                      src={`${apiBase}${pdfArtifact.url}`}
++                      className="border-none absolute inset-0"
++                      style={{ width: "calc(100% + 18px)", height: "calc(100% + 18px)" }}
+                       title="Settlement Report Preview"
+                     />
+                   </div>
+@@ -436,12 +454,12 @@ function StatusBadge({ status }: { status: CaseStatus }) {
+       styles: 'bg-brand-primary'
+     },
+     [CaseStatus.AWAITING_APPROVAL]: {
+-      label: 'Completed',
+-      styles: 'bg-semantic-success'
++      label: 'Pending Review',
++      styles: 'bg-semantic-warning'
+     },
+     [CaseStatus.APPROVED]: {
+       label: 'Approved',
+-      styles: 'bg-blue-600'
++      styles: 'bg-semantic-success'
+     },
+     [CaseStatus.DECLINED]: {
+       label: 'Rejected',
+diff --git a/frontend/src/components/dashboard/ActionBar.tsx b/frontend/src/components/dashboard/ActionBar.tsx
+index 93ffcd1..bde66b6 100644
+--- a/frontend/src/components/dashboard/ActionBar.tsx
++++ b/frontend/src/components/dashboard/ActionBar.tsx
+@@ -1,8 +1,9 @@
+ import { useState } from "react"
+ import { Button } from "@/components/primitives/Button"
+-import { Check, Edit3, ShieldX, AlertTriangle, Loader2 } from "lucide-react"
++import { Toast } from "@/components/primitives/Toast"
++import { Check, Edit3, ShieldX, AlertTriangle, Loader2, FileText } from "lucide-react"
+ import { useCaseStore } from "@/stores/case-store"
+-import { CaseStatus } from "@/lib/types"
++import { CaseStatus, ArtifactType } from "@/lib/types"
+ import { api } from "@/lib/api"
+ import { SignatureModal } from "./SignatureModal"
+ 
+@@ -16,7 +17,7 @@ function DeclineConfirmModal({ isOpen, isSubmitting, onConfirm, onCancel }: {
+   return (
+     <div className="fixed inset-0 z-50 flex items-center justify-center animate-in fade-in duration-200">
+       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+-      <div className="relative bg-neutral-surface border border-neutral-border rounded-xl shadow-2xl w-full max-w-sm mx-4 p-6 animate-in zoom-in-95 duration-200">
++      <div className="relative bg-neutral-surface border border-neutral-border rounded-lg shadow-2xl w-full max-w-sm mx-4 p-6 animate-in zoom-in-95 duration-200">
+         <div className="flex flex-col items-center text-center gap-4">
+           <div className="w-12 h-12 rounded-full bg-semantic-danger/10 flex items-center justify-center">
+             <AlertTriangle className="w-6 h-6 text-semantic-danger" />
+@@ -57,10 +58,15 @@ export function ActionBar() {
+   const [isConfirmingDecline, setIsConfirmingDecline] = useState(false);
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
++  const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: "", visible: false });
+ 
+-  if (!caseId || ![CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS].includes(status)) {
+-    return null;
+-  }
++  // The action bar UI itself only makes sense while the case is awaiting an
++  // operator decision. The signature modal and toast are intentionally rendered
++  // unconditionally below: once the operator has opened the modal, the case
++  // transitions through RUNNING → APPROVED on the backend, and unmounting the
++  // modal mid-flow would lose its local step state and snap back to "preview
++  // draft" the next time the parent re-renders.
++  const showActionBar = !!caseId && [CaseStatus.AWAITING_APPROVAL, CaseStatus.ESCALATED, CaseStatus.AWAITING_DOCS, CaseStatus.APPROVED].includes(status);
+ 
+   const handleResume = async () => {
+     try {
+@@ -89,69 +95,111 @@ export function ActionBar() {
+     }
+   };
+ 
++  const handleDownloadReport = () => {
++    const artifacts = useCaseStore.getState().artifacts;
++    const signedArtifact = artifacts.find(a => a.artifact_type === ArtifactType.DECISION_PDF_SIGNED && !a.superseded);
++    if (signedArtifact) {
++      const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
++      window.open(`${apiBase}${signedArtifact.url}`, '_blank');
++    }
++  };
++
+   return (
+     <>
+-      <DeclineConfirmModal
+-        isOpen={isConfirmingDecline}
+-        isSubmitting={isSubmitting}
+-        onConfirm={handleDecline}
+-        onCancel={() => setIsConfirmingDecline(false)}
+-      />
++      {showActionBar && (
++        <>
++          <DeclineConfirmModal
++            isOpen={isConfirmingDecline}
++            isSubmitting={isSubmitting}
++            onConfirm={handleDecline}
++            onCancel={() => setIsConfirmingDecline(false)}
++          />
+ 
+-      <div className="h-14 bg-neutral-surface border-t border-neutral-border px-6 flex items-center justify-between shrink-0 box-border z-30 w-full animate-in slide-in-from-bottom-full duration-500 ease-out">
+-        <div className="flex items-center space-x-4">
+-          <Button
+-            variant="outline"
+-            onClick={() => setIsConfirmingDecline(true)}
+-            className="h-9 border-semantic-danger/30 text-semantic-danger hover:bg-semantic-danger hover:text-neutral-white transition-all duration-200"
+-            disabled={isSubmitting}
+-          >
+-            <ShieldX className="w-4 h-4 mr-2" />
+-            Decline Claim
+-          </Button>
+-        </div>
++          <div className="h-14 bg-neutral-surface border-t border-neutral-border px-6 flex items-center justify-between shrink-0 box-border z-30 w-full animate-in slide-in-from-bottom-full duration-500 ease-out">
++            <div className="flex items-center space-x-4">
++              {status !== CaseStatus.APPROVED && (
++                <Button
++                  variant="outline"
++                  onClick={() => setIsConfirmingDecline(true)}
++                  className="h-9 border-semantic-danger/30 text-semantic-danger hover:bg-semantic-danger hover:text-neutral-white transition-all duration-200"
++                  disabled={isSubmitting}
++                >
++                  <ShieldX className="w-4 h-4 mr-2" />
++                  Decline Claim
++                </Button>
++              )}
++            </div>
+ 
+-        <div className="flex space-x-3">
+-          {status === CaseStatus.AWAITING_DOCS ? (
+-            <Button
+-              variant="default"
+-              className="h-9 rounded-md px-6 py-2 text-sm font-semibold bg-brand-primary hover:bg-brand-primary/90 text-neutral-white shadow-lg shadow-brand-primary/20"
+-              onClick={handleResume}
+-              disabled={isSubmitting}
+-            >
+-              {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+-              Resume Pipeline
+-            </Button>
+-          ) : (
+-            <>
+-              <Button
+-                variant="secondary"
+-                className="border-neutral-border text-neutral-text-primary h-9 rounded-md px-4 py-2 text-sm font-medium hover:bg-brand-primary/10 hover:border-brand-primary/40 hover:text-brand-primary transition-all duration-200"
+-                disabled={isSubmitting}
+-                onClick={() => useCaseStore.getState().setBlackboardMode('chat')}
+-              >
+-                <Edit3 className="w-4 h-4 mr-2 text-brand-primary" />
+-                Challenge
+-              </Button>
+-              <Button
+-                variant="default"
+-                className="h-9 rounded-md px-6 py-2 text-sm font-semibold bg-brand-primary hover:bg-brand-primary/90 hover:shadow-xl hover:shadow-brand-primary/30 text-neutral-white shadow-lg shadow-brand-primary/20 transition-all duration-200"
+-                onClick={handleApprove}
+-                disabled={isSubmitting}
+-              >
+-                {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+-                Approve Settlement
+-              </Button>
+-            </>
+-          )}
+-        </div>
+-      </div>
++            <div className="flex items-center space-x-4">
++              <div className="flex space-x-3">
++                {status === CaseStatus.APPROVED ? (
++                  <Button
++                    variant="default"
++                    className="group h-9 rounded-md px-6 py-2 text-sm font-semibold bg-semantic-success hover:bg-semantic-success hover:brightness-110 hover:shadow-xl hover:shadow-semantic-success/40 active:shadow-md text-white shadow-lg shadow-semantic-success/20 transition-all duration-200 ease-out"
++                    onClick={handleDownloadReport}
++                  >
++                    <FileText className="w-4 h-4 mr-2 transition-transform duration-200 group-hover:scale-110" />
++                    Download Final Report
++                  </Button>
++                ) : status === CaseStatus.AWAITING_DOCS ? (
++                  <Button
++                    variant="default"
++                    className="group h-9 rounded-md px-6 py-2 text-sm font-semibold bg-brand-primary hover:bg-brand-primary hover:brightness-110 hover:shadow-xl hover:shadow-brand-primary/40 active:shadow-md text-black shadow-lg shadow-brand-primary/20 transition-all duration-200 ease-out disabled:opacity-60 disabled:hover:brightness-100"
++                    onClick={handleResume}
++                    disabled={isSubmitting}
++                  >
++                    {isSubmitting ? (
++                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
++                    ) : (
++                      <Check className="w-4 h-4 mr-2 transition-transform duration-200 group-hover:scale-110" />
++                    )}
++                    Resume Pipeline
++                  </Button>
++                ) : (
++                  <>
++                    <Button
++                      variant="secondary"
++                      className="border-neutral-border text-neutral-text-primary h-9 rounded-md px-4 py-2 text-sm font-medium hover:bg-brand-primary/10 hover:border-brand-primary/40 hover:text-brand-primary transition-all duration-200"
++                      disabled={isSubmitting}
++                      onClick={() => useCaseStore.getState().setBlackboardMode('chat')}
++                    >
++                      <Edit3 className="w-4 h-4 mr-2 text-brand-primary" />
++                      Challenge
++                    </Button>
++                    <Button
++                      variant="default"
++                      className="group h-9 rounded-md px-6 py-2 text-sm font-semibold bg-brand-primary hover:bg-brand-primary hover:brightness-110 hover:shadow-xl hover:shadow-brand-primary/40 active:shadow-md text-black shadow-lg shadow-brand-primary/20 transition-all duration-200 ease-out disabled:opacity-60 disabled:hover:brightness-100"
++                      onClick={handleApprove}
++                      disabled={isSubmitting}
++                    >
++                      {isSubmitting ? (
++                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
++                      ) : (
++                        <Check className="w-4 h-4 mr-2 transition-transform duration-200 group-hover:scale-110" />
++                      )}
++                      Approve Settlement
++                    </Button>
++                  </>
++                )}
++              </div>
++            </div>
++          </div>
++        </>
++      )}
++
++      {caseId && (
++        <SignatureModal
++          isOpen={isSignatureModalOpen}
++          onClose={() => setIsSignatureModalOpen(false)}
++          caseId={caseId}
++          onSuccess={() => setToast({ message: "Settlement approved successfully", visible: true })}
++        />
++      )}
+ 
+-      <SignatureModal
+-        isOpen={isSignatureModalOpen}
+-        onClose={() => setIsSignatureModalOpen(false)}
+-        caseId={caseId}
+-        onSuccess={() => {}}
++      <Toast
++        message={toast.message}
++        isVisible={toast.visible}
++        onClose={() => setToast(prev => ({ ...prev, visible: false }))}
+       />
+     </>
+   )
+diff --git a/frontend/src/components/dashboard/AgentDetailsModal.tsx b/frontend/src/components/dashboard/AgentDetailsModal.tsx
+index 0839ddc..8daf12e 100644
+--- a/frontend/src/components/dashboard/AgentDetailsModal.tsx
++++ b/frontend/src/components/dashboard/AgentDetailsModal.tsx
+@@ -1,12 +1,12 @@
+ 'use client';
+ 
+ import React from 'react';
+-import { 
+-  Brain, 
+-  Terminal, 
+-  ShieldCheck, 
+-  Clock, 
+-  CheckCircle2, 
++import {
++  Brain,
++  Terminal,
++  ShieldCheck,
++  Clock,
++  CheckCircle2,
+   AlertCircle,
+   MessageSquare,
+   Activity,
+@@ -24,10 +24,10 @@ interface AgentDetailsModalProps {
+   onSelectForChat: (id: AgentId) => void;
+ }
+ 
+-export function AgentDetailsModal({ 
+-  isOpen, 
+-  onClose, 
+-  agentId, 
++export function AgentDetailsModal({
++  isOpen,
++  onClose,
++  agentId,
+   agentInfo,
+   onSelectForChat
+ }: AgentDetailsModalProps) {
+@@ -53,7 +53,7 @@ export function AgentDetailsModal({
+ 
+   return (
+     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+-      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
++      <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+         {/* Header */}
+         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+           <div className="flex items-center gap-3">
+@@ -106,7 +106,7 @@ export function AgentDetailsModal({
+                 <div className="space-y-1.5">
+                   {agentInfo.logs.map((log, i) => (
+                     <div key={i} className="flex gap-3">
+-                      <span className="text-slate-700 flex-shrink-0">[{i+1}]</span>
++                      <span className="text-slate-700 flex-shrink-0">[{i + 1}]</span>
+                       <span className="text-slate-400">{log}</span>
+                     </div>
+                   ))}
+@@ -124,14 +124,14 @@ export function AgentDetailsModal({
+ 
+         {/* Footer */}
+         <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex justify-end gap-3">
+-          <Button 
+-            variant="secondary" 
++          <Button
++            variant="secondary"
+             onClick={onClose}
+             className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+           >
+             Close
+           </Button>
+-          <Button 
++          <Button
+             onClick={() => {
+               onSelectForChat(agentId);
+               onClose();
+diff --git a/frontend/src/components/dashboard/BlackboardPane.tsx b/frontend/src/components/dashboard/BlackboardPane.tsx
+index 30dbcb3..dccb5c4 100644
+--- a/frontend/src/components/dashboard/BlackboardPane.tsx
++++ b/frontend/src/components/dashboard/BlackboardPane.tsx
+@@ -93,7 +93,7 @@ function OutputCard({
+             >
+               <BookOpen className="h-2.5 w-2.5" />
+               {citationCount}
+-              <div className="absolute bottom-full mb-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap normal-case tracking-normal font-medium">
++              <div className="absolute top-full mt-1.5 right-0 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap normal-case tracking-normal font-medium">
+                 {`${citationCount} citation${citationCount === 1 ? '' : 's'}`}
+               </div>
+             </button>
+@@ -639,7 +639,7 @@ export function BlackboardPane() {
+           {activeArtifacts.map((art, idx) => (
+             <a
+               key={idx}
+-              href={art.url}
++              href={`${process.env.NEXT_PUBLIC_API_URL || ""}${art.url}`}
+               target="_blank"
+               rel="noopener noreferrer"
+               className="flex items-center justify-between p-2 rounded-md border border-neutral-border bg-neutral-background hover:border-brand-primary transition-colors group"
+@@ -648,7 +648,7 @@ export function BlackboardPane() {
+                 <FileKey className="w-3.5 h-3.5 text-brand-primary" />
+                 <div className="flex flex-col overflow-hidden">
+                   <span className="text-[11px] font-medium text-neutral-text-primary truncate">{art.filename}</span>
+-                  <span className="text-[9px] text-neutral-text-tertiary uppercase">v{art.version} • {art.artifact_type.replace('_', ' ')}</span>
++                  <span className="text-[9px] text-neutral-text-tertiary uppercase">v{art.version} • {art.artifact_type.replace(/_/g, ' ')}</span>
+                 </div>
+               </div>
+               <ArrowUp className="w-3 h-3 rotate-90 text-neutral-text-tertiary group-hover:text-brand-primary transition-colors" />
+diff --git a/frontend/src/components/dashboard/InputsPane.tsx b/frontend/src/components/dashboard/InputsPane.tsx
+index 5b6b5d3..03d5612 100644
+--- a/frontend/src/components/dashboard/InputsPane.tsx
++++ b/frontend/src/components/dashboard/InputsPane.tsx
+@@ -32,7 +32,7 @@ function FileTypeBadge({ filename }: { filename: string }) {
+   const ext = getExt(filename);
+   const colors = EXT_COLORS[ext] || { bg: "bg-neutral-border/20", text: "text-neutral-text-tertiary" };
+   return (
+-    <div className={`w-9 h-11 shrink-0 rounded-md flex items-center justify-center font-mono font-bold text-[9px] uppercase tracking-wide ${colors.bg} ${colors.text}`}>
++    <div className={`w-9 h-9 shrink-0 rounded-md flex items-center justify-center font-mono font-bold text-[9px] uppercase tracking-wide ${colors.bg} ${colors.text}`}>
+       {ext.slice(0, 4)}
+     </div>
+   );
+@@ -95,7 +95,7 @@ const DocumentSkeleton = () => (
+   <div className="relative overflow-hidden p-3 rounded-md bg-white border border-neutral-border/50">
+     <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-neutral-text-primary/5 to-transparent" />
+     <div className="flex items-center gap-3">
+-      <div className="w-9 h-11 rounded-md bg-neutral-border/60 shrink-0 animate-pulse" />
++      <div className="w-9 h-9 rounded-md bg-neutral-border/60 shrink-0 animate-pulse" />
+       <div className="space-y-1.5 flex-1">
+         <div className="h-2.5 bg-neutral-border/60 rounded w-2/3 animate-pulse" />
+         <div className="h-2 bg-neutral-border/40 rounded w-1/3 animate-pulse" />
+diff --git a/frontend/src/components/dashboard/SignatureModal.tsx b/frontend/src/components/dashboard/SignatureModal.tsx
+index 59244a5..e907aa1 100644
+--- a/frontend/src/components/dashboard/SignatureModal.tsx
++++ b/frontend/src/components/dashboard/SignatureModal.tsx
+@@ -1,16 +1,14 @@
+ "use client";
+ 
+ import React, { useState, useEffect } from "react";
+-import { 
+-  X, 
+-  PenTool, 
+-  User, 
+-  Briefcase, 
++import {
++  X,
++  User,
++  Briefcase,
+   Calendar,
+   CheckCircle2,
+   Loader2,
+   ShieldCheck,
+-  FileText,
+   ArrowRight,
+   ArrowLeft,
+   Stamp
+@@ -27,19 +25,23 @@ interface SignatureModalProps {
+   onSuccess: () => void;
+ }
+ 
+-type Step = "preview_draft" | "sign_details" | "review_signed" | "success";
++type Step = "preview_draft" | "sign_details" | "review_signed";
+ 
+ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: SignatureModalProps) {
+   const [step, setStep] = useState<Step>("preview_draft");
+-  const [signerName, setSignerName] = useState("Senior Claims Adjuster");
+-  const [designation, setDesignation] = useState("Claims Management Department");
++  const [signerName, setSignerName] = useState("");
++  const [designation, setDesignation] = useState("");
+   const [isSubmitting, setIsSubmitting] = useState(false);
+   const [pdfRefreshKey, setPdfRefreshKey] = useState(0);
+   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
++  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
++  const [signedPdfBlobUrl, setSignedPdfBlobUrl] = useState<string | null>(null);
++  const [isSigningPreview, setIsSigningPreview] = useState(false);
++  const [isApproved, setIsApproved] = useState(false);
+ 
+   const artifacts = useCaseStore(state => state.artifacts);
+   const decisionPdf = artifacts.find(a => a.artifact_type === ArtifactType.DECISION_PDF && !a.superseded);
+-  
++
+   const payoutBreakdown = useCaseStore(state => state.blackboard[BlackboardSection.PAYOUT_RECOMMENDATION]?.payout_breakdown);
+   const finalPayout = payoutBreakdown?.final_payout_myr || 0;
+ 
+@@ -47,6 +49,13 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
+   useEffect(() => {
+     if (isOpen) {
+       setStep("preview_draft");
++      setPdfBlobUrl(null);
++      setSignedPdfBlobUrl(prev => {
++        if (prev) URL.revokeObjectURL(prev);
++        return null;
++      });
++      setPdfRefreshKey(prev => prev + 1);
++      setIsApproved(false);
+       ensurePreview();
+     }
+   }, [isOpen]);
+@@ -54,8 +63,9 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
+   const ensurePreview = async () => {
+     if (decisionPdf) return;
+     setIsPreviewLoading(true);
++    const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+     try {
+-      await fetch(`${process.env.NEXT_PUBLIC_API_URL || ""}/api/v1/signature/${caseId}/preview`);
++      await fetch(`${apiBase}/api/v1/signature/${caseId}/preview`);
+     } catch (error) {
+       console.error("Failed to ensure preview:", error);
+     } finally {
+@@ -63,35 +73,98 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
+     }
+   };
+ 
++  const pdfUrl = decisionPdf
++    ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}${decisionPdf.url}?t=${pdfRefreshKey}`
++    : null;
++
++  useEffect(() => {
++    if (!pdfUrl) {
++      setPdfBlobUrl(null);
++      return;
++    }
++    let cancelled = false;
++    let createdUrl: string | null = null;
++    fetch(pdfUrl)
++      .then(r => r.blob())
++      .then(blob => {
++        if (cancelled) return;
++        const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
++        createdUrl = URL.createObjectURL(pdfBlob);
++        setPdfBlobUrl(createdUrl);
++      })
++      .catch(err => console.error("Failed to load PDF:", err));
++    return () => {
++      cancelled = true;
++      if (createdUrl) URL.revokeObjectURL(createdUrl);
++    };
++  }, [pdfUrl]);
++
++  const stepTitle = isApproved
++    ? "Settlement Finalized — Signed Report"
++    : ({
++        preview_draft: "Step 1: Review Draft Settlement",
++        sign_details: "Step 2: Digital Signature",
++        review_signed: "Step 3: Final Review (Signed)",
++      } as const)[step];
++
+   if (!isOpen) return null;
+ 
++  // Step 2 → Step 3 transition.
++  //
++  // We render the signed PDF on the fly via the preview-signed endpoint, which
++  // returns binary PDF bytes WITHOUT persisting any artifact and WITHOUT
++  // emitting SSE. This is what lets the operator visually verify the signed
++  // letter while keeping Manage Hub / Blackboard pointed at the unsigned
++  // draft. The signed copy is only persisted when the operator clicks
++  // "Confirm & Approve Case" in Step 3 (handleFinalApprove).
+   const handleSign = async () => {
+-    setIsSubmitting(true);
++    if (!signerName.trim() || !designation.trim() || isSigningPreview) return;
++    setIsSigningPreview(true);
+     try {
+-      await api.approveWithSignature(caseId, {
++      const blob = await api.previewSignedPdf(caseId, {
+         signer_name: signerName,
+         designation: designation,
+-        sign_date: new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })
++        sign_date: new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' }),
++      });
++      const pdfBlob = blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" });
++      const objectUrl = URL.createObjectURL(pdfBlob);
++      setSignedPdfBlobUrl(prev => {
++        if (prev) URL.revokeObjectURL(prev);
++        return objectUrl;
+       });
+-      
+-      setPdfRefreshKey(prev => prev + 1);
+       setStep("review_signed");
+-    } catch (error) {
+-      console.error("Failed to sign:", error);
++    } catch (err) {
++      console.error("Failed to render signed preview:", err);
+     } finally {
+-      setIsSubmitting(false);
++      setIsSigningPreview(false);
+     }
+   };
+ 
++  const handleClose = () => {
++    setSignedPdfBlobUrl(prev => {
++      if (prev) URL.revokeObjectURL(prev);
++      return null;
++    });
++    onClose();
++  };
++
+   const handleFinalApprove = async () => {
+     setIsSubmitting(true);
+     try {
++      // Persist the signed PDF as a SEPARATE artifact (the backend appends a
++      // new decision_pdf_signed record without superseding the unsigned draft),
++      // then transition the case to approved. Modal stays open on the signed
++      // preview until the operator dismisses it; success is surfaced via Toast
++      // by the parent.
++      await api.approveWithSignature(caseId, {
++        signer_name: signerName,
++        designation: designation,
++        sign_date: new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })
++      });
+       await api.approveCase(caseId);
+-      setStep("success");
+-      setTimeout(() => {
+-        onSuccess();
+-        onClose();
+-      }, 2000);
++      setPdfRefreshKey(prev => prev + 1);
++      setIsApproved(true);
++      onSuccess();
+     } catch (error) {
+       console.error("Failed to approve case:", error);
+     } finally {
+@@ -99,37 +172,32 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
+     }
+   };
+ 
+-  const pdfUrl = decisionPdf 
+-    ? `${process.env.NEXT_PUBLIC_API_URL || ""}${decisionPdf.url}?t=${pdfRefreshKey}` 
+-    : null;
+-
+   return (
+     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 fade-in duration-300">
+-      <div className="bg-neutral-surface border border-neutral-border rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col h-[90vh] max-h-[900px]">
++      <div className="bg-neutral-surface border border-neutral-border rounded-lg shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col h-[90vh] max-h-[900px]">
+         {/* Header */}
+         <div className="p-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30 flex-shrink-0">
+           <div className="flex items-center space-x-2">
+             <ShieldCheck className="w-5 h-5 text-brand-primary" />
+-            <h2 className="text-sm font-bold text-neutral-text-primary uppercase tracking-wider">
+-              Settlement Approval Wizard
++            <h2 className="text-base font-bold text-neutral-text-primary tracking-wide">
++              {stepTitle}
+             </h2>
+           </div>
+           <div className="flex items-center space-x-4">
+             <div className="flex items-center space-x-1">
+-               {[1, 2, 3].map((s) => (
+-                 <div 
+-                   key={s} 
+-                   className={`w-2 h-2 rounded-full ${
+-                     (s === 1 && step === "preview_draft") ||
+-                     (s === 2 && step === "sign_details") ||
+-                     (s === 3 && step === "review_signed") ||
+-                     (step === "success")
+-                      ? "bg-brand-primary" : "bg-neutral-border"
+-                   }`}
+-                 />
+-               ))}
++              {[1, 2, 3].map((s) => (
++                <div
++                  key={s}
++                  className={`w-2 h-2 rounded-full ${isApproved ||
++                    (s === 1 && step === "preview_draft") ||
++                    (s === 2 && step === "sign_details") ||
++                    (s === 3 && step === "review_signed")
++                    ? "bg-brand-primary" : "bg-neutral-border"
++                    }`}
++                />
++              ))}
+             </div>
+-            <button onClick={onClose} className="p-1 hover:bg-neutral-border rounded-md transition-colors">
++            <button onClick={handleClose} className="p-1 hover:bg-neutral-border rounded-md transition-colors">
+               <X className="w-4 h-4 text-neutral-text-tertiary" />
+             </button>
+           </div>
+@@ -139,33 +207,24 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
+         <div className="flex-1 overflow-hidden flex flex-col bg-neutral-background w-full">
+           {step === "preview_draft" && (
+             <div className="flex-1 flex flex-col overflow-hidden w-full">
+-              <div className="p-4 bg-brand-primary/5 border-b border-brand-primary/10">
+-                <h3 className="text-sm font-bold text-neutral-text-primary flex items-center gap-2">
+-                  <FileText className="w-4 h-4 text-brand-primary" />
+-                  Step 1: Review Draft Settlement
+-                </h3>
+-                <p className="text-[11px] text-neutral-text-tertiary mt-1">
+-                  Please verify all repair costs and policy deductions before proceeding to signature.
+-                </p>
+-              </div>
+               <div className="flex-1 relative bg-neutral-background/50 w-full">
+-                {pdfUrl ? (
+-                  <iframe src={pdfUrl} className="w-full h-full border-none" />
++                {pdfBlobUrl ? (
++                  <iframe src={pdfBlobUrl} className="w-full h-full border-none" />
+                 ) : (
+                   <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4">
+                     <Loader2 className="w-8 h-8 text-brand-primary animate-spin" />
+                     <p className="text-sm text-neutral-text-tertiary animate-pulse font-medium">
+-                      {isPreviewLoading ? "Assembling draft report..." : "Waiting for document artifacts..."}
++                      {isPreviewLoading || pdfUrl ? "Assembling draft report..." : "Waiting for document artifacts..."}
+                     </p>
+                   </div>
+                 )}
+               </div>
+-              <div className="p-4 border-t border-neutral-border bg-neutral-background flex justify-between items-center flex-shrink-0">
+-                <div className="px-3 py-1.5 bg-neutral-background/80 border border-neutral-border rounded-md">
+-                  <span className="text-[10px] font-bold text-neutral-text-tertiary uppercase tracking-widest block mb-0.5">Approved Payout</span>
+-                  <span className="text-sm font-bold text-brand-primary">RM {finalPayout.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
++              <div className="p-4 border-t border-neutral-border bg-white flex justify-between items-center flex-shrink-0">
++                <div className="h-10 px-3 bg-neutral-background/80 border border-neutral-border rounded-md flex flex-col justify-center">
++                  <span className="text-[9px] font-bold text-black uppercase tracking-widest leading-none">Approved Payout</span>
++                  <span className="text-sm font-bold text-yellow-500 leading-none mt-1">RM {finalPayout.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                 </div>
+-                <Button onClick={() => setStep("sign_details")} className="bg-brand-primary text-black hover:bg-brand-primary-hover px-8">
++                <Button onClick={() => setStep("sign_details")} className="h-10 bg-brand-primary text-black hover:bg-brand-primary-hover px-5 font-semibold">
+                   Proceed to Sign <ArrowRight className="w-4 h-4 ml-2" />
+                 </Button>
+               </div>
+@@ -173,132 +232,148 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
+           )}
+ 
+           {step === "sign_details" && (
+-            <div className="flex-1 flex flex-col items-center justify-center p-8 overflow-y-auto w-full">
+-              <div className="w-full max-w-[500px] space-y-8 py-12 flex flex-col">
+-                <div className="text-center space-y-3">
+-                  <div className="w-16 h-16 bg-brand-primary/10 rounded-2xl flex items-center justify-center mx-auto">
+-                    <PenTool className="w-8 h-8 text-brand-primary" />
+-                  </div>
+-                  <div>
+-                    <h3 className="text-xl font-bold text-neutral-text-primary">Step 2: Digital Signature</h3>
+-                    <p className="text-sm text-neutral-text-tertiary mt-1">
++            <div className="flex-1 flex flex-col w-full">
++              <div className="flex-1 flex flex-col items-center justify-center px-8 py-6 overflow-y-auto w-full">
++                <div className="w-full max-w-[460px] space-y-6 flex flex-col">
++                  <div className="text-center space-y-3">
++                    <img src="/signature.png" alt="Signature" className="w-26 h-26 mx-auto object-contain -translate-y-4" />
++                    <p className="text-sm text-neutral-text-secondary">
+                       Provide authority details for the official stamp.
+                     </p>
+                   </div>
+-                </div>
+ 
+-                <div className="space-y-5 bg-neutral-surface border border-neutral-border p-8 rounded-2xl shadow-sm w-full">
+-                  <div className="space-y-2 w-full">
+-                    <label className="text-[10px] font-bold text-neutral-text-tertiary uppercase tracking-wider flex items-center px-1">
+-                      <User className="w-3 h-3 mr-2 text-brand-primary" /> Full Name
+-                    </label>
+-                    <input
+-                      type="text"
+-                      value={signerName}
+-                      onChange={(e) => setSignerName(e.target.value)}
+-                      className="w-full bg-neutral-background border border-neutral-border rounded-xl px-4 py-3 text-sm text-neutral-text-primary focus:outline-none focus:border-brand-primary transition-all"
+-                      placeholder="e.g. John Doe"
+-                      style={{ width: '100%', minWidth: '100%' }}
+-                    />
+-                  </div>
++                  <div className="space-y-4 bg-neutral-surface border border-neutral-border p-5 rounded-lg shadow-sm w-full">
++                    <div className="space-y-1.5 w-full">
++                      <label className="text-[10px] font-bold text-neutral-text-tertiary uppercase tracking-wider flex items-center">
++                        <User className="w-3 h-3 mr-1.5 text-brand-primary" /> Full Name
++                      </label>
++                      <input
++                        type="text"
++                        value={signerName}
++                        onChange={(e) => setSignerName(e.target.value)}
++                        className="w-full bg-neutral-background border border-neutral-border rounded-md px-3 py-2 text-sm text-neutral-text-primary focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary/20 transition-all"
++                        placeholder="e.g. John Doe"
++                      />
++                    </div>
+ 
+-                  <div className="space-y-2 w-full">
+-                    <label className="text-[10px] font-bold text-neutral-text-tertiary uppercase tracking-wider flex items-center px-1">
+-                      <Briefcase className="w-3 h-3 mr-2 text-brand-primary" /> Designation / Dept.
+-                    </label>
+-                    <input
+-                      type="text"
+-                      value={designation}
+-                      onChange={(e) => setDesignation(e.target.value)}
+-                      className="w-full bg-neutral-background border border-neutral-border rounded-xl px-4 py-3 text-sm text-neutral-text-primary focus:outline-none focus:border-brand-primary transition-all"
+-                      placeholder="e.g. Claims Manager"
+-                      style={{ width: '100%', minWidth: '100%' }}
+-                    />
+-                  </div>
++                    <div className="space-y-1.5 w-full">
++                      <label className="text-[10px] font-bold text-neutral-text-tertiary uppercase tracking-wider flex items-center">
++                        <Briefcase className="w-3 h-3 mr-1.5 text-brand-primary" /> Designation / Dept.
++                      </label>
++                      <input
++                        type="text"
++                        value={designation}
++                        onChange={(e) => setDesignation(e.target.value)}
++                        className="w-full bg-neutral-background border border-neutral-border rounded-md px-3 py-2 text-sm text-neutral-text-primary focus:outline-none focus:border-brand-primary focus:ring-1 focus:ring-brand-primary/20 transition-all"
++                        placeholder="e.g. Claims Manager"
++                      />
++                    </div>
+ 
+-                  <div className="space-y-2 w-full">
+-                    <label className="text-[10px] font-bold text-neutral-text-tertiary uppercase tracking-wider flex items-center px-1">
+-                      <Calendar className="w-3 h-3 mr-2 text-neutral-text-tertiary" /> Effective Date
+-                    </label>
+-                    <div className="w-full bg-neutral-background/40 border border-neutral-border rounded-xl px-4 py-3 text-sm text-neutral-text-tertiary flex items-center justify-between">
+-                      <span>{new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
+-                      <ShieldCheck className="w-4 h-4 text-semantic-success" />
++                    <div className="space-y-1.5 w-full">
++                      <label className="text-[10px] font-bold text-neutral-text-tertiary uppercase tracking-wider flex items-center">
++                        <Calendar className="w-3 h-3 mr-1.5 text-brand-primary" /> Effective Date
++                      </label>
++                      <div className="w-full bg-neutral-background/60 border border-neutral-border rounded-md px-3 py-2 text-sm text-neutral-text-secondary flex items-center justify-between">
++                        <span>{new Date().toLocaleDateString('en-MY', { day: '2-digit', month: 'long', year: 'numeric' })}</span>
++                        <ShieldCheck className="w-4 h-4 text-semantic-success" />
++                      </div>
+                     </div>
+                   </div>
+                 </div>
+-
+-                <div className="grid grid-cols-2 gap-4 w-full">
+-                  <Button variant="outline" onClick={() => setStep("preview_draft")} className="py-6 rounded-xl border-neutral-border">
+-                    <ArrowLeft className="w-4 h-4 mr-2" /> Back
+-                  </Button>
+-                  <Button 
+-                    onClick={handleSign} 
+-                    disabled={isSubmitting}
+-                    className="py-6 rounded-xl bg-brand-primary text-black hover:bg-brand-primary-hover shadow-lg shadow-brand-primary/20"
+-                  >
+-                    {isSubmitting ? (
+-                      <Loader2 className="w-5 h-5 animate-spin" />
+-                    ) : (
+-                      <>
+-                        <Stamp className="w-5 h-5 mr-2" />
+-                        Apply Signature
+-                      </>
+-                    )}
+-                  </Button>
+-                </div>
++              </div>
++              <div className="p-4 border-t border-neutral-border bg-white flex justify-between items-center flex-shrink-0">
++                <Button variant="outline" onClick={() => setStep("preview_draft")} className="h-10 border-neutral-border px-5">
++                  <ArrowLeft className="w-4 h-4 mr-2" /> Back
++                </Button>
++                <Button
++                  onClick={handleSign}
++                  disabled={isSubmitting || isSigningPreview || !signerName.trim() || !designation.trim()}
++                  className="h-10 bg-brand-primary text-black hover:bg-brand-primary-hover px-5 font-semibold"
++                >
++                  {isSigningPreview ? (
++                    <Loader2 className="w-4 h-4 animate-spin" />
++                  ) : (
++                    <>
++                      <Stamp className="w-4 h-4 mr-2" />
++                      Apply Signature
++                    </>
++                  )}
++                </Button>
+               </div>
+             </div>
+           )}
+ 
+           {step === "review_signed" && (
+             <div className="flex-1 flex flex-col overflow-hidden w-full">
+-              <div className="p-4 bg-semantic-success/5 border-b border-semantic-success/10">
+-                <h3 className="text-sm font-bold text-neutral-text-primary flex items-center gap-2">
+-                  <ShieldCheck className="w-4 h-4 text-semantic-success" />
+-                  Step 3: Final Review (Signed)
+-                </h3>
+-                <p className="text-[11px] text-neutral-text-tertiary mt-1">
+-                  The document has been digitally signed and stamped. Please verify the overlay placement.
++              <div className={`px-4 py-2.5 border-b border-neutral-border flex items-center gap-2 flex-shrink-0 ${isApproved ? "bg-semantic-success/5" : "bg-brand-primary/5"}`}>
++                {isApproved ? (
++                  <CheckCircle2 className="w-4 h-4 text-semantic-success flex-shrink-0" />
++                ) : (
++                  <Stamp className="w-4 h-4 text-brand-primary flex-shrink-0" />
++                )}
++                <p className="text-xs text-neutral-text-secondary">
++                  {isApproved ? (
++                    <>
++                      Approved & signed by <span className="font-semibold text-neutral-text-primary">{signerName}</span> ({designation}). The signed letter of undertaking is now archived.
++                    </>
++                  ) : (
++                    <>
++                      Preview signed by <span className="font-semibold text-neutral-text-primary">{signerName}</span> ({designation}). The signed copy is saved to artifacts only when you confirm.
++                    </>
++                  )}
+                 </p>
+               </div>
+               <div className="flex-1 relative bg-neutral-background/50 w-full">
+-                {pdfUrl ? (
+-                  <iframe src={pdfUrl} className="w-full h-full border-none" />
++                {signedPdfBlobUrl ? (
++                  <iframe src={signedPdfBlobUrl} className="w-full h-full border-none" />
+                 ) : (
+-                  <div className="absolute inset-0 flex items-center justify-center text-neutral-text-tertiary italic text-sm">
+-                    Loading signed document...
++                  <div className="absolute inset-0 flex flex-col items-center justify-center space-y-4">
++                    <Loader2 className="w-8 h-8 text-brand-primary animate-spin" />
++                    <p className="text-sm text-neutral-text-tertiary animate-pulse font-medium">
++                      Rendering signed preview…
++                    </p>
+                   </div>
+                 )}
+               </div>
+-              <div className="p-4 border-t border-neutral-border bg-neutral-background flex justify-between items-center flex-shrink-0">
+-                <Button variant="outline" onClick={() => setStep("sign_details")} className="border-neutral-border">
+-                  <ArrowLeft className="w-4 h-4 mr-2" /> Change Details
+-                </Button>
+-                <Button 
+-                  onClick={handleFinalApprove} 
+-                  disabled={isSubmitting}
+-                  className="bg-semantic-success text-white hover:bg-semantic-success/90 px-12 shadow-lg shadow-semantic-success/20"
+-                >
+-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+-                  Confirm & Approve Case
+-                </Button>
+-              </div>
+-            </div>
+-          )}
+-
+-          {step === "success" && (
+-            <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-8 bg-neutral-surface w-full">
+-              <div className="relative">
+-                <div className="absolute inset-0 bg-semantic-success/20 rounded-full blur-2xl animate-pulse" />
+-                <div className="relative w-24 h-24 bg-semantic-success/20 rounded-full flex items-center justify-center">
+-                  <CheckCircle2 className="w-12 h-12 text-semantic-success" />
+-                </div>
+-              </div>
+-              <div className="space-y-3 max-w-sm">
+-                <h3 className="text-3xl font-bold text-neutral-text-primary tracking-tight">Settlement Finalized</h3>
+-                <p className="text-neutral-text-tertiary leading-relaxed">
+-                  The claim has been successfully approved. The signed letter of undertaking is now available in the archives.
+-                </p>
++              <div className="p-4 border-t border-neutral-border bg-white flex justify-between items-center flex-shrink-0">
++                {isApproved ? (
++                  <>
++                    <div className="flex items-center gap-2 text-xs text-semantic-success font-semibold">
++                      <CheckCircle2 className="w-4 h-4" />
++                      Settlement finalized
++                    </div>
++                    <Button
++                      onClick={handleClose}
++                      className="h-10 bg-semantic-success text-white hover:bg-semantic-success/90 px-5 font-semibold shadow-lg shadow-semantic-success/20"
++                    >
++                      Close
++                    </Button>
++                  </>
++                ) : (
++                  <>
++                    <Button
++                      variant="outline"
++                      onClick={() => {
++                        setSignedPdfBlobUrl(prev => {
++                          if (prev) URL.revokeObjectURL(prev);
++                          return null;
++                        });
++                        setStep("sign_details");
++                      }}
++                      className="border-neutral-border"
++                    >
++                      <ArrowLeft className="w-4 h-4 mr-2" /> Change Details
++                    </Button>
++                    <Button
++                      onClick={handleFinalApprove}
++                      disabled={isSubmitting}
++                      className="h-10 bg-semantic-success text-white hover:bg-semantic-success/90 px-5 font-semibold shadow-lg shadow-semantic-success/20"
++                    >
++                      {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
++                      Confirm & Approve Case
++                    </Button>
++                  </>
++                )}
+               </div>
+             </div>
+           )}
+diff --git a/frontend/src/components/dashboard/WorkflowPane.tsx b/frontend/src/components/dashboard/WorkflowPane.tsx
+index bb7e9de..5cb37d1 100644
+--- a/frontend/src/components/dashboard/WorkflowPane.tsx
++++ b/frontend/src/components/dashboard/WorkflowPane.tsx
+@@ -362,7 +362,7 @@ export function WorkflowPane() {
+       {/* Error Overlay for failed fetches */}
+       {!topology && caseStatus === CaseStatus.SUBMITTED && (
+         <div className="absolute inset-0 z-50 flex items-center justify-center bg-neutral-background/80 backdrop-blur-sm p-4">
+-          <div className="bg-neutral-surface p-6 rounded-xl border border-neutral-border shadow-card min-w-[300px] max-w-md text-center">
++          <div className="bg-neutral-surface p-6 rounded-lg border border-neutral-border shadow-card min-w-[300px] max-w-md text-center">
+             <div className="w-12 h-12 bg-semantic-danger/10 text-semantic-danger rounded-full flex items-center justify-center mx-auto mb-4">
+               <Settings className="w-6 h-6 animate-spin" />
+             </div>
+diff --git a/frontend/src/lib/api.ts b/frontend/src/lib/api.ts
+index 9e9f1d8..9e58769 100644
+--- a/frontend/src/lib/api.ts
++++ b/frontend/src/lib/api.ts
+@@ -70,6 +70,34 @@ export const api = {
+     return handleResponse(res);
+   },
+ 
++  /**
++   * Render a signed PDF preview without persisting it as an artifact.
++   * Returns the raw PDF as a Blob — the caller is responsible for the
++   * object-URL lifecycle. Used by the Signature Modal to render the
++   * "Final Review (Signed)" step before the operator commits to final
++   * approval.
++   */
++  async previewSignedPdf(caseId: string, data: { signer_name: string, designation: string, sign_date: string }): Promise<Blob> {
++    const res = await fetch(`${API_BASE}/api/v1/signature/${caseId}/preview-signed`, {
++      method: "POST",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify(data),
++    });
++    if (!res.ok) {
++      let errorDetail = "Unknown error";
++      const cloned = res.clone();
++      try {
++        const error = await res.json();
++        errorDetail = error.detail || JSON.stringify(error);
++      } catch {
++        errorDetail = (await cloned.text()) || res.statusText;
++      }
++      console.error(`[API Error] ${res.status} ${res.url}:`, errorDetail);
++      throw new Error(errorDetail);
++    }
++    return res.blob();
++  },
++
+   /**
+    * Decline a case with a reason
+    */
+diff --git a/frontend/src/lib/types.ts b/frontend/src/lib/types.ts
+index 685c3c3..79bbe62 100644
+--- a/frontend/src/lib/types.ts
++++ b/frontend/src/lib/types.ts
+@@ -45,6 +45,7 @@ export enum BlackboardSection {
+ 
+ export enum ArtifactType {
+   DECISION_PDF = "decision_pdf",
++  DECISION_PDF_SIGNED = "decision_pdf_signed",
+   AUDIT_TRAIL_JSON = "audit_trail_json",
+ }
+ 

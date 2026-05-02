@@ -381,8 +381,12 @@ class RotatingLLM:
         Raises:
             Exception: The last exception encountered if all retries fail.
         """
-        last_exc: Exception | None = None
         self._log_request(messages)
+        
+        # Hard Guard for DONT_RUN_LLM
+        if get_settings().DONT_RUN_LLM:
+            logger.warning("[RotatingLLM] DONT_RUN_LLM is enabled. Returning mock response.")
+            return AIMessage(content="LLM execution is disabled (DONT_RUN_LLM=True). Mock response generated."), LLMConfig(provider="mock", api_key="mock", model="mock")
         use_cache = bool(kwargs.pop("use_cache", self.use_cache))
         cache_key: str | None = None
         if use_cache:
@@ -581,6 +585,7 @@ class RotatingLLM:
             retry: int = 3,
             temperature: float = 0.0,
             model: str | None = None,
+            mock_data: Any | None = None,
             **llm_kwargs: Any
     ) -> LLMResponse:
         """
@@ -592,14 +597,25 @@ class RotatingLLM:
             retry: Number of JSON parsing retries.
             temperature: Temperature for LLM generation
             model: Specific model to use, overriding config
+            mock_data: Optional default data to return if DONT_RUN_LLM is enabled.
             **llm_kwargs: Extra LLM parameters.
 
         Returns:
             The LLMResponse with json_data populated if successful.
 
         Raises:
-            RuntimeError: If all retries fail or parsing fails.
+            RuntimeError: If all retries fail or parsing fails, or if DONT_RUN_LLM is enabled without mock_data.
         """
+        if get_settings().DONT_RUN_LLM:
+            if mock_data is not None:
+                return LLMResponse(
+                    text=json.dumps(mock_data),
+                    json_data=mock_data,
+                    model="mock",
+                    status="ok"
+                )
+            raise RuntimeError("DONT_RUN_LLM is enabled but no mock_data (default) was provided for this JSON call.")
+
         result: LLMResponse | None = None
         for _ in range(retry):
             result = await self.send_message(
@@ -621,6 +637,7 @@ class RotatingLLM:
             config: dict[str, Any] | None = None,
             temperature: float = 0.0,
             model: str | None = None,
+            mock_text: str | None = None,
             **llm_kwargs: Any
     ) -> LLMResponse:
         """
@@ -631,11 +648,19 @@ class RotatingLLM:
             config: ainvoke's config
             temperature: Temperature for LLM generation
             model: Specific model to use, overriding config
+            mock_text: Optional default text to return if DONT_RUN_LLM is enabled.
             **llm_kwargs: Extra LLM parameters.
 
         Returns:
             The LLMResponse object.
         """
+        if get_settings().DONT_RUN_LLM:
+            return LLMResponse(
+                text=mock_text or "LLM execution is disabled (DONT_RUN_LLM=True).",
+                model="mock",
+                status="ok"
+            )
+
         msgs: list[BaseMessage] | None = self.format_messages(messages)
         if msgs is None:
             return LLMResponse(text="", model="", status="fail")
