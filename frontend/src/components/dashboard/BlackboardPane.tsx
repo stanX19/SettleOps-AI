@@ -148,6 +148,38 @@ interface AuditResultData {
   human_review_notes?: string;
 }
 
+function splitAuditPoints(value?: string | null): string[] {
+  if (!value) return [];
+
+  const normalized = value
+    .replace(/\r/g, "\n")
+    .replace(/\\n/g, "\n")
+    .trim();
+
+  if (!normalized) return [];
+
+  const parts = normalized
+    .split(/\n+|\s+[\u2022]\s+|\s+-\s+|\s+\*\s+|;\s+/)
+    .map((part) => part.replace(/^\s*(?:[-*\u2022]|\d+[.)])\s+/, "").trim())
+    .filter(Boolean);
+
+  return parts.length > 0 ? parts : [normalized];
+}
+
+function AuditBulletList({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return <span className="text-sm text-neutral-text-secondary">No issues.</span>;
+  }
+
+  return (
+    <ul className="list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-neutral-text-primary marker:text-brand-primary">
+      {items.map((item, idx) => (
+        <li key={`${item}-${idx}`}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
 function BlackboardSkeleton() {
   return (
     <div className="relative bg-neutral-surface border border-neutral-border rounded-md shadow-card mb-4 overflow-hidden opacity-80">
@@ -501,6 +533,8 @@ export function BlackboardPane() {
   const renderAuditResult = (data: AuditResultData) => {
     const isInconsistent = data.validation_status && data.validation_status !== "valid";
     const unresolved = Array.isArray(data.unresolved_issues) ? data.unresolved_issues : [];
+    const summaryPoints = splitAuditPoints(data.summary || data.findings);
+    const humanReviewPoints = splitAuditPoints(data.human_review_notes);
     return (
       <OutputCard
         title="Final Aggregation"
@@ -517,23 +551,24 @@ export function BlackboardPane() {
             </Badge>
           }
         />
-        <Field label="Summary" value={<span className="text-sm leading-relaxed line-clamp-3" title={data.summary || data.findings}>{data.summary || data.findings || "No issues."}</span>} />
+        <Field label="Summary" value={<AuditBulletList items={summaryPoints} />} />
         <Field label="Final Recommendation" value={<Badge variant="outline" className="text-xs">{data.final_recommendation || data.suggested_action || "N/A"}</Badge>} />
         {unresolved.length > 0 && (
           <Field
             label="Unresolved Issues"
             value={
-              <div className="space-y-1.5">
-                {unresolved.map((issue, idx: number) => {
-                  const text = typeof issue === "string" ? issue : issue.issue || JSON.stringify(issue);
-                  return <div key={idx} className="line-clamp-2" title={text}>{text}</div>
-                })}
-              </div>
+              <AuditBulletList
+                items={unresolved.flatMap((issue) => (
+                  typeof issue === "string"
+                    ? splitAuditPoints(issue)
+                    : splitAuditPoints(issue.issue || JSON.stringify(issue))
+                ))}
+              />
             }
           />
         )}
-        {data.human_review_notes && (
-          <Field label="Human Review Notes" value={<span className="text-sm leading-relaxed line-clamp-2" title={data.human_review_notes}>{data.human_review_notes}</span>} />
+        {humanReviewPoints.length > 0 && (
+          <Field label="Human Review Notes" value={<AuditBulletList items={humanReviewPoints} />} />
         )}
       </OutputCard>
     );

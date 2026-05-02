@@ -7,7 +7,12 @@ import os
 # Add backend to sys.path if needed
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from srcs.services.agents.auditor import auditor_node, decision_router
+from srcs.services.agents.auditor import (
+    _build_auditor_prompt,
+    _compact_auditor_results,
+    auditor_node,
+    decision_router,
+)
 from srcs.services.agents.validator import cluster_validator_task
 from srcs.services.agents.refiner import refiner_node
 from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes, MAX_ITERATIONS
@@ -28,7 +33,10 @@ class TestEngineer3(unittest.IsolatedAsyncioTestCase):
             }
         }
         
-        with patch("srcs.services.agents.auditor.rotating_llm.send_message_get_json", return_value=mock_response):
+        with (
+            patch("srcs.services.agents.auditor.get_active_prompt", return_value="You are the final Aggregator."),
+            patch("srcs.services.agents.auditor.rotating_llm.send_message_get_json", return_value=mock_response),
+        ):
             state: ClaimWorkflowState = {
                 "case_facts": {},
                 "policy_results": {},
@@ -56,7 +64,10 @@ class TestEngineer3(unittest.IsolatedAsyncioTestCase):
             }
         }
         
-        with patch("srcs.services.agents.auditor.rotating_llm.send_message_get_json", return_value=mock_response):
+        with (
+            patch("srcs.services.agents.auditor.get_active_prompt", return_value="You are the final Aggregator."),
+            patch("srcs.services.agents.auditor.rotating_llm.send_message_get_json", return_value=mock_response),
+        ):
             state: ClaimWorkflowState = {
                 "case_facts": {},
                 "policy_results": {},
@@ -76,6 +87,58 @@ class TestEngineer3(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["status"], "inconsistent")
             self.assertIn("Damage mismatch", result["auditor_results"]["unresolved_issues"])
 
+    def test_auditor_prompt_enforces_blackboard_point_form(self):
+        """Auditor prompt should ask for compact point-form blackboard output."""
+        with patch("srcs.services.agents.auditor.get_active_prompt", return_value="You are the final Aggregator."):
+            prompt = _build_auditor_prompt({
+                "case_facts": {},
+                "policy_results": {},
+                "liability_results": {},
+                "damage_results": {},
+                "fraud_results": {},
+                "payout_results": {},
+                "adjuster_results": {},
+            })
+
+        self.assertIn("Blackboard display rules", prompt)
+        self.assertIn("Do NOT write paragraphs", prompt)
+        self.assertIn("summary: 2-3 bullets", prompt)
+        self.assertIn("unresolved_issues: max 4 items", prompt)
+
+    def test_auditor_results_are_compacted_for_blackboard(self):
+        """Long synthesis paragraphs should be reduced before reaching the UI."""
+        compacted = _compact_auditor_results(
+            {
+                "summary": (
+                    "This claim for a Lexus RX560 involves severe vehicle damage. "
+                    "The workshop quote totals MYR 56,635.20 and requires escalation. "
+                    "The police report conflicts with the visual damage findings."
+                ),
+                "final_recommendation": "escalate",
+                "validation_status": "unresolved",
+                "unresolved_issues": [
+                    "Critical Contradiction in Damage Location: The Police Report states a rear-end collision with extensive detail that should not flood the card.",
+                    "Unverified Policy Terms: Excess, depreciation, betterment and waivers require officer review before approval.",
+                    "System Validation Errors: Multiple clusters experienced internal inconsistency and need rerun.",
+                    "Fraud Indicators: Claimant address mismatch and suspicious timing require review.",
+                    "Extra issue that should be dropped.",
+                ],
+                "human_review_notes": (
+                    "Officer to urgently investigate the severe discrepancy between the Police Report's description and the observed damage photos."
+                ),
+            },
+            fallback_recommendation="approve",
+            fallback_validation_status="valid",
+            fallback_unresolved_issues=[],
+        )
+
+        self.assertIn("\n", compacted["summary"])
+        self.assertNotIn("...", compacted["summary"])
+        self.assertLessEqual(len(compacted["unresolved_issues"]), 4)
+        self.assertIn("rear-end collision with extensive detail", compacted["unresolved_issues"][0])
+        self.assertNotIn("...", " ".join(compacted["unresolved_issues"]))
+        self.assertFalse(compacted["human_review_notes"].startswith("- "))
+
     async def test_cluster_validator_task_returns_validation_payload(self):
         """Cluster validator inspects cluster results and returns normalized validation."""
         mock_response = MagicMock()
@@ -89,7 +152,10 @@ class TestEngineer3(unittest.IsolatedAsyncioTestCase):
             "reasoning": "Found damage issue",
         }
 
-        with patch("srcs.services.agents.validator.rotating_llm.send_message_get_json", return_value=mock_response):
+        with (
+            patch("srcs.services.agents.validator.get_active_prompt", return_value="You are the Validator Agent."),
+            patch("srcs.services.agents.validator.rotating_llm.send_message_get_json", return_value=mock_response),
+        ):
             state = {
                 "case_id": "CLM-TEST",
                 "case_facts": {},

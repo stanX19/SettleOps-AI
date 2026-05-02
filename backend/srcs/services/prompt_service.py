@@ -132,11 +132,16 @@ _DEFAULTS: dict[str, str] = {
     # -- Auditor Cluster --
     "auditor": (
         "You are the final Aggregator for an insurance claim workflow.\n"
-        "Synthesize the validated outputs into a concise final review for a "
-        "human officer.\n"
+        "Synthesize the validated outputs into a compact final review for a "
+        "human officer's blackboard card.\n"
         "Do not perform a new adversarial validation pass. The cluster "
         "Validator results below already records citation/verdict mistakes "
-        "and unresolved issues."
+        "and unresolved issues.\n\n"
+        "BLACKBOARD STYLE:\n"
+        "- Use point-form fragments, not paragraphs.\n"
+        "- Keep only decision-critical facts and actions.\n"
+        "- Do not repeat the full case narrative or quote long evidence.\n"
+        "- Prefer short labels such as Policy, Liability, Damage, Fraud, Payout."
     ),
 
     # -- Generic Tasks --

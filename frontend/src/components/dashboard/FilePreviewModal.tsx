@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   X,
   Loader2,
@@ -10,6 +10,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/primitives/Button";
+import { getBackendUrl } from "@/lib/utils";
 
 interface FilePreviewModalProps {
   isOpen: boolean;
@@ -46,6 +47,7 @@ export function FilePreviewModal({ isOpen, onClose, url, filename }: FilePreview
   const [error, setError] = useState<string | null>(null);
 
   const kind: FileKind = filename ? getFileKind(filename) : "unsupported";
+  const previewUrl = useMemo(() => (url ? getBackendUrl(url) : null), [url]);
 
   // Lock background scroll while open and listen for ESC.
   useEffect(() => {
@@ -66,24 +68,28 @@ export function FilePreviewModal({ isOpen, onClose, url, filename }: FilePreview
 
   // Fetch file content into a Blob URL (PDFs/images) or text string (JSON/text).
   useEffect(() => {
-    if (!isOpen || !url || !filename) {
-      setBlobUrl(null);
-      setTextContent(null);
-      setError(null);
+    if (!isOpen || !previewUrl || !filename) {
       return;
     }
 
     let cancelled = false;
     let createdUrl: string | null = null;
-
-    setIsLoading(true);
-    setError(null);
-    setBlobUrl(null);
-    setTextContent(null);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 15000);
 
     const load = async () => {
+      await Promise.resolve();
+      if (cancelled) return;
+      setIsLoading(true);
+      setError(null);
+      setBlobUrl(null);
+      setTextContent(null);
+
       try {
-        const res = await fetch(url);
+        const res = await fetch(previewUrl, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error(`Failed to load file (HTTP ${res.status})`);
 
         if (kind === "json" || kind === "text") {
@@ -112,9 +118,16 @@ export function FilePreviewModal({ isOpen, onClose, url, filename }: FilePreview
       } catch (err) {
         if (!cancelled) {
           console.error("FilePreviewModal: failed to load file", err);
-          setError(err instanceof Error ? err.message : "Failed to load file");
+          setError(
+            err instanceof DOMException && err.name === "AbortError"
+              ? "Preview request timed out. The backend did not finish sending the file."
+              : err instanceof Error
+                ? err.message
+                : "Failed to load file"
+          );
         }
       } finally {
+        window.clearTimeout(timeoutId);
         if (!cancelled) setIsLoading(false);
       }
     };
@@ -123,11 +136,13 @@ export function FilePreviewModal({ isOpen, onClose, url, filename }: FilePreview
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeoutId);
+      controller.abort();
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [isOpen, url, filename, kind]);
+  }, [isOpen, previewUrl, filename, kind]);
 
-  if (!isOpen || !url || !filename) return null;
+  if (!isOpen || !previewUrl || !filename) return null;
 
   return (
     <div
@@ -155,7 +170,7 @@ export function FilePreviewModal({ isOpen, onClose, url, filename }: FilePreview
           </div>
           <div className="flex items-center gap-1.5 ml-3">
             <a
-              href={url}
+              href={previewUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 hover:bg-neutral-border/40 rounded-md transition-colors text-neutral-text-tertiary hover:text-brand-primary"
@@ -164,7 +179,7 @@ export function FilePreviewModal({ isOpen, onClose, url, filename }: FilePreview
               <ExternalLink className="w-4 h-4" />
             </a>
             <a
-              href={url}
+              href={previewUrl}
               download={filename}
               className="p-2 hover:bg-neutral-border/40 rounded-md transition-colors text-neutral-text-tertiary hover:text-brand-primary"
               title="Download"
@@ -202,7 +217,7 @@ export function FilePreviewModal({ isOpen, onClose, url, filename }: FilePreview
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
+                onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
                 className="mt-2"
               >
                 <ExternalLink className="w-3.5 h-3.5 mr-1.5" /> Open in new tab
@@ -258,7 +273,7 @@ export function FilePreviewModal({ isOpen, onClose, url, filename }: FilePreview
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
+                    onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
                   >
                     <Download className="w-3.5 h-3.5 mr-1.5" /> Download File
                   </Button>

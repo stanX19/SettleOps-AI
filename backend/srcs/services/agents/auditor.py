@@ -1,9 +1,111 @@
+import re
 from typing import Any, Optional
 
 from srcs.logger import logger
 from srcs.schemas.state import ClaimWorkflowState
 from srcs.services.agents.rotating_llm import rotating_llm
 from srcs.services.prompt_service import get_active_prompt
+
+
+_BULLET_PREFIX_RE = re.compile(r"^\s*(?:[-*\u2022]\s*|\d+[.)]\s*)+")
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+
+
+def _clean_display_text(value: Any, *, preserve_newlines: bool = False) -> str:
+    """Normalize model text for compact blackboard display."""
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        text = (
+            value.get("issue")
+            or value.get("feedback")
+            or value.get("summary")
+            or value.get("evidence")
+            or str(value)
+        )
+    else:
+        text = str(value)
+
+    text = text.replace("\r", "\n")
+    if preserve_newlines:
+        text = re.sub(r"[ \t\f\v]+", " ", text)
+        text = "\n".join(line.strip() for line in text.split("\n") if line.strip())
+    else:
+        text = text.replace("\n", " ")
+        text = re.sub(r"\s+", " ", text).strip()
+    text = _BULLET_PREFIX_RE.sub("", text)
+    return text.strip(" ;")
+
+
+def _as_display_points(
+    value: Any,
+    *,
+    max_items: int,
+) -> list[str]:
+    if isinstance(value, list):
+        raw_items = value
+    else:
+        text = _clean_display_text(value, preserve_newlines=True)
+        raw_items = [item for item in re.split(r"\n+|\s*[\u2022;]\s*|\s+-\s+|\s*\|\s*", text) if item]
+        if len(raw_items) == 1:
+            raw_items = [item for item in _SENTENCE_SPLIT_RE.split(text) if item]
+
+    points: list[str] = []
+    for item in raw_items:
+        text = _clean_display_text(item)
+        if not text:
+            continue
+        if text not in points:
+            points.append(text)
+        if len(points) >= max_items:
+            break
+
+    return points
+
+
+def _compact_point_string(
+    value: Any,
+    *,
+    max_items: int,
+) -> str:
+    points = _as_display_points(
+        value,
+        max_items=max_items,
+    )
+    return "\n".join(points)
+
+
+def _compact_auditor_results(
+    synthesis: dict[str, Any],
+    *,
+    fallback_recommendation: str,
+    fallback_validation_status: str,
+    fallback_unresolved_issues: list[Any],
+) -> dict[str, Any]:
+    """Shape auditor output for the compact blackboard card."""
+    unresolved_source = synthesis.get("unresolved_issues", fallback_unresolved_issues)
+    unresolved_issues = _as_display_points(
+        unresolved_source,
+        max_items=4,
+    )
+
+    return {
+        "summary": _compact_point_string(
+            synthesis.get("summary", "Final synthesis complete."),
+            max_items=3,
+        ),
+        "final_recommendation": synthesis.get(
+            "final_recommendation", fallback_recommendation
+        ),
+        "validation_status": synthesis.get(
+            "validation_status", fallback_validation_status
+        ),
+        "unresolved_issues": unresolved_issues,
+        "human_review_notes": _compact_point_string(
+            synthesis.get("human_review_notes", ""),
+            max_items=2,
+        ),
+    }
 
 
 def _find_citation_payload_paths(value: Any, path: str = "payload") -> list[str]:
@@ -79,14 +181,22 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     Adjuster Report Review: {adjuster}
     Cluster Validation Results: {validation}
 {feedback_block}
+    Blackboard display rules:
+    - This output appears in a narrow UI card. Do NOT write paragraphs.
+    - Use short point-form fragments only.
+    - summary: 2-3 concise bullet points in one string, separated by "\\n".
+    - unresolved_issues: max 4 items; format "<Area>: <issue/action>".
+    - human_review_notes: max 2 action points in one string, separated by "\\n".
+    - Avoid evidence quotations, full narratives, and repeated case facts.
+
     Final response shape:
     {{
         "data": {{
-            "summary": "short final claim summary",
+            "summary": "short point\\nshort point",
             "final_recommendation": "approve" | "escalate" | "decline",
             "validation_status": "valid" | "issues_found" | "unresolved",
-            "unresolved_issues": ["string"],
-            "human_review_notes": "string"
+            "unresolved_issues": ["Area: short issue/action"],
+            "human_review_notes": "short action\\nshort action"
         }},
         "reasoning": "brief synthesis rationale"
     }}
@@ -159,19 +269,12 @@ async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
             "trace_log": [f"[Auditor] Error during synthesis: {e}"],
         }
 
-    auditor_results = {
-        "summary": synthesis.get("summary", "Final synthesis complete."),
-        "final_recommendation": synthesis.get(
-            "final_recommendation", "escalate" if unresolved else "approve"
-        ),
-        "validation_status": synthesis.get(
-            "validation_status", "issues_found" if unresolved else "valid"
-        ),
-        "unresolved_issues": synthesis.get(
-            "unresolved_issues", list(invalid_clusters.values()) if unresolved else []
-        ),
-        "human_review_notes": synthesis.get("human_review_notes", ""),
-    }
+    auditor_results = _compact_auditor_results(
+        synthesis,
+        fallback_recommendation="escalate" if unresolved else "approve",
+        fallback_validation_status="issues_found" if unresolved else "valid",
+        fallback_unresolved_issues=list(invalid_clusters.values()) if unresolved else [],
+    )
 
     return {
         "auditor_results": auditor_results,
