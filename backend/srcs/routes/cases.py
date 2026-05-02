@@ -1057,7 +1057,12 @@ async def officer_message(
                 "Officer has used both challenge attempts",
             )
 
-        target, record = classify_officer_message(state, body.message, body.type)
+        target, record = classify_officer_message(
+            state,
+            body.message,
+            body.type,
+            explicit_target=body.target_agent,
+        )
 
         if target is None:
             return MessageClarificationResponse(

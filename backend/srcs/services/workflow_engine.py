@@ -226,10 +226,15 @@ def build_workflow() -> StateGraph:
     
     # Decision Gate Routing (The Surgical Loop)
     builder.add_conditional_edges(WorkflowNodes.DECISION_GATE, decision_router, {
+        "ingest_tagging": "ingest_tagging",
         WorkflowNodes.POLICY_CLUSTER: WorkflowNodes.POLICY_CLUSTER,
         WorkflowNodes.LIABILITY_CLUSTER: WorkflowNodes.LIABILITY_CLUSTER,
         WorkflowNodes.DAMAGE_CLUSTER: WorkflowNodes.DAMAGE_CLUSTER,
         WorkflowNodes.FRAUD_CLUSTER: WorkflowNodes.FRAUD_CLUSTER,
+        "payout_node": "payout_node",
+        WorkflowNodes.ADJUSTER_REQUEST: WorkflowNodes.ADJUSTER_REQUEST,
+        WorkflowNodes.WAIT_FOR_ADJUSTER: WorkflowNodes.WAIT_FOR_ADJUSTER,
+        "auditor_node": "auditor_node",
         WorkflowNodes.REFINER: WorkflowNodes.REFINER,
         WorkflowNodes.REPORT_GENERATOR: WorkflowNodes.REPORT_GENERATOR,
         WorkflowNodes.DECISION_GATE: WorkflowNodes.DECISION_GATE
@@ -273,12 +278,15 @@ _NODE_TO_SECTION = {
     WorkflowNodes.RECONSTRUCTION: BlackboardSection.RECONSTRUCTION_RESULT,
 }
 
-def get_graph():
+def get_graph(*, interrupt_for_adjuster: bool = True):
     """Compiles the graph with standardized interrupt points."""
     builder = build_workflow()
+    interrupt_before = [WorkflowNodes.DECISION_GATE, WorkflowNodes.WAIT_FOR_DOCS]
+    if interrupt_for_adjuster:
+        interrupt_before.append(WorkflowNodes.WAIT_FOR_ADJUSTER)
     return builder.compile(
         checkpointer=workflow_checkpointer, 
-        interrupt_before=[WorkflowNodes.DECISION_GATE, WorkflowNodes.WAIT_FOR_DOCS, WorkflowNodes.WAIT_FOR_ADJUSTER]
+        interrupt_before=interrupt_before,
     )
 
 async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkflowState]):
@@ -343,9 +351,14 @@ async def run_workflow_with_sse(case_id: str, initial_state: Optional[ClaimWorkf
     ))
     return final_state_wrapper
 
-async def resume_workflow_with_sse(case_id: str, updates: dict):
+async def resume_workflow_with_sse(
+    case_id: str,
+    updates: dict,
+    *,
+    interrupt_for_adjuster: bool = True,
+):
     """Resumes a suspended graph thread with new state updates."""
-    graph = get_graph()
+    graph = get_graph(interrupt_for_adjuster=interrupt_for_adjuster)
     config = {"configurable": {"thread_id": case_id}}
     
     # Apply updates to the thread state

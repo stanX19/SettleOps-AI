@@ -15,6 +15,7 @@ import {
   Save,
   RotateCcw,
   Pencil,
+  Swords,
 } from "lucide-react";
 import { Button } from "@/components/primitives/Button";
 import { Badge } from "@/components/primitives/Badge";
@@ -42,6 +43,7 @@ interface AgentDetailsModalProps {
   documents?: DocumentInfo[];
   onViewEvidence?: (citation: Citation) => void;
   onSelectForChat: (id: AgentId) => void;
+  onChallenge?: (id: AgentId) => void;
 }
 
 const CUSTOMIZABLE_TASKS = new Set([
@@ -75,7 +77,8 @@ export function AgentDetailsModal({
   citations,
   documents = [],
   onViewEvidence,
-  onSelectForChat
+  onSelectForChat,
+  onChallenge,
 }: AgentDetailsModalProps) {
   // -- Derived state ---------------------------------------------------------
   // When a subtask node was clicked, show subtask-level status/logs; fall back to parent.
@@ -310,6 +313,19 @@ export function AgentDetailsModal({
           >
             Close
           </Button>
+          {onChallenge && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                onChallenge(agentId);
+                onClose();
+              }}
+              className="border-semantic-warning/50 text-semantic-warning hover:bg-semantic-warning/10 font-semibold shadow-sm"
+            >
+              <Swords className="w-4 h-4 mr-2" />
+              Challenge
+            </Button>
+          )}
           <Button
             onClick={() => {
               onSelectForChat(agentId);

@@ -135,12 +135,17 @@ export const api = {
   async sendMessage(
     caseId: string,
     message: string,
-    type: OfficerMessageType = OfficerMessageType.FREEFORM
+    type: OfficerMessageType = OfficerMessageType.FREEFORM,
+    targetAgent?: AgentId
   ): Promise<any> {
     const res = await fetch(`${API_BASE}/api/v1/cases/${caseId}/message`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, type }),
+      body: JSON.stringify({
+        message,
+        type,
+        ...(targetAgent ? { target_agent: targetAgent } : {}),
+      }),
     });
     return handleResponse(res);
   },

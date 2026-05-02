@@ -83,6 +83,7 @@ async def validate_citations(
     task_fn: TaskFn,
     feedback: Optional[str],
     node_id: str,
+    on_retry: Optional[Callable[[int, list[str]], Awaitable[None]]] = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Validate citations in ``raw_result``; retry the task if invalid.
 
@@ -137,6 +138,8 @@ async def validate_citations(
             "Retrying %s due to citation validation errors (attempt %d/%d)",
             node_id, attempt + 1, MAX_RETRIES,
         )
+        if on_retry is not None:
+            await on_retry(attempt + 1, errors)
         current = dict(await _call_task(task_fn, state, combined))
 
     # Should not reach here, but be defensive.

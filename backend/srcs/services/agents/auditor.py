@@ -2,9 +2,17 @@ import re
 from typing import Any, Optional
 
 from srcs.logger import logger
-from srcs.schemas.state import ClaimWorkflowState
+from srcs.schemas.state import ClaimWorkflowState, MAX_AUDITOR_LOOPS
 from srcs.services.agents.rotating_llm import rotating_llm
 from srcs.services.prompt_service import get_active_prompt
+from srcs.services.sse_service import SseService
+from srcs.services.case_store import now_iso
+from srcs.schemas.case_dto import (
+    AgentId,
+    AuditorTrigger,
+    RerunKind,
+    SseAgentMessageToAgentData,
+)
 
 
 _BULLET_PREFIX_RE = re.compile(r"^\s*(?:[-*\u2022]\s*|\d+[.)]\s*)+")
@@ -108,6 +116,70 @@ def _compact_auditor_results(
     }
 
 
+def _adjuster_finding_text(adjuster_results: dict[str, Any]) -> str:
+    finding = adjuster_results.get("adjuster_audit_finding") or {}
+    if isinstance(finding, dict):
+        text = _clean_display_text(finding.get("finding"))
+        if text:
+            return text
+
+    summary = _clean_display_text(adjuster_results.get("adjuster_summary_to_auditor"))
+    if summary:
+        return summary
+
+    recommendation = _clean_display_text(adjuster_results.get("recommendation_to_auditor"))
+    if recommendation:
+        return recommendation
+
+    return ""
+
+
+def _ensure_adjuster_finding_in_audit(
+    auditor_results: dict[str, Any],
+    adjuster_results: dict[str, Any],
+) -> dict[str, Any]:
+    finding = adjuster_results.get("adjuster_audit_finding") or {}
+    report_available = (
+        adjuster_results.get("status") in ("adjuster_report_reviewed", "adjuster_report_missing")
+        or bool(finding)
+    )
+    if not report_available:
+        return auditor_results
+
+    combined = " ".join(
+        [
+            _clean_display_text(auditor_results.get("summary")),
+            _clean_display_text(auditor_results.get("human_review_notes")),
+            _clean_display_text(auditor_results.get("unresolved_issues")),
+        ]
+    ).lower()
+    if "adjuster" in combined:
+        return auditor_results
+
+    finding_text = _adjuster_finding_text(adjuster_results)
+    if not finding_text:
+        return auditor_results
+
+    result = dict(auditor_results)
+    status = finding.get("status") if isinstance(finding, dict) else None
+    point = f"Adjuster: {finding_text}"
+
+    if status in ("within_range", "within_approved_amount"):
+        summary = _as_display_points(result.get("summary"), max_items=3)
+        summary.append(point)
+        result["summary"] = "\n".join(summary[-3:])
+    else:
+        unresolved = _as_display_points(result.get("unresolved_issues"), max_items=4)
+        unresolved.append(point)
+        result["unresolved_issues"] = unresolved[-4:]
+        if result.get("final_recommendation") == "approve":
+            result["final_recommendation"] = "escalate"
+        if result.get("validation_status") == "valid":
+            result["validation_status"] = "unresolved"
+
+    return result
+
+
 def _find_citation_payload_paths(value: Any, path: str = "payload") -> list[str]:
     """Find citation payloads that would become aggregator reasoning input."""
     if isinstance(value, dict):
@@ -179,6 +251,7 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     Fraud Indicators: {fraud}
     Payout Calculation: {payout}
     Adjuster Report Review: {adjuster}
+    Adjuster Audit Finding: {adjuster.get('adjuster_audit_finding', {})}
     Cluster Validation Results: {validation}
 {feedback_block}
     Blackboard display rules:
@@ -187,6 +260,7 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     - summary: 2-3 concise bullet points in one string, separated by "\\n".
     - unresolved_issues: max 4 items; format "<Area>: <issue/action>".
     - human_review_notes: max 2 action points in one string, separated by "\\n".
+    - If an adjuster audit finding exists, include one "Adjuster: ..." point in summary or unresolved_issues.
     - Avoid evidence quotations, full narratives, and repeated case facts.
 
     Final response shape:
@@ -228,9 +302,23 @@ async def _auditor_llm_call(
 
 async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
     """Final aggregator node: synthesize validated results for human review."""
+    adjuster_results = state.get("adjuster_results", {}) or {}
     if state.get("status") == "escalated":
+        existing = state.get("auditor_results") or {}
+        default_results = existing or {
+            "summary": "Case is escalated for human review.",
+            "final_recommendation": "escalate",
+            "validation_status": "unresolved",
+            "unresolved_issues": ["Workflow is escalated; final synthesis is paused until review completes."],
+            "human_review_notes": "Review unresolved validation or document issues before approval.",
+        }
         return {
+            "auditor_results": _ensure_adjuster_finding_in_audit(default_results, adjuster_results),
+            "auditor_citations": [],
+            "status": "inconsistent",
             "active_challenge": None,
+            "active_rerun_target": None,
+            "active_rerun_source": None,
             "trace_log": [
                 "[Auditor] Workflow is ESCALATED. Skipping final synthesis until critical data is provided."
             ],
@@ -248,6 +336,61 @@ async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
         if result.get("_validation", {}).get("is_valid", True) is False
     }
     unresolved = bool(invalid_clusters)
+    loop_count = int(state.get("auditor_loop_count") or 0)
+
+    is_officer_targeted_rerun = state.get("active_rerun_source") == "officer"
+    if unresolved and not is_officer_targeted_rerun and loop_count < MAX_AUDITOR_LOOPS:
+        target_cluster, validation = next(iter(invalid_clusters.items()))
+        next_loop_count = loop_count + 1
+        feedback = (
+            validation.get("feedback")
+            or validation.get("reasoning")
+            or validation.get("suggested_action")
+            or "Validator marked this cluster invalid. Re-run and correct unsupported or inconsistent findings."
+        )
+        case_id = state.get("case_id")
+        target_agent = AgentId(target_cluster)
+        if case_id:
+            await SseService.emit(case_id, SseAgentMessageToAgentData(
+                case_id=case_id,
+                timestamp=now_iso(),
+                from_agent=AgentId.AUDITOR,
+                to_agent=target_agent,
+                message_type="challenge",
+                message=str(feedback),
+                reason="Cluster validator failed",
+                loop_count=next_loop_count,
+                trigger=AuditorTrigger.AUTONOMOUS,
+                rerun_kind=RerunKind.AUDITOR_RERUN,
+                retry_scope="cluster",
+                target_agent=target_agent,
+                target_cluster=target_cluster,
+                trigger_node_id="validator",
+            ))
+        interim_results = {
+            "summary": f"Validator found issues in {target_cluster}; rerun requested.",
+            "final_recommendation": "escalate",
+            "validation_status": "issues_found",
+            "unresolved_issues": _as_display_points(str(feedback), max_items=4),
+            "human_review_notes": "Waiting for autonomous rerun result.",
+        }
+        return {
+            "auditor_results": _ensure_adjuster_finding_in_audit(interim_results, adjuster_results),
+            "auditor_citations": [],
+            "active_challenge": {
+                "target_cluster": target_cluster,
+                "feedback": str(feedback),
+                "iteration": next_loop_count,
+            },
+            "active_rerun_target": None,
+            "active_rerun_source": "auditor",
+            "auditor_loop_count": next_loop_count,
+            "status": "running",
+            "trace_log": [
+                f"[Auditor] Validator failed {target_cluster}; routing autonomous rerun "
+                f"({next_loop_count}/{MAX_AUDITOR_LOOPS})."
+            ],
+        }
 
     try:
         raw = await _auditor_llm_call(state)
@@ -255,17 +398,19 @@ async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
     except Exception as e:
         logger.exception("[Auditor] LLM call failed: %s", e)
         return {
-            "auditor_results": {
+            "auditor_results": _ensure_adjuster_finding_in_audit({
                 "status": "error",
                 "summary": f"Auditor error: {e}",
                 "final_recommendation": "escalate",
                 "validation_status": "unresolved",
                 "unresolved_issues": [f"Auditor error: {e}"],
                 "human_review_notes": "Final synthesis could not be generated.",
-            },
+            }, adjuster_results),
             "auditor_citations": [],
             "status": "inconsistent",
             "active_challenge": None,
+            "active_rerun_target": None,
+            "active_rerun_source": None,
             "trace_log": [f"[Auditor] Error during synthesis: {e}"],
         }
 
@@ -275,12 +420,15 @@ async def auditor_node(state: ClaimWorkflowState) -> dict[str, Any]:
         fallback_validation_status="issues_found" if unresolved else "valid",
         fallback_unresolved_issues=list(invalid_clusters.values()) if unresolved else [],
     )
+    auditor_results = _ensure_adjuster_finding_in_audit(auditor_results, adjuster_results)
 
     return {
         "auditor_results": auditor_results,
         "auditor_citations": [],
         "status": "inconsistent" if unresolved else "awaiting_approval",
         "active_challenge": None,
+        "active_rerun_target": None,
+        "active_rerun_source": None,
         "trace_log": [
             f"[Auditor] Final synthesis complete. Validation valid: {not unresolved}."
         ],
@@ -305,6 +453,22 @@ def decision_router(state: ClaimWorkflowState) -> str:
 
     if state.get("status") == "escalated":
         return WorkflowNodes.DECISION_GATE
+
+    active_rerun_target = state.get("active_rerun_target")
+    if active_rerun_target:
+        target_agent = active_rerun_target.get("target_agent")
+        route_map = {
+            "intake": "ingest_tagging",
+            "payout": "payout_node",
+            "adjuster": WorkflowNodes.WAIT_FOR_ADJUSTER
+            if any(
+                (doc.get("doc_type") == "adjuster_report" or doc.get("slot") == "adjuster_report")
+                for doc in state.get("documents", []) or []
+            )
+            else WorkflowNodes.ADJUSTER_REQUEST,
+            "auditor": "auditor_node",
+        }
+        return route_map.get(target_agent, WorkflowNodes.DECISION_GATE)
 
     active_challenge = state.get("active_challenge")
     iteration = active_challenge.get("iteration", 0) if active_challenge else 0

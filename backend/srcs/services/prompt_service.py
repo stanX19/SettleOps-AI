@@ -96,8 +96,15 @@ _DEFAULTS: dict[str, str] = {
         "- verified_labour: float (Total for labour hours)\n"
         "- verified_paint: float (Total for paint/refinishing)\n"
         "- verified_towing: float (Towing charges if any)\n"
-        "- suspicious_parts: list[str] (List parts that seem overpriced or "
-        "unnecessary)"
+        "- suspicious_parts: list[str] (List parts that seem overpriced or unnecessary)\n"
+        "- damage_severity_pct: int (0-100). Physical extent of vehicle damage as a "
+        "percentage of the vehicle body. Estimate from: structural vs cosmetic components "
+        "in the quote, keywords like 'frame', 'chassis', 'structural', number of major "
+        "panels affected. Guide: <30 = cosmetic only (panels/lights/trim); 30-50 = "
+        "moderate (multiple panels + mechanical parts); >50 = severe (frame/chassis/engine "
+        "involvement). Return 0 if insufficient information.\n"
+        "- damage_severity_basis: str (one sentence explaining how damage_severity_pct "
+        "was estimated, e.g. 'Front chassis rail and 3 structural panels quoted')"
     ),
     "pricing_validation_task": (
         "You are a Pricing Auditor. Your job is to validate the workshop "
