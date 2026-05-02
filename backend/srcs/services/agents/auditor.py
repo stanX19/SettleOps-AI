@@ -3,6 +3,7 @@ from typing import Any, Optional
 from srcs.logger import logger
 from srcs.schemas.state import ClaimWorkflowState
 from srcs.services.agents.rotating_llm import rotating_llm
+from srcs.services.prompt_service import get_active_prompt
 
 
 def _find_citation_payload_paths(value: Any, path: str = "payload") -> list[str]:
@@ -64,12 +65,10 @@ def _build_auditor_prompt(state: ClaimWorkflowState, feedback: Optional[str] = N
     )
 
     feedback_block = f"\n    Reviewer feedback: {feedback}\n" if feedback else ""
+    core_logic = get_active_prompt("auditor")
 
     return f"""
-    You are the final Aggregator for an insurance claim workflow.
-    Synthesize the validated outputs into a concise final review for a human officer.
-    Do not perform a new adversarial validation pass. The cluster Validator results below
-    already records citation/verdict mistakes and unresolved issues.
+    {core_logic}
 
     Case Facts (Tagged Documents): {case_facts.get('tagged_documents', {})}
     Policy Terms: {policy}

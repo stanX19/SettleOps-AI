@@ -67,6 +67,7 @@ from srcs.services.case_store import (
 )
 from srcs.services.sse_service import SseService
 from srcs.schemas.chat_dto import SseRepliesData, SseNotifData
+from srcs.services.prompt_service import get_active_prompt, CUSTOMIZABLE_AGENTS
 
 logger = logging.getLogger(__name__)
 from srcs.schemas.state import ClaimWorkflowState, WorkflowNodes
@@ -264,6 +265,13 @@ AGENT_METADATA = {
 }
 
 
+def _resolve_system_prompt(agent: AgentId) -> str:
+    """Return the active prompt for customizable agents, else the static display string."""
+    if agent.value in CUSTOMIZABLE_AGENTS:
+        return get_active_prompt(agent.value)
+    return AGENT_METADATA.get(agent, {}).get("prompt", "")
+
+
 def build_snapshot(state: CaseState) -> CaseSnapshot:
     return CaseSnapshot(
         case_id=state.case_id,
@@ -276,7 +284,7 @@ def build_snapshot(state: CaseState) -> CaseSnapshot:
                 started_at=rs.started_at,
                 completed_at=rs.completed_at,
                 purpose=AGENT_METADATA.get(agent, {}).get("purpose"),
-                system_prompt=AGENT_METADATA.get(agent, {}).get("prompt"),
+                system_prompt=_resolve_system_prompt(agent),
                 logs=rs.logs,
                 log_entries=rs.log_entries,
                 sub_tasks={

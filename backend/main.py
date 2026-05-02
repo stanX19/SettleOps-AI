@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from srcs.database import engine, Base
 import srcs.models.user
 import srcs.models.chat_message
+import srcs.models.agent_prompt
 
 from fastapi.staticfiles import StaticFiles
 
@@ -17,6 +18,7 @@ from srcs.routes.speech import router as speech_router
 from srcs.routes.claim import router as claim_router, mock_router as claim_mock_router
 from srcs.routes.cases import router as cases_router
 from srcs.routes.signature import router as signature_router
+from srcs.routes.agent_prompts import router as agent_prompts_router
 
 from srcs.schemas.case_dto import ErrorCode
 from srcs.services.case_service import ApiError
@@ -116,6 +118,7 @@ if settings.DEBUG:
     app.include_router(claim_mock_router)
 app.include_router(cases_router)
 app.include_router(signature_router)
+app.include_router(agent_prompts_router)
 
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Brain,
   Terminal,
@@ -12,11 +12,15 @@ import {
   Activity,
   X,
   BookOpen,
+  Save,
+  RotateCcw,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/primitives/Button";
 import { Badge } from "@/components/primitives/Badge";
 import { AgentId, AgentStatus, AgentStateInfo, Citation, CitationSummary, DocumentInfo, LogEntry } from "@/lib/types";
 import { CitationRow } from "@/components/dashboard/CitationPanel";
+import { api } from "@/lib/api";
 import {
   findCitationByFieldPath,
   findCitationById,
@@ -40,6 +44,27 @@ interface AgentDetailsModalProps {
   onSelectForChat: (id: AgentId) => void;
 }
 
+const CUSTOMIZABLE_TASKS = new Set([
+  // Cluster IDs (aliases)
+  "intake",
+  "policy",
+  "liability",
+  "damage",
+  "fraud",
+  // Specific Task IDs
+  "ingest_tagging",
+  "policy_analysis_task",
+  "liability_narrative_task",
+  "liability_poi_task",
+  "damage_quote_audit_task",
+  "pricing_validation_task",
+  "fraud_assessment_task",
+  "auditor",
+  // Generic Task IDs
+  "validator",
+  "aggregator"
+]);
+
 export function AgentDetailsModal({
   isOpen,
   onClose,
@@ -52,13 +77,73 @@ export function AgentDetailsModal({
   onViewEvidence,
   onSelectForChat
 }: AgentDetailsModalProps) {
-  if (!isOpen || !agentId || !agentInfo) return null;
-
+  // -- Derived state ---------------------------------------------------------
   // When a subtask node was clicked, show subtask-level status/logs; fall back to parent.
-  const displayInfo: AgentStateInfo =
-    subtaskName && agentInfo.sub_tasks?.[subtaskName]
-      ? agentInfo.sub_tasks[subtaskName]
-      : agentInfo;
+  const displayInfo = (subtaskName && agentInfo?.sub_tasks?.[subtaskName])
+    ? agentInfo.sub_tasks[subtaskName]
+    : agentInfo;
+
+  // -- Prompt editing state --------------------------------------------------
+  const [isEditing, setIsEditing] = useState(false);
+  const [promptDraft, setPromptDraft] = useState("");
+  const [defaultPrompt, setDefaultPrompt] = useState<string | null>(null);
+  const [isCustomized, setIsCustomized] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [promptError, setPromptError] = useState<string | null>(null);
+
+  // If subtaskName is one of our LLM tasks, use it. Otherwise fall back to the parent agentId.
+  const activePromptId = (subtaskName && CUSTOMIZABLE_TASKS.has(subtaskName)) 
+    ? subtaskName 
+    : (agentId as string);
+
+  const canEditPrompt = CUSTOMIZABLE_TASKS.has(activePromptId);
+
+  // Fetch prompt info when modal opens for a customizable task
+  useEffect(() => {
+    if (!isOpen || !activePromptId || !canEditPrompt) return;
+    api.getAgentPrompt(activePromptId).then((info) => {
+      setDefaultPrompt(info.default_prompt);
+      setIsCustomized(info.is_customized);
+      setPromptDraft(info.custom_prompt ?? info.default_prompt);
+    }).catch(() => {
+      setPromptDraft(displayInfo?.system_prompt || "");
+    });
+  }, [activePromptId, isOpen, canEditPrompt, displayInfo?.system_prompt]);
+
+  const handleSavePrompt = useCallback(async () => {
+    if (!activePromptId) return;
+    setSaving(true);
+    setPromptError(null);
+    try {
+      const result = await api.updateAgentPrompt(activePromptId, promptDraft);
+      setIsCustomized(result.is_customized);
+      setIsEditing(false);
+    } catch (e: any) {
+      setPromptError(e.message || "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }, [activePromptId, promptDraft]);
+
+  const handleResetPrompt = useCallback(async () => {
+    if (!activePromptId) return;
+    setSaving(true);
+    setPromptError(null);
+    try {
+      const result = await api.resetAgentPrompt(activePromptId);
+      setPromptDraft(result.default_prompt);
+      setIsCustomized(false);
+      setIsEditing(false);
+    } catch (e: any) {
+      setPromptError(e.message || "Failed to reset");
+    } finally {
+      setSaving(false);
+    }
+  }, [activePromptId]);
+
+  // Early return AFTER all hooks
+  if (!isOpen || !agentId || !agentInfo || !displayInfo) return null;
+
   const traceEntries: LogEntry[] =
     displayInfo.log_entries && displayInfo.log_entries.length > 0
       ? displayInfo.log_entries
@@ -116,15 +201,72 @@ export function AgentDetailsModal({
             </p>
           </div>
 
-          {/* System Prompt — always from parent agent */}
+          {/* System Prompt — editable for customizable agents */}
           <div className="space-y-3">
             <h4 className="text-xs font-bold text-neutral-text-tertiary uppercase tracking-widest flex items-center gap-2">
               <ShieldCheck className="w-3.5 h-3.5 text-brand-primary" />
               System Instruction
+              {isCustomized && (
+                <Badge variant="default" className="text-[10px] py-0 px-1.5">Customized</Badge>
+              )}
+              {canEditPrompt && !isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="ml-auto p-1 rounded hover:bg-brand-primary/10 text-neutral-text-tertiary hover:text-brand-primary transition-colors"
+                  title="Edit prompt"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
             </h4>
-            <div className="p-4 rounded-lg bg-neutral-surface border border-neutral-border text-sm italic text-neutral-text-secondary font-mono leading-relaxed shadow-inner">
-              &quot;{agentInfo.system_prompt || "Confidential agent instructions."}&quot;
-            </div>
+
+            {isEditing ? (
+              <div className="space-y-2">
+                <textarea
+                  value={promptDraft}
+                  onChange={(e) => setPromptDraft(e.target.value)}
+                  className="w-full min-h-[160px] p-3 rounded-lg bg-neutral-background border border-brand-primary/30 text-sm text-neutral-text-primary font-mono leading-relaxed resize-y focus:outline-none focus:ring-2 focus:ring-brand-primary/40"
+                />
+                {promptError && (
+                  <p className="text-xs text-semantic-danger">{promptError}</p>
+                )}
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleSavePrompt}
+                    disabled={saving || !promptDraft.trim()}
+                    className="bg-brand-primary text-black hover:bg-brand-primary-hover font-semibold shadow-sm text-xs py-1 px-3"
+                  >
+                    <Save className="w-3.5 h-3.5 mr-1" />
+                    {saving ? "Saving..." : "Save"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setPromptError(null);
+                    }}
+                    className="text-xs py-1 px-3"
+                  >
+                    Cancel
+                  </Button>
+                  {isCustomized && (
+                    <Button
+                      variant="outline"
+                      onClick={handleResetPrompt}
+                      disabled={saving}
+                      className="ml-auto text-xs py-1 px-3 text-semantic-warning border-semantic-warning/30 hover:bg-semantic-warning/10"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                      Reset to Default
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-lg bg-neutral-surface border border-neutral-border text-sm italic text-neutral-text-secondary font-mono leading-relaxed shadow-inner whitespace-pre-wrap">
+                &quot;{promptDraft || agentInfo.system_prompt || "Confidential agent instructions."}&quot;
+              </div>
+            )}
           </div>
 
           {/* Logs — from subtask if selected, otherwise from parent */}

@@ -1,6 +1,7 @@
 from typing import Any, Optional, Union
 from srcs.schemas.state import ClaimWorkflowState, ClusterState
 from srcs.services.agents.rotating_llm import rotating_llm
+from srcs.services.prompt_service import get_active_prompt
 from srcs.tools.mcp_tools import fetch_motor_policy_guidelines, fetch_parts_pricing_guide, fetch_quotation_workflow_guide
 
 StateLike = Union[ClaimWorkflowState, ClusterState]
@@ -228,8 +229,10 @@ async def policy_analysis_task(
     # MCP tool call — load authoritative policy guidelines
     policy_guidelines = fetch_motor_policy_guidelines()
 
+    core_logic = get_active_prompt("policy_analysis_task")
+
     prompt = f"""
-    You are a Policy Specialist. Analyze the provided policy document.
+    {core_logic}
 
     AUTHORITATIVE POLICY GUIDELINES (fetched via MCP tool):
     {policy_guidelines}
@@ -238,23 +241,6 @@ async def policy_analysis_task(
     {doc['content']}
 
     Feedback from auditor/human: {feedback if feedback else "None"}
-
-    IMPORTANT EXTRACTION RULES:
-    1. You MUST extract every field below. Do NOT omit any.
-    2. Refer to the Policy Guidelines above for depreciation schedules and standard terms.
-    3. If a value cannot be found in the document, apply the defaults in the guidelines:
-       - claim_type: "own_damage"
-       - max_payout_myr: 50000.0
-       - excess_myr: 0.0
-       - depreciation_percent: 0.0
-    4. excess_myr is the policy excess / deductible the insured must pay.
-       Look for keywords: "Excess", "Deductible", "Policy Excess".
-    5. CITATION RULE FOR DEFAULTED FIELDS: If a field was not found in the document
-       and you applied a system default, you still need a citation. Use any stable
-       identifier already present in the document (e.g. policy number, insured name,
-       or effective date) as the excerpt, and set comment to
-       "Field not stated in document; system default applied."
-       Every field — whether extracted or defaulted — must have exactly one citation.
 
     {citation_block}
     """
@@ -288,8 +274,10 @@ async def liability_narrative_task(
     doc = get_doc_info(state, "police_report")
     citation_block = build_citation_instruction(state, node_id, [doc["filename"]])
 
+    core_logic = get_active_prompt("liability_narrative_task")
+
     prompt = f"""
-    You are a Liability Adjuster. Extract the incident narrative from the police report.
+    {core_logic}
 
     DOCUMENT (filename: {doc['filename']}):
     {doc['content']}
@@ -327,8 +315,10 @@ async def liability_poi_task(
         [plate_doc["filename"], closeup_doc["filename"]],
     )
 
+    core_logic = get_active_prompt("liability_poi_task")
+
     prompt = f"""
-    You are a Visual Forensic Analyst. Determine the Point of Impact (POI) from the damage descriptions.
+    {core_logic}
 
     DOCUMENT (filename: {plate_doc['filename']}):
     {plate_doc['content']}
@@ -337,10 +327,6 @@ async def liability_poi_task(
     {closeup_doc['content']}
 
     Feedback: {feedback if feedback else "None"}
-
-    Required JSON in "data":
-    - poi_location: "front" | "rear" | "left_side" | "right_side"
-    - damage_severity: "minor" | "moderate" | "severe"
 
     {citation_block}
     """
@@ -376,8 +362,10 @@ async def damage_quote_audit_task(
     # MCP tool call — load quotation workflow guide
     quotation_guide = fetch_quotation_workflow_guide()
 
+    core_logic = get_active_prompt("damage_quote_audit_task")
+
     prompt = f"""
-    You are a Damage Assessor. Audit the workshop repair quote.
+    {core_logic}
 
     AUTHORITATIVE QUOTATION WORKFLOW GUIDE (fetched via MCP tool):
     {quotation_guide}
@@ -386,24 +374,6 @@ async def damage_quote_audit_task(
     {doc['content']}
 
     Feedback: {feedback if feedback else "None"}
-
-    IMPORTANT: Extract the cost breakdown in MYR.
-    If a value is not explicitly found, return 0.0 for that field.
-    Use the quotation validation checklist above to verify each line item.
-
-    CITATION SOURCE GUIDANCE: All citations must come from the workshop quote document above.
-    When citing a line item, use a short single-line excerpt such as the part name and amount
-    (e.g. "Rear Right Fender 1,200.00") — do not copy multi-line table rows or document headers.
-    The Quotation Workflow Guide is an authoritative MCP reference, not an uploaded document;
-    do not attempt to cite it.
-
-    REQUIRED JSON FIELDS in "data":
-    - verified_total: float (Total approved repair estimate)
-    - verified_parts: float (Total for parts)
-    - verified_labour: float (Total for labour hours)
-    - verified_paint: float (Total for paint/refinishing)
-    - verified_towing: float (Towing charges if any)
-    - suspicious_parts: list[str] (List parts that seem overpriced or unnecessary)
 
     {citation_block}
     """
@@ -448,9 +418,10 @@ async def pricing_validation_task(
     # MCP tool call — load authoritative parts & labour pricing guide
     pricing_guide = fetch_parts_pricing_guide()
 
+    core_logic = get_active_prompt("pricing_validation_task")
+
     prompt = f"""
-    You are a Pricing Auditor. Your job is to validate the workshop repair quote against
-    the authoritative pricing reference below.
+    {core_logic}
 
     AUTHORITATIVE PARTS & LABOUR PRICING GUIDE (fetched via MCP tool):
     {pricing_guide}
@@ -459,24 +430,6 @@ async def pricing_validation_task(
     {doc['content']}
 
     Feedback: {feedback if feedback else "None"}
-
-    TASK:
-    1. For each line item in the quote, compare it against the pricing benchmark ranges.
-    2. Flag items that exceed the OEM/Standard upper bound by more than 20%.
-    3. Flag items inconsistent with the stated damage type or vehicle model.
-    4. Provide an overall pricing verdict.
-
-    CITATION SOURCE GUIDANCE:
-    - Use source_type="text" with filename "{doc['filename']}" for quoted workshop line items and total amounts.
-    - Use source_type="reference" with filename "parts_pricing_guide" for benchmark ranges.
-    - Benchmark excerpts must be exact rows or phrases from the Authoritative Parts & Labour Pricing Guide.
-
-    REQUIRED JSON FIELDS in "data":
-    - pricing_verdict: "acceptable" | "overpriced" | "suspicious"
-    - flagged_items: list of objects with {{ "item": str, "quoted_myr": float, "benchmark_range": str, "issue": str }}
-    - total_quoted_myr: float (sum of all quoted items)
-    - recommended_adjustment_myr: float (how much to deduct; 0.0 if acceptable)
-    - summary: str (one-sentence verdict explanation)
 
     {citation_block}
     """
@@ -508,17 +461,15 @@ async def fraud_assessment_task(
     ]
     context = "\n\n".join(context_blocks) if context_blocks else "(no documents)"
 
+    core_logic = get_active_prompt("fraud_assessment_task")
+
     prompt = f"""
-    You are a Fraud Investigator. Check for inconsistencies across all documents.
+    {core_logic}
 
     ALL DOCUMENTS:
     {context}
 
     Feedback: {feedback if feedback else "None"}
-
-    Required JSON in "data":
-    - suspicion_score: float (0.0 to 1.0)
-    - red_flags: list[str]
 
     {citation_block}
     """

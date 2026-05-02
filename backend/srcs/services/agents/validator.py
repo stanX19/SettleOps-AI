@@ -3,6 +3,7 @@ from typing import Any, Optional
 
 from srcs.schemas.state import ClusterState
 from srcs.services.agents.rotating_llm import rotating_llm
+from srcs.services.prompt_service import get_active_prompt
 
 
 def _build_cluster_validator_prompt(
@@ -16,12 +17,12 @@ def _build_cluster_validator_prompt(
         for key, value in (state.get("results", {}) or {}).items()
         if key != "_validation"
     }
-    return f"""
-    You are the Validator Agent for the {cluster_id} cluster.
+    core_logic = get_active_prompt("validator")
 
-    Your task is to look at all the citation and verdict.
-    Your goal is to find ANY mistakes made by the other agent.
-    You will be rewarded for mistakes you found.
+    return f"""
+    {core_logic}
+
+    Cluster ID: {cluster_id}
 
     Cluster verdict/results:
     {json.dumps(cluster_results, ensure_ascii=False, default=str)}
@@ -29,30 +30,6 @@ def _build_cluster_validator_prompt(
     Cluster citations by subagent:
     {json.dumps(state.get("citations", {}), ensure_ascii=False, default=str)}
 {feedback_block}
-    Validation rules:
-    1. Check whether each verdict/result is supported by its citations.
-    2. Check whether citation comments and conclusions match the cited excerpt.
-    3. Check for contradictions between subagent outputs inside this cluster.
-    4. Do not use uploaded document content or external knowledge. Judge only the verdicts and citations above.
-
-    Final response shape:
-    Return ONLY valid JSON. Do not include markdown, code fences, or explanatory prose outside the JSON.
-    {{
-        "data": {{
-            "is_valid": bool,
-            "mistakes": [
-                {{
-                    "field_path": "string",
-                    "issue": "string",
-                    "evidence": "string",
-                    "severity": "low" | "medium" | "high"
-                }}
-            ],
-            "feedback": "string",
-            "suggested_action": "approve" | "challenge"
-        }},
-        "reasoning": "brief rationale"
-    }}
     """
 
 
