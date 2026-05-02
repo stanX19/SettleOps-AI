@@ -1,6 +1,7 @@
 from typing import Any, List
 from srcs.schemas.state import ClaimWorkflowState
 from srcs.services.agents.rotating_llm import rotating_llm
+from srcs.services.prompt_service import get_active_prompt
 
 REQUIRED_DOCS = [
     "car_photo_plate",
@@ -38,22 +39,13 @@ async def ingest_tagging(state: ClaimWorkflowState) -> dict[str, Any]:
             "trace_log": ["[Intake] No new documents found to tag."]
         }
 
+    core_logic = get_active_prompt("intake")
+
     prompt = f"""
-    You are an insurance intake specialist. Categorize the following NEW documents into these 8 required slots:
-    {", ".join(REQUIRED_DOCS)}
-    
-    IMPORTANT: A single document can belong to MULTIPLE categories. 
-    For example, a photo of a car damage that also clearly shows the license plate should be tagged as BOTH "car_photo_plate" and "damage_closeup".
-    
-    If a document does not fit any category, use "unknown".
-    Use the document content first, then filename and doc_type_hint as supporting clues.
-    Photo/image snippets may be AI vision descriptions rather than literal OCR text.
+    {core_logic}
 
     Documents:
     {new_docs_to_process}
-
-    Return a JSON object mapping the document index (as string) to a LIST of categories.
-    Example: {{"0": ["police_report"], "1": ["car_photo_plate", "damage_closeup"]}}
     """
 
     try:

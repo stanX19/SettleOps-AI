@@ -234,4 +234,32 @@ export const api = {
     });
     return handleResponse(res);
   },
+
+  // -- Agent Prompt Overrides -----------------------------------------------
+
+  async getAgentPrompt(agentId: string): Promise<{
+    agent_id: string;
+    default_prompt: string;
+    custom_prompt: string | null;
+    is_customized: boolean;
+  }> {
+    const res = await fetch(`${API_BASE}/api/v1/agent-prompts/${agentId}`);
+    return handleResponse(res);
+  },
+
+  async updateAgentPrompt(agentId: string, customPrompt: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/api/v1/agent-prompts/${agentId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ custom_prompt: customPrompt }),
+    });
+    return handleResponse(res);
+  },
+
+  async resetAgentPrompt(agentId: string): Promise<any> {
+    const res = await fetch(`${API_BASE}/api/v1/agent-prompts/${agentId}`, {
+      method: "DELETE",
+    });
+    return handleResponse(res);
+  },
 };
