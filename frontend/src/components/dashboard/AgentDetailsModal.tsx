@@ -66,10 +66,10 @@ export function AgentDetailsModal({
 
   const getStatusIcon = (status: AgentStatus) => {
     switch (status) {
-      case AgentStatus.WORKING: return <Activity className="w-4 h-4 animate-pulse text-blue-400" />;
-      case AgentStatus.COMPLETED: return <CheckCircle2 className="w-4 h-4 text-green-400" />;
-      case AgentStatus.ERROR: return <AlertCircle className="w-4 h-4 text-red-400" />;
-      default: return <Clock className="w-4 h-4 text-slate-400" />;
+      case AgentStatus.WORKING: return <Activity className="w-4 h-4 animate-pulse text-brand-primary" />;
+      case AgentStatus.COMPLETED: return <CheckCircle2 className="w-4 h-4 text-semantic-success" />;
+      case AgentStatus.ERROR: return <AlertCircle className="w-4 h-4 text-semantic-danger" />;
+      default: return <Clock className="w-4 h-4 text-neutral-text-tertiary" />;
     }
   };
 
@@ -83,58 +83,57 @@ export function AgentDetailsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-      <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+      <div className="bg-neutral-surface border border-neutral-border rounded-lg shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-300">
         {/* Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+        <div className="p-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-indigo-500/20 rounded-lg">
-              <Brain className="w-5 h-5 text-indigo-400" />
+            <div className="p-2 bg-brand-primary/10 rounded-lg">
+              <Brain className="w-5 h-5 text-brand-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-100 capitalize flex items-center gap-2">
+              <h2 className="text-lg font-bold text-neutral-text-primary capitalize flex items-center gap-2">
                 {titleOverride ?? (subtaskName
                   ? `${agentId} → ${subtaskName.replace(/_/g, ' ')}`
                   : `${agentId} Agent`)}
                 <Badge variant={getStatusVariant(displayInfo.status)} className="capitalize flex items-center gap-1">
-                  {getStatusIcon(displayInfo.status)}
                   {displayInfo.status}
                 </Badge>
               </h2>
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-800 rounded-md transition-colors text-slate-400">
+          <button onClick={onClose} className="p-1.5 hover:bg-neutral-border rounded-md transition-colors text-neutral-text-tertiary">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh] custom-scrollbar">
+        <div className="p-6 space-y-6 overflow-y-auto max-h-[70vh] custom-scrollbar bg-neutral-background">
           {/* Purpose — always from parent agent */}
           <div className="space-y-1">
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-neutral-text-secondary">
               {agentInfo.purpose || "Autonomous processing unit in the claims workflow."}
             </p>
           </div>
 
           {/* System Prompt — always from parent agent */}
           <div className="space-y-3">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-              <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+            <h4 className="text-xs font-bold text-neutral-text-tertiary uppercase tracking-widest flex items-center gap-2">
+              <ShieldCheck className="w-3.5 h-3.5 text-brand-primary" />
               System Instruction
             </h4>
-            <div className="p-4 rounded-lg bg-slate-950 border border-slate-800 text-sm italic text-slate-300 font-mono leading-relaxed shadow-inner">
-              "{agentInfo.system_prompt || "Confidential agent instructions."}"
+            <div className="p-4 rounded-lg bg-neutral-surface border border-neutral-border text-sm italic text-neutral-text-secondary font-mono leading-relaxed shadow-inner">
+              &quot;{agentInfo.system_prompt || "Confidential agent instructions."}&quot;
             </div>
           </div>
 
           {/* Logs — from subtask if selected, otherwise from parent */}
           <div className="space-y-3">
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-2">
-              <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+            <h4 className="text-xs font-bold text-neutral-text-tertiary uppercase tracking-widest flex items-center gap-2">
+              <Terminal className="w-3.5 h-3.5 text-semantic-success" />
               Execution Trace
             </h4>
-            <div className="rounded-lg bg-slate-950 border border-slate-800 p-4 font-mono text-[11px] overflow-y-auto custom-scrollbar shadow-inner max-h-64">
+            <div className="rounded-lg bg-neutral-surface border border-neutral-border p-4 font-mono text-sm overflow-y-auto custom-scrollbar shadow-inner max-h-64">
               {traceEntries.length > 0 ? (
                 <div className="space-y-1">
                   {traceEntries.map((entry, i) => (
@@ -150,22 +149,22 @@ export function AgentDetailsModal({
                   ))}
                   <div className="h-2" />
                   <div className="animate-pulse flex gap-2">
-                    <span className="text-emerald-500">_</span>
+                    <span className="text-semantic-success">_</span>
                   </div>
                 </div>
               ) : (
-                <div className="text-slate-700 italic">No logs available for current session.</div>
+                <div className="text-neutral-text-tertiary italic">No logs available for current session.</div>
               )}
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex justify-end gap-3">
+        <div className="p-4 border-t border-neutral-border bg-white flex justify-end gap-3">
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={onClose}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+            className="border-neutral-border text-neutral-text-primary hover:bg-neutral-surface"
           >
             Close
           </Button>
@@ -174,7 +173,7 @@ export function AgentDetailsModal({
               onSelectForChat(agentId);
               onClose();
             }}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white border-none shadow-lg shadow-indigo-500/20"
+            className="bg-brand-primary text-black hover:bg-brand-primary-hover font-semibold shadow-sm"
           >
             <MessageSquare className="w-4 h-4 mr-2" />
             Discuss Findings
@@ -238,8 +237,8 @@ function LogRow({
   return (
     <div className="space-y-1">
       <div className="flex gap-3 items-start">
-        <span className="text-slate-700 flex-shrink-0 mt-0.5">[{index + 1}]</span>
-        <span className="text-slate-400 flex-1 leading-relaxed">{entry.text}</span>
+        <span className="text-neutral-text-tertiary shrink-0 mt-0.5">[{index + 1}]</span>
+        <span className="text-neutral-text-primary flex-1 leading-relaxed">{entry.text}</span>
         {hasCitation && (
           <button
             onClick={() => {
@@ -250,20 +249,20 @@ function LogRow({
               setExpanded((e) => !e);
             }}
             title="View supporting citation"
-            className={`flex-shrink-0 mt-0.5 rounded p-0.5 transition-colors ${
+            className={`shrink-0 mt-0.5 rounded p-1 transition-colors ${
               expanded
                 ? "text-brand-primary bg-brand-primary/10"
-                : "text-slate-600 hover:text-brand-primary hover:bg-brand-primary/10"
+                : "text-neutral-text-tertiary hover:text-brand-primary hover:bg-brand-primary/10"
             }`}
           >
-            <BookOpen className="h-3 w-3" />
+            <BookOpen className="h-4 w-4" />
           </button>
         )}
       </div>
 
       {/* Inline citation detail — compact mode (no excerpt, no View Evidence button) */}
       {expanded && citation && (
-        <div className="ml-7 mt-0.5 rounded border border-neutral-border/60 bg-slate-900 overflow-hidden">
+        <div className="ml-7 mt-0.5 rounded border border-neutral-border/60 bg-neutral-background overflow-hidden">
           <CitationRow
             citation={citation}
             documents={documents}

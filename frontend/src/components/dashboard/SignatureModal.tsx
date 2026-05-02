@@ -57,24 +57,29 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
       });
       setPdfRefreshKey(prev => prev + 1);
       setIsApproved(false);
-      ensurePreview();
+      // ensurePreview will be called below
     }
   }, [isOpen]);
 
-  const ensurePreview = async () => {
-    setIsPreviewLoading(true);
-    const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
-    try {
-      await fetch(`${apiBase}/api/v1/signature/${caseId}/preview`);
-      const snapshot = await api.getCaseSnapshot(caseId);
-      setCase(snapshot);
-      setPdfRefreshKey(prev => prev + 1);
-    } catch (error) {
-      console.error("Failed to ensure preview:", error);
-    } finally {
-      setIsPreviewLoading(false);
+  useEffect(() => {
+    if (isOpen) {
+      const ensurePreview = async () => {
+        setIsPreviewLoading(true);
+        const apiBase = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
+        try {
+          await fetch(`${apiBase}/api/v1/signature/${caseId}/preview`);
+          const snapshot = await api.getCaseSnapshot(caseId);
+          setCase(snapshot);
+          setPdfRefreshKey(prev => prev + 1);
+        } catch (error) {
+          console.error("Failed to ensure preview:", error);
+        } finally {
+          setIsPreviewLoading(false);
+        }
+      };
+      ensurePreview();
     }
-  };
+  }, [isOpen, caseId, setCase]);
 
   const pdfUrl = decisionPdf
     ? `${decisionPdf.url}?t=${pdfRefreshKey}`

@@ -33,8 +33,8 @@ export function CitationEvidenceModal({
   return (
     <Dialog.Root open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-[120] bg-black/70 backdrop-blur-sm animate-in fade-in" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-[130] h-[88vh] w-[94vw] max-w-6xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-neutral-border bg-neutral-background shadow-2xl animate-in fade-in zoom-in-95 focus:outline-none">
+        <Dialog.Overlay className="fixed inset-0 z-120 bg-black/70 backdrop-blur-sm animate-in fade-in" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-130 h-[88vh] w-[94vw] max-w-6xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-lg border border-neutral-border bg-neutral-background shadow-2xl animate-in fade-in zoom-in-95 focus:outline-none">
           {citation && (
             <>
               <div className="flex items-start justify-between gap-3 border-b border-neutral-border px-5 py-3">

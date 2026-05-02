@@ -8,6 +8,22 @@ import {
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "");
 
+/**
+ * Typed error thrown for non-2xx API responses. Callers can branch on
+ * `status` (e.g. show a "not found" UI for 404s) instead of pattern-matching
+ * the message string.
+ */
+export class ApiError extends Error {
+  status: number;
+  url: string;
+  constructor(status: number, url: string, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.url = url;
+  }
+}
+
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     let errorDetail = "Unknown error";
@@ -17,10 +33,13 @@ async function handleResponse<T>(response: Response): Promise<T> {
       const error = await response.json();
       errorDetail = error.detail || JSON.stringify(error);
     } catch (e) {
-      errorDetail = await cloned.text() || response.statusText;
+      errorDetail = (await cloned.text()) || response.statusText;
     }
-    console.error(`[API Error] ${response.status} ${response.url}:`, errorDetail);
-    throw new Error(errorDetail);
+    // NOTE: We deliberately don't `console.error` here — Next.js dev mode
+    // promotes console.errors into a full-screen overlay even when the
+    // caller already handles the failure. Callers should log/render based
+    // on `ApiError.status` instead.
+    throw new ApiError(response.status, response.url, errorDetail);
   }
   return response.json();
 }

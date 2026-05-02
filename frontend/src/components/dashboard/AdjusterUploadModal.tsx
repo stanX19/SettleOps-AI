@@ -76,26 +76,26 @@ export function AdjusterUploadModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-300">
-      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300">
+    <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+      <div className="bg-neutral-surface border border-neutral-border rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300">
         {/* Header */}
-        <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/50">
+        <div className="p-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-500/20 rounded-lg">
-              <AlertTriangle className="w-5 h-5 text-amber-400" />
+            <div className="p-2 bg-amber-500/10 rounded-lg">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-100">
+              <h2 className="text-lg font-bold text-neutral-text-primary">
                 Adjuster Report Required
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-neutral-text-secondary mt-0.5">
                 High-value claim — physical inspection needed
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-slate-800 rounded-md transition-colors text-slate-400"
+            className="p-1.5 hover:bg-neutral-border rounded-md transition-colors text-neutral-text-tertiary"
             disabled={uploading}
           >
             <X className="w-4 h-4" />
@@ -103,10 +103,10 @@ export function AdjusterUploadModal({
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-5">
+        <div className="p-6 space-y-5 bg-neutral-background">
           {/* Reason Banner */}
-          <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-sm text-amber-200">
-            <p className="font-semibold text-amber-300 mb-1">
+          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-900">
+            <p className="font-semibold text-amber-800 mb-1">
               Why is an adjuster needed?
             </p>
             <p>
@@ -119,10 +119,10 @@ export function AdjusterUploadModal({
           <div
             className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${
               dragOver
-                ? 'border-indigo-400 bg-indigo-500/10'
+                ? 'border-brand-primary bg-brand-primary/5'
                 : selectedFile
-                ? 'border-emerald-500/50 bg-emerald-500/5'
-                : 'border-slate-700 hover:border-slate-600 bg-slate-950/50'
+                ? 'border-semantic-success/50 bg-semantic-success/5'
+                : 'border-neutral-border hover:border-neutral-text-tertiary bg-neutral-surface'
             }`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -144,25 +144,25 @@ export function AdjusterUploadModal({
 
             {selectedFile ? (
               <div className="flex flex-col items-center gap-2">
-                <CheckCircle2 className="w-8 h-8 text-emerald-400" />
-                <p className="text-sm font-medium text-slate-200">
+                <CheckCircle2 className="w-8 h-8 text-semantic-success" />
+                <p className="text-sm font-medium text-neutral-text-primary">
                   {selectedFile.name}
                 </p>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-neutral-text-tertiary">
                   {(selectedFile.size / 1024 / 1024).toFixed(2)} MB — Click to
                   change
                 </p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2">
-                <Upload className="w-8 h-8 text-slate-500" />
-                <p className="text-sm text-slate-300">
+                <Upload className="w-8 h-8 text-neutral-text-tertiary" />
+                <p className="text-sm text-neutral-text-secondary">
                   Drag & drop your adjuster report here
                 </p>
-                <p className="text-xs text-slate-500">or click to browse</p>
+                <p className="text-xs text-neutral-text-tertiary">or click to browse</p>
                 <div className="flex items-center gap-2 mt-2">
-                  <FileText className="w-3.5 h-3.5 text-slate-600" />
-                  <span className="text-xs text-slate-600">
+                  <FileText className="w-3.5 h-3.5 text-neutral-text-tertiary" />
+                  <span className="text-xs text-neutral-text-tertiary">
                     PDF, DOC, or DOCX — Max 10MB
                   </span>
                 </div>
@@ -172,26 +172,26 @@ export function AdjusterUploadModal({
 
           {/* Error */}
           {error && (
-            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-sm text-red-300">
+            <div className="p-3 rounded-lg bg-semantic-danger/10 border border-semantic-danger/30 text-sm text-semantic-danger">
               {error}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex justify-end gap-3">
+        <div className="p-4 border-t border-neutral-border bg-white flex justify-end gap-3">
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={onClose}
             disabled={uploading}
-            className="border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white"
+            className="border-neutral-border text-neutral-text-primary hover:bg-neutral-surface"
           >
             Cancel
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={!selectedFile || uploading}
-            className="bg-amber-600 hover:bg-amber-700 text-white border-none shadow-lg shadow-amber-500/20 disabled:opacity-50"
+            className="bg-amber-600 hover:bg-amber-700 text-white font-semibold shadow-sm disabled:opacity-50"
           >
             {uploading ? (
               <>
