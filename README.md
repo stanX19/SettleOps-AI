@@ -119,25 +119,6 @@ SettleOps AI is built as a stateful, agentic monolith managed by **LangGraph**. 
 
 ---
 
-## Tech Stack
-### Frontend
--   **Framework:** Next.js 16.2 (App Router)
--   **Logic:** React 19
--   **Styling:** Tailwind CSS 4
--   **State:** Zustand 5
--   **Visualization:** React Flow / xyflow, Three.js (3D reconstruction view)
-
-### Backend
--   **API:** FastAPI (Python 3.11+)
--   **Orchestration:** LangGraph & LangChain (with MemorySaver checkpointer for HITL resumption)
--   **Intelligence:** Google Gemini 2.5 Flash (1M Context)
--   **Extraction:** Microsoft MarkItDown & PyMuPDF
--   **PDF Generation:** ReportLab
--   **Streaming:** Server-Sent Events (SSE) for live agent telemetry
--   **Storage:** In-Memory Async-Locked CaseStore
-
----
-
 ## Impact
 | Metric | Calculation | Result |
 | --- | --- | --- |
@@ -147,6 +128,25 @@ SettleOps AI is built as a stateful, agentic monolith managed by **LangGraph**. 
 | Break-even | RM50,000 license / (RM200 manual − RM5 auto) | **~256 claims** |
 
 > From hours → minutes. From manual → intelligent.
+
+---
+
+## Tech Stack
+### Frontend
+-   **Framework**: Next.js 16.2 (App Router)
+-   **Logic**: React 19
+-   **Styling**: Tailwind CSS 4
+-   **State**: Zustand 5
+-   **Visualization**: React Flow / xyflow, Three.js (3D reconstruction view)
+
+### Backend
+-   **API**: FastAPI (Python 3.11+)
+-   **Orchestration**: LangGraph & LangChain (with MemorySaver checkpointer for HITL resumption)
+-   **Intelligence**: Google Gemini 2.5 Flash (1M Context)
+-   **Extraction**: Microsoft MarkItDown & PyMuPDF
+-   **PDF Generation**: ReportLab
+-   **Streaming**: Server-Sent Events (SSE) for live agent telemetry
+-   **Storage**: In-Memory Async-Locked CaseStore
 
 ---
 
