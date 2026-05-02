@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="frontend/public/banner.png" alt="SettleOps AI Banner" />
+  <img src="frontend/public/banner2.png" alt="SettleOps AI Banner" />
   <br />
-  <p><strong>Multi-agent AI automation workflow for lightning-fast insurance claim decision support.</strong></p>
+  <p><strong>The intelligence behind insurance claim decisions — multi-agent AI that turns a 2-4 day manual review into a 90-second AI-assisted decision.</strong></p>
   <p>
     <img src="https://img.shields.io/badge/Gemini-4285F4?style=flat-square&logo=google-gemini&logoColor=white" alt="Gemini" />
     <img src="https://img.shields.io/badge/LangGraph-1C3C3C?style=flat-square&logo=python&logoColor=white" alt="LangGraph" />
@@ -24,20 +24,54 @@
 
 ---
 
-## Overview
-SettleOps AI is an agentic platform designed to automate the complex, manual reasoning required for motor insurance claim reviews. By moving from manual document checking to a structured **PEVR (Plan, Execute, Verify, Replan)** pipeline, SettleOps AI reduces the time required to draft a claim decision from **60 minutes to under 90 seconds**.
+## Introduction
+SettleOps AI is an agentic decision-support platform built for motor insurance claim officers. It ingests every artifact in a claim file — police reports, policy schedules, cover notes, adjuster reports, workshop quotations, and crash photos — and returns a structured, fully-cited claim decision in under 90 seconds.
 
-The system utilizes a fleet of 13 specialized AI agents to cross-reference police reports, policy terms, and workshop quotes while performing forensic vision analysis on crash photos to ensure accuracy, consistency, and fraud detection.
+The platform is not an autopilot. It is a **decision cockpit**: a fleet of specialized AI agents draft the reasoning, surface every supporting citation, and escalate to a human officer whenever confidence is low. The officer reviews, challenges, or approves — and remains the sole final decision-maker on every claim.
+
+> *"Every claim is a puzzle. Solved manually, every time."*
+> SettleOps AI solves the puzzle so officers can focus on judgment, not paperwork.
+
+---
+
+## Core Problem
+Motor insurance claim review is a high-volume, high-context, low-leverage task. A single claim contains:
+
+-   **Too many documents, no single source of truth** — police reports, adjuster reports, policy & cover notes, workshop quotations, and crash photos all need to be cross-referenced by hand.
+-   **A manual decision-making bottleneck** — 2-4 days per claim, 15-25 claims per officer per day, with constant context switching between PDFs, photos, and policy clauses.
+-   **Repetitive cognitive labor** — the same reasoning steps (verify coverage, allocate fault, validate quotes, screen for fraud) are re-done from scratch for every claim.
+-   **Inconsistency and missed fraud** — fatigue and document overload cause inconsistent verdicts and let suspicious patterns slip through.
+
+> **The pain point: manual review is a repetitive task. It *is* the problem.**
+
+---
+
+## Solution
+SettleOps AI replaces the repetitive parts of claim review with a structured **PEVR (Plan, Execute, Verify, Replan)** multi-agent pipeline, while keeping the officer in the driver's seat.
+
+1.  **Reads everything** — the Intake agent parses every uploaded document (PDF, image, structured form) and tags it on a shared Decision Blackboard.
+2.  **Reasons in parallel** — specialist clusters (Policy, Liability, Damage, Fraud, Reconstruction) analyze evidence simultaneously using Gemini 2.5 Flash with a 1M-token context.
+3.  **Self-audits** — a Senior Auditor agent cross-checks every verdict for inconsistency before the case is shown to a human.
+4.  **Drafts the decision** — outputs a formal, citation-backed Decision PDF and a machine-readable Audit Trail JSON.
+5.  **Escalates when uncertain** — low-confidence cases are flagged, never guessed.
+6.  **Officer decides** — Approve, Decline, or **Challenge** a specific reasoning node to trigger a surgical rerun of just that agent.
+
+> **Officers stop doing paperwork. They start making decisions.**
 
 ---
 
 ## Key Features
--   **Multi-Agent Reasoning:** 13 specialized agents (Intake, Policy, Liability, Vision, Fraud, etc.) working in parallel.
--   **PEVR Pipeline:** A stateful "Plan, Execute, Verify, Replan" workflow that allows the system to autonomously correct its own reasoning.
--   **3-Pane Decision Cockpit:** A high-fidelity operator interface for real-time visualization of agent logic and evidence.
--   **Surgical Reruns:** Human-in-the-loop capability to challenge specific reasoning nodes and trigger targeted re-analysis.
--   **Visual Forensics:** Multimodal Vision AI to determine the Point of Impact (POI) and damage severity from photos.
--   **AI Strategy Chat:** A conversational interface for claims officers to interact with the underlying agentic logic.
+-   **13-Agent Reasoning Fleet** — Intake, Policy, Liability (Narrative + Point-of-Impact), Damage (Quote Audit + Pricing), Fraud, 3D Reconstruction, Payout, Adjuster, Auditor, and Refiner agents collaborate on a shared Decision Blackboard.
+-   **PEVR Self-Correcting Pipeline** — Plan → Execute → Verify → Replan. The Auditor agent detects cross-document inconsistencies and triggers targeted reruns autonomously.
+-   **3-Pane Decision Cockpit** — Live operator UI with Inputs (case assets), Workflow (real-time agent graph via React Flow), and Blackboard (structured verdicts + citations) — streamed over Server-Sent Events.
+-   **Surgical Reruns (Human-in-the-Loop)** — Officers can challenge any single reasoning node with natural-language feedback; the Refiner agent re-runs only the affected cluster instead of the whole case.
+-   **Visual Forensics** — Multimodal vision analysis on crash photos for Point of Impact (POI) classification, damage severity, and a 3D reconstruction view of the incident.
+-   **Fraud Detection Cluster** — Dedicated agent screens for narrative inconsistencies, suspicious patterns, and quote inflation, returning a suspicion score with cited evidence.
+-   **Full Audit Trail & Citations** — Every claim in every verdict is anchored to a source document excerpt; outputs include a signed Decision PDF and an Audit Trail JSON for compliance.
+-   **Adjuster Loop** — When physical inspection is required, the workflow pauses, requests an adjuster report upload, and resumes from a LangGraph checkpoint.
+-   **Customizable Agent Prompts** — Non-technical claims managers tune each specialist agent's behavior via persistent prompts stored locally — no code changes, no fine-tuning.
+-   **AI Strategy Chat** — Conversational interface for officers to interrogate the underlying agentic logic in plain language.
+-   **Digital Signature Flow** — Officers sign the final decision PDF in-app; the signed artifact is stored alongside the audit trail.
 
 ---
 
@@ -47,10 +81,10 @@ SettleOps AI is built as a stateful, agentic monolith managed by **LangGraph**. 
 ![Architecture](./architecture.png)
 
 ### The PEVR Cycle
-1.  **Plan:** Intake Specialist categorizes documents and identifies reasoning requirements.
-2.  **Execute:** Parallel clusters (Policy, Liability, Fraud) analyze evidence using Gemini 2.5 Flash.
-3.  **Verify:** The Senior Auditor agent validates cross-document consistency.
-4.  **Replan:** If conflicts are detected, the system triggers a surgical rerun of the affected agent.
+1.  **Plan** — Intake Specialist categorizes documents and identifies which reasoning clusters are required.
+2.  **Execute** — Parallel clusters (Policy, Liability, Damage, Fraud, Reconstruction) analyze evidence using Gemini 2.5 Flash.
+3.  **Verify** — The Senior Auditor agent validates cross-document consistency.
+4.  **Replan** — If conflicts are detected (or the officer challenges a node), the system triggers a surgical rerun of just the affected agent.
 
 ---
 
@@ -60,18 +94,110 @@ SettleOps AI is built as a stateful, agentic monolith managed by **LangGraph**. 
 -   **Logic:** React 19
 -   **Styling:** Tailwind CSS 4
 -   **State:** Zustand 5
--   **Visualization:** React Flow / xyflow
+-   **Visualization:** React Flow / xyflow, Three.js (3D reconstruction view)
 
 ### Backend
 -   **API:** FastAPI (Python 3.11+)
--   **Orchestration:** LangGraph & LangChain
+-   **Orchestration:** LangGraph & LangChain (with MemorySaver checkpointer for HITL resumption)
 -   **Intelligence:** Google Gemini 2.5 Flash (1M Context)
 -   **Extraction:** Microsoft MarkItDown & PyMuPDF
 -   **PDF Generation:** ReportLab
+-   **Streaming:** Server-Sent Events (SSE) for live agent telemetry
 -   **Storage:** In-Memory Async-Locked CaseStore
 
 ---
 
+## Impact
+| Metric | Calculation | Result |
+| --- | --- | --- |
+| Time reduction | (4,320 min avg − 10 min) / 4,320 min | **99.7%** |
+| Throughput multiplier | 4,320 min / 10 min | **432×** per claim |
+| FTE capacity gain | (4,310 min × 10,000 claims) / (2,080 hrs × 60 min) | **~345 FTE** equivalent |
+| Break-even | RM50,000 license / (RM200 manual − RM5 auto) | **~256 claims** |
+
+> From hours → minutes. From manual → intelligent.
+
+---
+
+## Getting Started
+
+### Prerequisites
+-   **Python 3.11+** (backend)
+-   **Node.js 20+** (frontend — Next.js 16.2)
+-   A **Google Gemini API key** ([aistudio.google.com](https://aistudio.google.com/app/apikey))
+-   *(Optional)* ElevenLabs API key for voice features, Exa API key for web search
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/stanX19/SettleOps-AI.git
+cd SettleOps-AI
+```
+
+### 2. Backend setup
+```bash
+cd backend
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# macOS / Linux:
+source venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+Create `backend/.env` with at minimum:
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+DEBUG=true
+PORT=8000
+CORS_ORIGINS=["http://localhost:3000"]
+
+# Optional — only if you use these features
+ELEVENLABS_API_KEY=
+EXA_API_KEY=
+```
+
+Run the API:
+```bash
+python main.py
+# Backend now serving at http://localhost:8000
+# OpenAPI docs at http://localhost:8000/docs
+```
+
+### 3. Frontend setup
+In a new terminal:
+```bash
+cd frontend
+npm install
+```
+
+Create `frontend/.env.local`:
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+Run the dev server:
+```bash
+npm run dev
+# Frontend now serving at http://localhost:3000
+```
+
+### 4. Try it out
+1.  Open [http://localhost:3000](http://localhost:3000).
+2.  A development case `CLM-2026-00001` is auto-seeded on backend startup.
+3.  Create a new claim, upload sample documents (police report, policy schedule, workshop quote, crash photos), and watch the live agent graph stream verdicts to the Blackboard.
+4.  Approve, decline, or **challenge** any reasoning node to trigger a surgical rerun.
+
+### Build for production
+```bash
+# Frontend
+cd frontend && npm run build && npm start
+
+# Backend
+cd backend && uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+---
 
 ## Credits
 **Built for UM Hackathon 2026 by Team spectrUM**.
