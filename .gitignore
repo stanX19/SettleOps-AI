@@ -54,3 +54,5 @@ run_frontend.bat
 /.claude
 backend/scratch
 backend/uploads/*
+
+DEPLOYMENT_PLAN.md
