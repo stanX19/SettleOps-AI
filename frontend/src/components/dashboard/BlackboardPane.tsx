@@ -672,7 +672,7 @@ export function BlackboardPane() {
           {activeArtifacts.map((art, idx) => (
             <a
               key={idx}
-              href={`${process.env.NEXT_PUBLIC_API_URL || ""}${art.url}`}
+              href={art.url}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-between p-2 rounded-md border border-neutral-border bg-neutral-background hover:border-brand-primary transition-colors group"

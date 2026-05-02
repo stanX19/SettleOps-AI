@@ -74,7 +74,7 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
   };
 
   const pdfUrl = decisionPdf
-    ? `${(process.env.NEXT_PUBLIC_API_URL || "").replace(/\/$/, "")}${decisionPdf.url}?t=${pdfRefreshKey}`
+    ? `${decisionPdf.url}?t=${pdfRefreshKey}`
     : null;
 
   useEffect(() => {
@@ -173,10 +173,10 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 fade-in duration-300">
+    <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 fade-in duration-300">
       <div className="bg-neutral-surface border border-neutral-border rounded-lg shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col h-[90vh] max-h-[900px]">
         {/* Header */}
-        <div className="p-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30 flex-shrink-0">
+        <div className="p-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30 shrink-0">
           <div className="flex items-center space-x-2">
             <ShieldCheck className="w-5 h-5 text-brand-primary" />
             <h2 className="text-base font-bold text-neutral-text-primary tracking-wide">
@@ -219,7 +219,7 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
                   </div>
                 )}
               </div>
-              <div className="p-4 border-t border-neutral-border bg-white flex justify-between items-center flex-shrink-0">
+              <div className="p-4 border-t border-neutral-border bg-white flex justify-between items-center shrink-0">
                 <div className="h-10 px-3 bg-neutral-background/80 border border-neutral-border rounded-md flex flex-col justify-center">
                   <span className="text-[9px] font-bold text-black uppercase tracking-widest leading-none">Approved Payout</span>
                   <span className="text-sm font-bold text-yellow-500 leading-none mt-1">RM {finalPayout.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -281,7 +281,7 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
                   </div>
                 </div>
               </div>
-              <div className="p-4 border-t border-neutral-border bg-white flex justify-between items-center flex-shrink-0">
+              <div className="p-4 border-t border-neutral-border bg-white flex justify-between items-center shrink-0">
                 <Button variant="outline" onClick={() => setStep("preview_draft")} className="h-10 border-neutral-border px-5">
                   <ArrowLeft className="w-4 h-4 mr-2" /> Back
                 </Button>
@@ -305,11 +305,11 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
 
           {step === "review_signed" && (
             <div className="flex-1 flex flex-col overflow-hidden w-full">
-              <div className={`px-4 py-2.5 border-b border-neutral-border flex items-center gap-2 flex-shrink-0 ${isApproved ? "bg-semantic-success/5" : "bg-brand-primary/5"}`}>
+              <div className={`px-4 py-2.5 border-b border-neutral-border flex items-center gap-2 shrink-0 ${isApproved ? "bg-semantic-success/5" : "bg-brand-primary/5"}`}>
                 {isApproved ? (
-                  <CheckCircle2 className="w-4 h-4 text-semantic-success flex-shrink-0" />
+                  <CheckCircle2 className="w-4 h-4 text-semantic-success shrink-0" />
                 ) : (
-                  <Stamp className="w-4 h-4 text-brand-primary flex-shrink-0" />
+                  <Stamp className="w-4 h-4 text-brand-primary shrink-0" />
                 )}
                 <p className="text-xs text-neutral-text-secondary">
                   {isApproved ? (
@@ -335,7 +335,7 @@ export function SignatureModal({ isOpen, onClose, caseId, onSuccess }: Signature
                   </div>
                 )}
               </div>
-              <div className="p-4 border-t border-neutral-border bg-white flex justify-between items-center flex-shrink-0">
+              <div className="p-4 border-t border-neutral-border bg-white flex justify-between items-center shrink-0">
                 {isApproved ? (
                   <>
                     <div className="flex items-center gap-2 text-xs text-semantic-success font-semibold">

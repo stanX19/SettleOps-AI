@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import {
   FileText, Image as ImageIcon, ChevronDown, ChevronRight,
-  CheckCircle2, Wrench, FileQuestion, AlertCircle, ExternalLink,
+  CheckCircle2, Wrench, FileQuestion, AlertCircle, Eye,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@/components/primitives/Badge";
@@ -11,6 +11,7 @@ import { Button } from "@/components/primitives/Button";
 import { useCaseStore } from "@/stores/case-store";
 import { CaseStatus, BlackboardSection } from "@/lib/types";
 import { api } from "@/lib/api";
+import { FilePreviewModal } from "./FilePreviewModal";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -59,19 +60,19 @@ function TagList({ tags }: { tags: string[] }) {
   );
 }
 
-function FileChip({ url, filename, status, tags }: {
+function FileChip({ url, filename, status, tags, onPreview }: {
   url: string;
   filename: string;
   status: React.ReactNode;
   tags: string[];
+  onPreview: (url: string, filename: string) => void;
 }) {
   return (
     <div className="rounded-md border border-neutral-border/60 bg-white dark:bg-neutral-background">
-      <a
-        href={url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center gap-3 p-3 hover:bg-neutral-border/10 transition-colors group"
+      <button
+        type="button"
+        onClick={() => onPreview(url, filename)}
+        className="w-full text-left flex items-center gap-3 p-3 hover:bg-neutral-border/10 transition-colors group rounded-t-md focus:outline-none focus:ring-2 focus:ring-brand-primary/30"
       >
         <FileTypeBadge filename={filename} />
         <div className="flex-1 min-w-0">
@@ -82,8 +83,8 @@ function FileChip({ url, filename, status, tags }: {
             {status}
           </div>
         </div>
-        <ExternalLink className="w-3.5 h-3.5 text-neutral-text-tertiary opacity-0 group-hover:opacity-100 shrink-0 transition-opacity" />
-      </a>
+        <Eye className="w-3.5 h-3.5 text-neutral-text-tertiary opacity-0 group-hover:opacity-100 shrink-0 transition-opacity" />
+      </button>
       {tags.filter(t => t && t !== "unknown").length > 0 && (
         <div className="px-3 pb-2.5 border-t border-neutral-border/40 pt-2">
           <TagList tags={tags} />
@@ -143,6 +144,11 @@ export function InputsPane() {
   const isSyncing      = status === CaseStatus.RUNNING;
   const isAwaitingDocs = status === CaseStatus.AWAITING_DOCS;
 
+  // File preview dialog state
+  const [previewFile, setPreviewFile] = useState<{ url: string; filename: string } | null>(null);
+  const handlePreview = (url: string, filename: string) => setPreviewFile({ url, filename });
+  const closePreview = () => setPreviewFile(null);
+
   const caseFacts  = blackboard[BlackboardSection.CASE_FACTS] || {};
   const missingDocs = caseFacts.missing_documents || [];
 
@@ -201,10 +207,10 @@ export function InputsPane() {
       >
         <div className="space-y-2">
           {policeReport && (
-            <FileChip url={policeReport.url} filename={policeReport.filename} status={statusParsed} tags={policeReport.tags || [policeReport.doc_type]} />
+            <FileChip url={policeReport.url} filename={policeReport.filename} status={statusParsed} tags={policeReport.tags || [policeReport.doc_type]} onPreview={handlePreview} />
           )}
           {adjusterReport && (
-            <FileChip url={adjusterReport.url} filename={adjusterReport.filename} status={statusParsed} tags={adjusterReport.tags || [adjusterReport.doc_type]} />
+            <FileChip url={adjusterReport.url} filename={adjusterReport.filename} status={statusParsed} tags={adjusterReport.tags || [adjusterReport.doc_type]} onPreview={handlePreview} />
           )}
           {!policeReport && !adjusterReport && (
             isSyncing ? <DocumentSkeleton /> : <div className="text-xs text-neutral-text-tertiary italic text-center py-2">No reports uploaded</div>
@@ -214,7 +220,7 @@ export function InputsPane() {
 
       <CollapsibleSection title="Policy Schedule" icon={<FileText className="w-4 h-4" />} count={policyPdf ? 1 : 0}>
         {policyPdf
-          ? <FileChip url={policyPdf.url} filename={policyPdf.filename} status={statusVerified} tags={policyPdf.tags || [policyPdf.doc_type]} />
+          ? <FileChip url={policyPdf.url} filename={policyPdf.filename} status={statusVerified} tags={policyPdf.tags || [policyPdf.doc_type]} onPreview={handlePreview} />
           : (isSyncing ? <DocumentSkeleton /> : <div className="text-xs text-neutral-text-tertiary italic text-center py-2">No policy document</div>)
         }
       </CollapsibleSection>
@@ -223,7 +229,7 @@ export function InputsPane() {
         {photos.length > 0 ? (
           <div className="space-y-2">
             {photos.map((photo, i) => (
-              <FileChip key={i} url={photo.url} filename={photo.filename} status={statusParsed} tags={photo.tags || [photo.doc_type]} />
+              <FileChip key={i} url={photo.url} filename={photo.filename} status={statusParsed} tags={photo.tags || [photo.doc_type]} onPreview={handlePreview} />
             ))}
           </div>
         ) : (isSyncing ? <DocumentSkeleton /> : <div className="text-xs text-neutral-text-tertiary italic text-center py-2">No photographs</div>)}
@@ -231,7 +237,7 @@ export function InputsPane() {
 
       <CollapsibleSection title="Quotations" icon={<Wrench className="w-4 h-4" />} count={quotation ? 1 : 0}>
         {quotation
-          ? <FileChip url={quotation.url} filename={quotation.filename} status={statusPricing} tags={quotation.tags || [quotation.doc_type]} />
+          ? <FileChip url={quotation.url} filename={quotation.filename} status={statusPricing} tags={quotation.tags || [quotation.doc_type]} onPreview={handlePreview} />
           : (isSyncing ? <DocumentSkeleton /> : <div className="text-xs text-neutral-text-tertiary italic text-center py-2">No quotation</div>)
         }
       </CollapsibleSection>
@@ -240,11 +246,18 @@ export function InputsPane() {
         {others.length > 0 ? (
           <div className="space-y-2">
             {others.map((doc, i) => (
-              <FileChip key={i} url={doc.url} filename={doc.filename} status={statusUntagged} tags={doc.tags || []} />
+              <FileChip key={i} url={doc.url} filename={doc.filename} status={statusUntagged} tags={doc.tags || []} onPreview={handlePreview} />
             ))}
           </div>
         ) : (isSyncing ? <DocumentSkeleton /> : <div className="text-xs text-neutral-text-tertiary italic text-center py-4">No additional evidence detected</div>)}
       </CollapsibleSection>
+
+      <FilePreviewModal
+        isOpen={!!previewFile}
+        onClose={closePreview}
+        url={previewFile?.url ?? null}
+        filename={previewFile?.filename ?? null}
+      />
     </div>
   );
 }
