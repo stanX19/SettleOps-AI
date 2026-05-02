@@ -16,6 +16,7 @@ class CitationSourceType(str, Enum):
     TEXT = "text"
     IMAGE = "image"
     AGENT_OUTPUT = "agent_output"
+    REFERENCE = "reference"
 
 
 class Citation(BaseModel):
@@ -24,15 +25,16 @@ class Citation(BaseModel):
     filename: str = Field(
         ...,
         description="Exact filename as stored in workflow state (may include "
-                    "prefixes like 'uploaded_0_'). For agent_output type, "
-                    "this is a logical name like 'liability_analysis_output'.",
+                    "prefixes like 'uploaded_0_'). For agent_output/reference "
+                    "types, this is a logical name like "
+                    "'liability_analysis_output' or 'parts_pricing_guide'.",
     )
     source_type: CitationSourceType
     excerpt: Optional[str] = Field(
         None,
         min_length=1,
         max_length=500,
-        description="Verbatim quote from text documents. MUST be null for image citations.",
+        description="Verbatim quote from text documents or reference docs. MUST be null for image citations.",
     )
     comment: str = Field(
         ...,
@@ -62,10 +64,20 @@ class Citation(BaseModel):
 
 
 class CitationValidationError(Exception):
-    """Raised when an agent's citations cannot be validated after retries."""
+    """Raised when an agent's citations cannot be validated after retries.
 
-    def __init__(self, errors: list[str], node_id: str) -> None:
+    ``last_result`` carries the agent's final output dict so callers can
+    preserve extracted data even when citation evidence is incomplete.
+    """
+
+    def __init__(
+        self,
+        errors: list[str],
+        node_id: str,
+        last_result: dict | None = None,
+    ) -> None:
         self.errors = errors
         self.node_id = node_id
+        self.last_result: dict = last_result or {}
         joined = "; ".join(errors)
         super().__init__(f"Citation validation failed for {node_id}: {joined}")

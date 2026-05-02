@@ -29,6 +29,8 @@ def test_workflow_nodes():
     for node in expected_nodes:
         assert node in nodes, f"Node {node} missing from graph"
 
+    assert "validator_node" not in nodes, "Validator should be scoped inside each cluster"
+
 if __name__ == "__main__":
     test_workflow_compilation()
     test_workflow_nodes()

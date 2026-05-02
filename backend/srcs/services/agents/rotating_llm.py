@@ -573,10 +573,33 @@ class RotatingLLM:
 
     @staticmethod
     def try_get_json(text: str):
-        try:
-            return json.loads(RotatingLLM.strip_code_block(text))
-        except json.JSONDecodeError:
-            return None
+        candidates = [RotatingLLM.strip_code_block(text)]
+        candidates.extend(
+            match.group(1).strip()
+            for match in re.finditer(
+                r"```(?:json)?\s*([\s\S]*?)\s*```",
+                text,
+                flags=re.IGNORECASE,
+            )
+        )
+
+        decoder = json.JSONDecoder()
+        for candidate in candidates:
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
+
+            for index, char in enumerate(candidate):
+                if char not in "{[":
+                    continue
+                try:
+                    parsed, _ = decoder.raw_decode(candidate[index:])
+                    return parsed
+                except json.JSONDecodeError:
+                    continue
+
+        return None
 
     async def send_message_get_json(
             self,

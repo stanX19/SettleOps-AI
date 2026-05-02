@@ -13,6 +13,8 @@ import {
   SseWorkflowCompleted,
   BlackboardSection
 } from "../lib/types";
+import { normalizeCaseSnapshot, normalizeArtifact, getBackendUrl } from "../lib/utils";
+import { api } from "../lib/api";
 
 interface CaseState extends CaseSnapshot {
   // Store Actions
@@ -26,7 +28,7 @@ interface CaseState extends CaseSnapshot {
   // SSE Event Handlers
   handleWorkflowStarted: (data: SseWorkflowStarted) => void;
   handleAgentStatusChanged: (data: SseAgentStatusChanged) => void;
-  handleAgentOutput: (data: SseAgentOutput) => void;
+  handleAgentOutput: (data: Pick<SseAgentOutput, "section" | "data"> & Partial<SseAgentOutput>) => void;
   handleAgentMessageToAgent: (data: SseAgentMessageToAgent) => void;
   handleArtifactCreated: (data: SseArtifactCreated) => void;
   handleWorkflowCompleted: (data: SseWorkflowCompleted) => void;
@@ -35,9 +37,14 @@ interface CaseState extends CaseSnapshot {
   blackboard_mode: 'blackboard' | 'chat';
   audio_urls: Record<string, string>;
   addAudioUrl: (text: string, url: string) => void;
+  refreshCase: (caseId: string) => Promise<void>;
 }
 
-const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; selectedAgentId: AgentId | null; audio_urls: Record<string, string> } = {
+const initialState: CaseSnapshot & {
+  blackboard_mode: 'blackboard' | 'chat';
+  selectedAgentId: AgentId | null;
+  audio_urls: Record<string, string>;
+} = {
   case_id: "",
   status: CaseStatus.SUBMITTED,
   submitted_at: "",
@@ -61,9 +68,18 @@ const initialState: CaseSnapshot & { blackboard_mode: 'blackboard' | 'chat'; sel
 export const useCaseStore = create<CaseState>((set) => ({
   ...initialState,
 
-  setCase: (snapshot) => set(snapshot),
+  setCase: (snapshot) => set(normalizeCaseSnapshot(snapshot)),
   
   reset: () => set(initialState),
+
+  refreshCase: async (caseId) => {
+    try {
+      const snapshot = await api.getCaseSnapshot(caseId);
+      set(normalizeCaseSnapshot(snapshot));
+    } catch (error) {
+      console.error("Failed to refresh case:", error);
+    }
+  },
 
   setBlackboardMode: (mode) => set({ blackboard_mode: mode }),
 
@@ -115,7 +131,7 @@ export const useCaseStore = create<CaseState>((set) => ({
 
     // Update logs for the agent if provided
     const newAgents = { ...state.agents };
-    if (data.logs && data.logs.length > 0) {
+    if (data.logs && data.logs.length > 0 && data.agent) {
       const agentId = data.agent;
       newAgents[agentId] = {
         ...(newAgents[agentId] || { status: AgentStatus.IDLE, sub_tasks: {} }),
@@ -128,7 +144,8 @@ export const useCaseStore = create<CaseState>((set) => ({
     // PROBLEM 1 FIX: If CaseFacts changed, we must update the doc_type/tags in the documents array
     // so that the left pane (InputsPane) refreshes immediately.
     if (data.section === BlackboardSection.CASE_FACTS) {
-      const taggedDocs = data.data.tagged_documents || {};
+      const caseFacts = data.data as { tagged_documents?: Record<string, string | string[]> };
+      const taggedDocs = caseFacts.tagged_documents || {};
       nextDocuments = state.documents.map(doc => {
         if (doc.index !== undefined) {
           const rawTags = taggedDocs[String(doc.index)];
@@ -169,14 +186,14 @@ export const useCaseStore = create<CaseState>((set) => ({
       ...state.artifacts.map(a => 
         a.artifact_type === data.artifact_type ? { ...a, superseded: true } : a
       ),
-      {
+      normalizeArtifact({
         artifact_type: data.artifact_type,
         filename: data.filename,
         url: data.url,
         ready: true,
         version: data.version,
         superseded: false
-      }
+      })
     ]
   })),
 

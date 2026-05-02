@@ -9,6 +9,7 @@ with no subscribers is a silent no-op, per v5 §13.
 import asyncio
 from enum import Enum
 from typing import Any
+from srcs.logger import logger
 
 from srcs.schemas.chat_dto import (
     SseEvent,
@@ -56,9 +57,8 @@ _EVENT_MAP: dict[type, Enum] = {
 # Per-subscriber queue bound. The stream generator wakes every 15 s for a
 # keepalive (see cases.py stream handler), so a healthy consumer drains each
 # queue well under this cap. Reaching the cap means the client isn't reading
-# at all — we disconnect that subscriber and let it recover via the snapshot
-# endpoint documented in api_sse_plan.md §6 rather than unbounded memory use.
-_MAX_QUEUE_SIZE: int = 256
+# at all — we drop the event rather than the entire subscriber to stay resilient.
+_MAX_QUEUE_SIZE: int = 1024
 
 # Sentinel published into a queue when the broadcaster is forcing a close.
 # The stream generator recognises this key and exits cleanly.
@@ -110,27 +110,20 @@ class SseService:
     @classmethod
     async def _broadcast(cls, session_id: str, event_name: str, data_json: str) -> None:
         queues = cls._subscribers.get(session_id)
-        # print(f"DEBUG: [SSE] Broadcasting to {session_id}. Subscribers: {len(queues) if queues else 0}", flush=True)
+        print(f"DEBUG: [SSE] Broadcasting to {session_id}. Subscribers: {len(queues) if queues else 0}", flush=True)
         if not queues:
             return
         # Snapshot the list: a subscriber may unsubscribe concurrently.
         for q in list(queues):
             try:
                 q.put_nowait({"event": event_name, "data": data_json})
+                # logger.debug(f"[SSE] Queued event {event_name} for a subscriber")
             except asyncio.QueueFull:
-                # Subscriber isn't draining. Disconnect rather than block the
-                # broadcaster or grow memory unboundedly — the client can
-                # recover via GET /cases/{id}. Free one slot for the close
-                # sentinel so the stream generator wakes up and exits.
-                try:
-                    q.get_nowait()
-                except asyncio.QueueEmpty:
-                    pass
-                try:
-                    q.put_nowait({"event": CLOSE_EVENT_KEY, "data": ""})
-                except asyncio.QueueFull:
-                    pass
-                cls.unsubscribe(session_id, q)
+                logger.warning(f"[SSE] Queue full for a subscriber in session {session_id}. Dropping event: {event_name}")
+                continue
+            except Exception as e:
+                logger.error(f"[SSE] Error queuing event {event_name} for session {session_id}: {str(e)}")
+                continue
 
     @classmethod
     async def emit(cls, session_id: str, payload: Any) -> None:

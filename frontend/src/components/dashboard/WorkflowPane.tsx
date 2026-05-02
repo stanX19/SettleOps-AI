@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   ReactFlow,
   Background,
@@ -100,7 +100,9 @@ const CLUSTER_SPACING = 240;
 const Y_START = 50;
 const Y_CLUSTER = 220;
 const Y_PAYOUT = 520;
-const Y_AUDITOR = 700;
+const Y_ADJUSTER = 620;
+const Y_AUDITOR = 720;
+const Y_DECISION_GATE = 900;
 
 import { AgentDetailsModal } from './AgentDetailsModal';
 
@@ -124,8 +126,8 @@ export function WorkflowPane() {
     const nodes: Node[] = [];
     const edges: Edge[] = [];
 
-    // Static Agents
-    const staticPositions = {
+    // Static Agents (main pipeline column)
+    const staticPositions: Record<string, { x: number; y: number }> = {
       [AgentId.INTAKE]: { x: CANVAS_CENTER_X - 80, y: Y_START },
       [AgentId.PAYOUT]: { x: CANVAS_CENTER_X - 80, y: Y_PAYOUT },
       [AgentId.AUDITOR]: { x: CANVAS_CENTER_X - 80, y: Y_AUDITOR },
@@ -140,6 +142,17 @@ export function WorkflowPane() {
       });
     });
 
+    // NOTE: Adjuster node is NOT in the initial layout.
+    // It is dynamically added when the workflow enters AWAITING_ADJUSTER state.
+
+    // Decision Gate node — below Auditor
+    nodes.push({
+      id: 'decision_gate',
+      type: 'agent',
+      position: { x: CANVAS_CENTER_X - 80, y: Y_DECISION_GATE },
+      data: { label: 'Decision Gate', status: AgentStatus.IDLE, detail: 'Awaiting Auditor' }
+    });
+
     // Dynamic Clusters
     if (topology) {
       const clusterIds = Object.keys(topology);
@@ -149,6 +162,7 @@ export function WorkflowPane() {
       clusterIds.forEach((clusterId, i) => {
         const xPos = xStart + (i * CLUSTER_SPACING);
         const subTasks = topology[clusterId];
+        const validatorId = `${clusterId}-validator`;
         const aggregatorId = `${clusterId}-aggregator`;
         
         // Add Cluster Container
@@ -156,7 +170,7 @@ export function WorkflowPane() {
           id: `cluster-${clusterId}`,
           type: 'cluster',
           position: { x: xPos - 100, y: Y_CLUSTER - 10 },
-          style: { width: 200, height: 100 + (subTasks.length * 70) }, // Taller to fit aggregator
+          style: { width: 200, height: 160 + (subTasks.length * 70) }, // Taller to fit validator + aggregator
           data: { label: clusterId.charAt(0).toUpperCase() + clusterId.slice(1) },
           selectable: false,
           draggable: true,
@@ -183,14 +197,24 @@ export function WorkflowPane() {
             markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
           });
 
-          // Edges from Sub-task to Aggregator (Fan-in)
+          // Edges from Sub-task to Validator (Fan-in)
           edges.push({
-            id: `e-${taskName}-aggregator`,
+            id: `e-${taskName}-validator`,
             source: taskName,
-            target: aggregatorId,
+            target: validatorId,
             style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' },
             markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
           });
+        });
+
+        // Add per-cluster Validator Node
+        nodes.push({
+          id: validatorId,
+          parentId: `cluster-${clusterId}`,
+          type: 'agent',
+          position: { x: 20, y: 30 + (subTasks.length * 60) },
+          extent: 'parent',
+          data: { label: 'Validator', status: AgentStatus.IDLE, detail: 'Checking Evidence' }
         });
 
         // Add Aggregator Node
@@ -198,9 +222,17 @@ export function WorkflowPane() {
           id: aggregatorId,
           parentId: `cluster-${clusterId}`,
           type: 'agent',
-          position: { x: 20, y: 30 + (subTasks.length * 70) },
+          position: { x: 20, y: 90 + (subTasks.length * 60) },
           extent: 'parent',
           data: { label: 'Aggregator', status: AgentStatus.IDLE, detail: 'Finalizing Cluster' }
+        });
+
+        edges.push({
+          id: `e-${validatorId}-aggregator`,
+          source: validatorId,
+          target: aggregatorId,
+          style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' },
+          markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
         });
 
         // Edges from Aggregator to Payout
@@ -214,7 +246,7 @@ export function WorkflowPane() {
       });
     }
 
-    // Connect Payout to Auditor
+    // Payout → Auditor (main path)
     edges.push({
       id: `e-payout-auditor`,
       source: AgentId.PAYOUT,
@@ -223,23 +255,127 @@ export function WorkflowPane() {
       markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
     });
 
+    // NOTE: Adjuster edges (payout→adjuster, adjuster→auditor) are NOT in the initial layout.
+    // They are dynamically added when the workflow triggers the adjuster path.
+
+    // Auditor → Decision Gate
+    edges.push({
+      id: 'e-auditor-decision',
+      source: AgentId.AUDITOR,
+      target: 'decision_gate',
+      style: { strokeWidth: 2, stroke: 'var(--color-neutral-border)' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
+    });
+
+    // Decision Gate → cluster retry edges (hidden by default, shown only when retry is triggered)
+    if (topology) {
+      Object.keys(topology).forEach(clusterId => {
+        edges.push({
+          id: `e-decision-retry-${clusterId}`,
+          source: 'decision_gate',
+          target: `${clusterId}-aggregator`,
+          type: 'smoothstep',
+          label: 'retry',
+          labelStyle: { fontSize: 9, fill: 'var(--color-semantic-warning)' },
+          labelBgStyle: { fill: 'transparent' },
+          style: { strokeWidth: 1.5, stroke: 'var(--color-semantic-warning)', strokeDasharray: '4,4', opacity: 0 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-semantic-warning)' },
+          hidden: true,
+        });
+      });
+    }
+
     return { initialNodes: nodes, initialEdges: edges };
   }, [topology]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+  // Refs for tracking retry state (COMPLETED → WORKING transitions)
+  const prevAgentStatesRef = useRef<Record<string, { status: AgentStatus }>>({});
+  const retriedClustersRef = useRef<Set<string>>(new Set());
+
+  // Track whether adjuster node has been injected
+  const adjusterInjectedRef = useRef(false);
+
   // Update ReactFlow nodes/edges whenever the derived initial layout changes
   useEffect(() => {
     if (initialNodes.length > 0) {
       setNodes(initialNodes);
       setEdges(initialEdges);
+      // Reset dynamic state when topology changes (new case)
+      adjusterInjectedRef.current = false;
+      retriedClustersRef.current = new Set();
+      prevAgentStatesRef.current = {};
     }
   }, [initialNodes, initialEdges, setNodes, setEdges]);
+
+  // Dynamic adjuster node injection: when case status becomes AWAITING_ADJUSTER,
+  // add the adjuster node + edges to the graph
+  useEffect(() => {
+    if (caseStatus === CaseStatus.AWAITING_ADJUSTER && !adjusterInjectedRef.current) {
+      adjusterInjectedRef.current = true;
+
+      setNodes((nds) => {
+        // Don't add if already present
+        if (nds.some(n => n.id === AgentId.ADJUSTER)) return nds;
+        return [...nds, {
+          id: AgentId.ADJUSTER,
+          type: 'agent',
+          position: { x: CANVAS_CENTER_X + 120, y: Y_ADJUSTER },
+          data: { label: 'Adjuster Request', status: AgentStatus.WAITING, detail: 'Upload Required' }
+        }];
+      });
+
+      setEdges((eds) => {
+        const newEdges: Edge[] = [];
+        if (!eds.some(e => e.id === 'e-payout-adjuster')) {
+          newEdges.push({
+            id: 'e-payout-adjuster',
+            source: AgentId.PAYOUT,
+            target: AgentId.ADJUSTER,
+            type: 'smoothstep',
+            animated: true,
+            style: { strokeWidth: 2, stroke: 'var(--color-semantic-warning)', strokeDasharray: '5,5' },
+            markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-semantic-warning)' }
+          });
+        }
+        if (!eds.some(e => e.id === 'e-adjuster-auditor')) {
+          newEdges.push({
+            id: 'e-adjuster-auditor',
+            source: AgentId.ADJUSTER,
+            target: AgentId.AUDITOR,
+            type: 'smoothstep',
+            style: { strokeWidth: 1.5, stroke: 'var(--color-neutral-border)', strokeDasharray: '5,5' },
+            markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--color-neutral-border)' }
+          });
+        }
+        return [...eds, ...newEdges];
+      });
+    }
+  }, [caseStatus, setNodes, setEdges]);
 
   // Update node DATA (status, processing) based on live agent state
   useEffect(() => {
     setNodes((nds) => nds.map((node) => {
+      // 0. Handle Decision Gate — derive status from case status
+      if (node.id === 'decision_gate') {
+        const gateStatus =
+          caseStatus === CaseStatus.AWAITING_APPROVAL || caseStatus === CaseStatus.ESCALATED || caseStatus === CaseStatus.AWAITING_ADJUSTER
+            ? AgentStatus.WAITING
+            : caseStatus === CaseStatus.APPROVED || caseStatus === CaseStatus.DECLINED
+            ? AgentStatus.COMPLETED
+            : caseStatus === CaseStatus.RUNNING
+            ? AgentStatus.WORKING
+            : AgentStatus.IDLE;
+        const gateDetail =
+          gateStatus === AgentStatus.WAITING ? 'Awaiting Decision'
+            : gateStatus === AgentStatus.WORKING ? 'Routing...'
+            : gateStatus === AgentStatus.COMPLETED ? 'Decision Made'
+            : 'Awaiting Auditor';
+        return { ...node, data: { ...node.data, status: gateStatus, detail: gateDetail } };
+      }
+
       // 1. Handle Clusters (Glow)
       if (node.id.startsWith('cluster-')) {
         const clusterId = node.id.replace('cluster-', '');
@@ -283,11 +419,24 @@ export function WorkflowPane() {
           };
         }
 
-        // Handle Aggregators (Heuristic: Working if parent is working and all subtasks done)
+        if (node.id === `${parentId}-validator` && parentState.sub_tasks?.validator) {
+          const validatorState = parentState.sub_tasks.validator;
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              status: validatorState.status,
+              detail: validatorState.status === AgentStatus.WORKING ? 'Validating...' :
+                      validatorState.status === AgentStatus.COMPLETED ? 'Evidence Checked' : 'Awaiting tasks',
+              isStale: parentState.status === AgentStatus.IDLE && validatorState.status === AgentStatus.COMPLETED
+            }
+          };
+        }
+
+        // Handle Aggregators (working after validator completes while parent cluster is still running)
         if (node.id === `${parentId}-aggregator`) {
-          const allSubTasksDone = parentState.sub_tasks && 
-            Object.values(parentState.sub_tasks).every(st => st.status === AgentStatus.COMPLETED);
-          const isWorking = parentState.status === AgentStatus.WORKING && allSubTasksDone;
+          const validatorDone = parentState.sub_tasks?.validator?.status === AgentStatus.COMPLETED;
+          const isWorking = parentState.status === AgentStatus.WORKING && validatorDone;
           const isDone = parentState.status === AgentStatus.COMPLETED;
 
           return {
@@ -304,25 +453,81 @@ export function WorkflowPane() {
       return node;
     }));
 
-    setEdges((eds) => eds.map((edge) => {
-      const sourceId = edge.source.startsWith('cluster-') ? edge.source.replace('cluster-', '') : edge.source;
-      const agentState = agents[sourceId];
-      
-      if (!agentState) return edge;
+    setEdges((eds) => {
+      // Determine which clusters are being retried (COMPLETED → WORKING transition)
+      const retriedClusters = new Set<string>();
+      for (const [agentId, state] of Object.entries(agents)) {
+        if (state.status === AgentStatus.WORKING) {
+          // Check if the previous state was completed (meaning this is a retry)
+          const prevStatus = prevAgentStatesRef.current[agentId]?.status;
+          if (prevStatus === AgentStatus.COMPLETED) {
+            retriedClusters.add(agentId);
+            retriedClustersRef.current.add(agentId);
+          }
+        }
+      }
 
-      const isActive = agentState.status === AgentStatus.WORKING;
-      const isDone = agentState.status === AgentStatus.COMPLETED;
-      const color = isDone ? 'var(--color-semantic-success)' :
-                    isActive ? 'var(--color-brand-primary)' : 'var(--color-neutral-border)';
+      return eds.map((edge) => {
+        // Retry edges: show only when a retry was triggered
+        if (edge.id.startsWith('e-decision-retry-')) {
+          const clusterId = edge.id.replace('e-decision-retry-', '');
+          const hasBeenRetried = retriedClustersRef.current.has(clusterId);
+          const isActivelyRetrying = agents[clusterId]?.status === AgentStatus.WORKING && hasBeenRetried;
 
-      return {
-        ...edge,
-        animated: isActive,
-        style: { ...edge.style, stroke: color, strokeWidth: isActive ? 3 : 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: color }
-      };
-    }));
-  }, [agents, setNodes, setEdges]);
+          if (!hasBeenRetried) return edge; // Stay hidden
+
+          return {
+            ...edge,
+            hidden: false,
+            animated: isActivelyRetrying,
+            style: {
+              ...edge.style,
+              stroke: isActivelyRetrying ? 'var(--color-brand-primary)' : 'var(--color-semantic-warning)',
+              strokeWidth: isActivelyRetrying ? 2 : 1.5,
+              opacity: isActivelyRetrying ? 1 : 0.7,
+            },
+            markerEnd: { type: MarkerType.ArrowClosed, color: isActivelyRetrying ? 'var(--color-brand-primary)' : 'var(--color-semantic-warning)' }
+          };
+        }
+
+        // Adjuster branch edges: animate when adjuster is active
+        if (edge.id === 'e-payout-adjuster' || edge.id === 'e-adjuster-auditor') {
+          const adjusterState = agents[AgentId.ADJUSTER];
+          const isActive = adjusterState?.status === AgentStatus.WORKING;
+          const isDone = adjusterState?.status === AgentStatus.COMPLETED;
+          const color = isDone ? 'var(--color-semantic-success)' : isActive ? 'var(--color-brand-primary)' : 'var(--color-semantic-warning)';
+          return {
+            ...edge,
+            animated: isActive,
+            style: { ...edge.style, stroke: color, strokeWidth: isActive ? 2 : 1.5 },
+            markerEnd: { type: MarkerType.ArrowClosed, color }
+          };
+        }
+
+        const sourceId = edge.source.startsWith('cluster-') ? edge.source.replace('cluster-', '') : edge.source;
+        const agentState = agents[sourceId];
+
+        if (!agentState) return edge;
+
+        const isActive = agentState.status === AgentStatus.WORKING;
+        const isDone = agentState.status === AgentStatus.COMPLETED;
+        const color = isDone ? 'var(--color-semantic-success)' :
+                      isActive ? 'var(--color-brand-primary)' : 'var(--color-neutral-border)';
+
+        return {
+          ...edge,
+          animated: isActive,
+          style: { ...edge.style, stroke: color, strokeWidth: isActive ? 3 : 2 },
+          markerEnd: { type: MarkerType.ArrowClosed, color: color }
+        };
+      });
+    });
+
+    // Save previous agent states for retry detection on next render
+    prevAgentStatesRef.current = Object.fromEntries(
+      Object.entries(agents).map(([id, state]) => [id, { status: state.status }])
+    );
+  }, [agents, caseStatus, setNodes, setEdges]);
 
   const onNodeClick = (_: React.MouseEvent, node: Node) => {
     // If it's a top-level agent or cluster ID that exists in agents store
@@ -332,7 +537,11 @@ export function WorkflowPane() {
     } else {
       // Check if it's an aggregator or subtask by finding the parent
       for (const [parentId, parentState] of Object.entries(agents)) {
-        if (node.id === `${parentId}-aggregator` || (parentState.sub_tasks && parentState.sub_tasks[node.id])) {
+        if (
+          node.id === `${parentId}-aggregator` ||
+          node.id === `${parentId}-validator` ||
+          (parentState.sub_tasks && parentState.sub_tasks[node.id])
+        ) {
           agentId = parentId as AgentId;
           break;
         }
@@ -388,14 +597,16 @@ export function WorkflowPane() {
             </span>
             <div className={`flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider border shadow-sm backdrop-blur-md ${
               caseStatus === CaseStatus.RUNNING ? 'bg-blue-50/90 text-blue-600 border-blue-200/80 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30' :
-              caseStatus === CaseStatus.AWAITING_APPROVAL ? 'bg-emerald-50/90 text-emerald-600 border-emerald-200/80 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30' : 
+              caseStatus === CaseStatus.AWAITING_APPROVAL ? 'bg-emerald-50/90 text-emerald-600 border-emerald-200/80 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30' :
+              caseStatus === CaseStatus.AWAITING_ADJUSTER ? 'bg-amber-50/90 text-amber-600 border-amber-200/80 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/30' :
               caseStatus === CaseStatus.AWAITING_DOCS ? 'bg-red-50/90 text-red-600 border-red-200/80 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30' :
               'bg-slate-50/90 text-slate-500 border-slate-200/80 dark:bg-slate-800/80 dark:text-slate-400 dark:border-slate-700/80'
             }`}>
               {caseStatus === CaseStatus.RUNNING && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mr-1.5"></span>}
               {caseStatus === CaseStatus.AWAITING_DOCS && <AlertCircle className="w-3.5 h-3.5 mr-1" strokeWidth={2} />}
+              {caseStatus === CaseStatus.AWAITING_ADJUSTER && <AlertCircle className="w-3.5 h-3.5 mr-1" strokeWidth={2} />}
               {caseStatus === CaseStatus.AWAITING_APPROVAL && <CheckCircle2 className="w-3.5 h-3.5 mr-1" strokeWidth={2} />}
-              {(caseStatus || '').toUpperCase().replace('_', ' ')}
+              {(caseStatus || '').toUpperCase().replace(/_/g, ' ')}
             </div>
           </div>
         </div>
@@ -407,10 +618,14 @@ export function WorkflowPane() {
               <span>Manage Hub</span>
             </Button>
           </Link>
-          <div className="h-8 px-3 text-[11px] font-semibold tracking-wide uppercase bg-neutral-surface shadow-card border border-neutral-border rounded-md text-neutral-text-tertiary flex items-center">
-            <div className={`w-2 h-2 rounded-full mr-2 ${caseStatus === CaseStatus.RUNNING ? 'bg-brand-primary animate-pulse' : 'bg-neutral-border'}`}></div>
+          <button 
+            onClick={() => useCaseStore.getState().refreshCase(caseId)}
+            title="Click to force sync with backend"
+            className="h-8 px-3 text-[11px] font-semibold tracking-wide uppercase bg-neutral-surface shadow-card border border-neutral-border rounded-md text-neutral-text-tertiary flex items-center hover:bg-neutral-background transition-colors cursor-pointer active:scale-95"
+          >
+            <div className={`w-2 h-2 rounded-full mr-2 ${caseStatus === CaseStatus.RUNNING ? 'bg-brand-primary animate-pulse' : 'bg-semantic-success'}`}></div>
             SSE LIVE
-          </div>
+          </button>
         </div>
       </div>
 

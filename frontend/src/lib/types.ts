@@ -8,6 +8,7 @@ export enum CaseStatus {
   SUBMITTED = "submitted",
   RUNNING = "running",
   AWAITING_APPROVAL = "awaiting_approval",
+  AWAITING_ADJUSTER = "awaiting_adjuster",
   ESCALATED = "escalated",
   APPROVED = "approved",
   DECLINED = "declined",
@@ -22,6 +23,7 @@ export enum AgentId {
   DAMAGE = "damage",
   FRAUD = "fraud",
   PAYOUT = "payout",
+  ADJUSTER = "adjuster",
   AUDITOR = "auditor",
 }
 
@@ -40,6 +42,7 @@ export enum BlackboardSection {
   DAMAGE_RESULT = "DamageResult",
   FRAUD_ASSESSMENT = "FraudAssessment",
   PAYOUT_RECOMMENDATION = "PayoutRecommendation",
+  ADJUSTER_REQUEST = "AdjusterRequest",
   AUDIT_RESULT = "AuditResult",
 }
 
@@ -89,12 +92,12 @@ export interface AgentStateInfo {
 
 // -- Citation types ----------------------------------------------------------
 
-export type CitationSourceType = "text" | "image" | "agent_output";
+export type CitationSourceType = "text" | "image" | "agent_output" | "reference";
 
 export interface Citation {
   filename: string;
   source_type: CitationSourceType;
-  /** Verbatim quote for text/agent_output citations; null for images. */
+  /** Verbatim quote for text/agent_output/reference citations; null for images. */
   excerpt: string | null;
   /** What this evidence shows. */
   comment: string;
@@ -177,7 +180,7 @@ export interface SseAgentStatusChanged extends SseBasePayload {
 export interface SseAgentOutput extends SseBasePayload {
   agent: AgentId;
   section: BlackboardSection;
-  data: any;
+  data: unknown;
   logs?: string[];
   /** Top-level citations array — read from event.citations, not event.data.citations. */
   citations?: Citation[];

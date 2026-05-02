@@ -40,32 +40,60 @@ async def mock_send_message_get_json(prompt, temperature=0.0, **kwargs):
     
     # 2. Policy Analysis
     if "Policy Specialist" in prompt:
-        data = {"data": {"claim_type": "own_damage", "max_payout_myr": 10000, "excess_myr": 500, "depreciation_percent": 0.1}, "reasoning": "Mock policy analysis"}
+        data = {
+            "data": {"claim_type": "own_damage", "max_payout_myr": 10000, "excess_myr": 500, "depreciation_percent": 0.1},
+            "reasoning": "Mock policy analysis",
+            "citations": [{"filename": "policy_covernote.txt", "source_type": "text", "excerpt": "Mock content for policy_covernote", "comment": "Policy content reviewed.", "conclusion": "Supports policy fields.", "node_id": "policy_analysis_task", "field_path": "claim_type"}],
+        }
         return LLMResponse(text=json.dumps(data), model="mock", status="ok", json_data=data)
 
     # 3. Liability Narrative
     if "Liability Adjuster" in prompt:
-        data = {"data": {"incident_time": "10:00 AM", "location": "Kuala Lumpur", "description": "Rear-end impact"}, "reasoning": "Mock narrative"}
+        data = {
+            "data": {"incident_time": "10:00 AM", "location": "Kuala Lumpur", "description": "Rear-end impact"},
+            "reasoning": "Mock narrative",
+            "citations": [{"filename": "police_report.txt", "source_type": "text", "excerpt": "Mock content for police_report", "comment": "Police report content reviewed.", "conclusion": "Supports narrative.", "node_id": "liability_narrative_task", "field_path": "description"}],
+        }
         return LLMResponse(text=json.dumps(data), model="mock", status="ok", json_data=data)
 
     # 4. Liability POI
     if "Visual Forensic Analyst" in prompt:
-        data = {"data": {"poi_location": "rear", "damage_severity": "minor"}, "reasoning": "Mock POI analysis"}
+        data = {
+            "data": {"poi_location": "rear", "damage_severity": "minor"},
+            "reasoning": "Mock POI analysis",
+            "citations": [{"filename": "damage_closeup.jpg", "source_type": "image", "excerpt": None, "comment": "Damage closeup reviewed.", "conclusion": "Supports rear POI.", "node_id": "liability_poi_task", "field_path": "poi_location"}],
+        }
         return LLMResponse(text=json.dumps(data), model="mock", status="ok", json_data=data)
 
     # 5. Damage Audit
     if "Damage Assessor" in prompt:
-        data = {"data": {"verified_total": 1200.0, "suspicious_parts": []}, "reasoning": "Mock damage audit"}
+        data = {
+            "data": {"verified_total": 1200.0, "suspicious_parts": []},
+            "reasoning": "Mock damage audit",
+            "citations": [{"filename": "workshop_quote.txt", "source_type": "text", "excerpt": "Mock content for workshop_quote", "comment": "Workshop quote reviewed.", "conclusion": "Supports repair total.", "node_id": "damage_quote_audit_task", "field_path": "verified_total"}],
+        }
         return LLMResponse(text=json.dumps(data), model="mock", status="ok", json_data=data)
 
     # 6. Fraud Assessment
     if "Fraud Investigator" in prompt:
-        data = {"data": {"suspicion_score": 0.1, "red_flags": []}, "reasoning": "Mock fraud check"}
+        data = {
+            "data": {"suspicion_score": 0.1, "red_flags": []},
+            "reasoning": "Mock fraud check",
+            "citations": [{"filename": "police_report.txt", "source_type": "text", "excerpt": "Mock content for police_report", "comment": "Case documents reviewed.", "conclusion": "Supports low fraud score.", "node_id": "fraud_assessment_task", "field_path": "suspicion_score"}],
+        }
         return LLMResponse(text=json.dumps(data), model="mock", status="ok", json_data=data)
 
-    # 7. Auditor
-    if "Senior Insurance Auditor" in prompt:
-        data = {"is_consistent": True, "findings": "None", "suggested_action": "approve", "target_cluster": "none"}
+    # 7. Per-cluster Validator
+    if "Validator Agent for the" in prompt:
+        data = {
+            "data": {"is_valid": True, "mistakes": [], "feedback": "", "suggested_action": "approve"},
+            "reasoning": "No mistakes found",
+        }
+        return LLMResponse(text=json.dumps(data), model="mock", status="ok", json_data=data)
+
+    # 8. Aggregator
+    if "final Aggregator" in prompt:
+        data = {"data": {"summary": "All checks passed.", "final_recommendation": "approve", "validation_status": "valid", "unresolved_issues": [], "human_review_notes": "Ready for approval."}, "reasoning": "Mock final synthesis"}
         return LLMResponse(text=json.dumps(data), model="mock", status="ok", json_data=data)
 
     return LLMResponse(text="{}", model="mock", status="ok", json_data={})
@@ -182,6 +210,11 @@ def run_test():
         assert any(e["data"]["status"] == "completed" for e in liab_poi_events), "Missing 'completed' for liability_poi_task"
         print(f"{Colors.GREEN}[OK] Granular sub-task events found for liability_poi_task.{Colors.END}")
 
+        validator_events = [e for e in socket.events_received if e["event"] == "agent.status_changed" and e["data"].get("sub_task") == "validator"]
+        assert any(e["data"]["status"] == "working" for e in validator_events), "Missing 'working' for per-cluster validator"
+        assert any(e["data"]["status"] == "completed" for e in validator_events), "Missing 'completed' for per-cluster validator"
+        print(f"{Colors.GREEN}[OK] Granular sub-task events found for per-cluster validator.{Colors.END}")
+
         # c) Check workflow.completed topology
         completed_event = next(e for e in socket.events_received if e["event"] == "workflow.completed")
         assert "topology" in completed_event["data"]
@@ -199,6 +232,7 @@ def run_test():
         liab_state = snap["agents"].get("liability")
         assert "sub_tasks" in liab_state
         assert liab_state["sub_tasks"]["liability_narrative_task"]["status"] == "completed"
+        assert liab_state["sub_tasks"]["validator"]["status"] == "completed"
         print(f"{Colors.GREEN}[OK] Snapshot contains topology and granular sub-task states.{Colors.END}")
 
         print(f"\n{Colors.GREEN}{Colors.BOLD}ALL GRANULAR SSE TESTS PASSED!{Colors.END}")

@@ -9,6 +9,7 @@ import { Badge } from "@/components/primitives/Badge";
 import { Button } from "@/components/primitives/Button";
 import { useCaseStore } from "@/stores/case-store";
 import { CaseStatus, BlackboardSection } from "@/lib/types";
+import { api } from "@/lib/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

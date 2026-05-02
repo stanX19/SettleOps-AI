@@ -19,6 +19,12 @@ from srcs.schemas.citations import (
     CitationSourceType,
     CitationValidationError,
 )
+from srcs.tools.mcp_tools import (
+    fetch_motor_policy_guidelines,
+    fetch_parts_pricing_guide,
+    fetch_quotation_workflow_guide,
+)
+from srcs.services.agents.rotating_llm import rotating_llm as _rotating_llm
 
 MAX_RETRIES = 2
 
@@ -30,6 +36,12 @@ KNOWN_AGENT_OUTPUT_FILENAMES = frozenset({
     "fraud_analysis_output",
     "payout_calculation_output",
 })
+
+KNOWN_REFERENCE_FILENAMES = {
+    "motor_policy_guidelines": fetch_motor_policy_guidelines,
+    "parts_pricing_guide": fetch_parts_pricing_guide,
+    "quotation_workflow_guide": fetch_quotation_workflow_guide,
+}
 
 TaskFn = Callable[..., Mapping[str, Any] | Awaitable[Mapping[str, Any]]]
 
@@ -50,13 +62,20 @@ async def _call_task(
     state: Mapping[str, Any],
     feedback: str,
 ) -> Mapping[str, Any]:
-    if _accepts_feedback(task_fn):
-        result = task_fn(state, feedback=feedback)
-    else:
-        result = task_fn(state)
-    if inspect.isawaitable(result):
-        result = await result
-    return result
+    # Disable the local LLM response cache for citation retries so the model
+    # cannot replay the same invalid output from a prior cached call.
+    old_cache = _rotating_llm.use_cache
+    _rotating_llm.use_cache = False
+    try:
+        if _accepts_feedback(task_fn):
+            result = task_fn(state, feedback=feedback)
+        else:
+            result = task_fn(state)
+        if inspect.isawaitable(result):
+            result = await result
+        return result
+    finally:
+        _rotating_llm.use_cache = old_cache
 
 
 async def validate_citations(
@@ -109,7 +128,7 @@ async def validate_citations(
                 "Citation validation exhausted retries for %s: %s",
                 node_id, errors,
             )
-            raise CitationValidationError(errors, node_id=node_id)
+            raise CitationValidationError(errors, node_id=node_id, last_result=current)
 
         retry_feedback = _build_retry_feedback(errors, list(filename_to_doc.keys()))
         combined = (
@@ -122,7 +141,7 @@ async def validate_citations(
         current = dict(await _call_task(task_fn, state, combined))
 
     # Should not reach here, but be defensive.
-    raise CitationValidationError(last_errors or ["unknown"], node_id=node_id)
+    raise CitationValidationError(last_errors or ["unknown"], node_id=node_id, last_result=current)
 
 
 def _collect_errors(
@@ -141,6 +160,19 @@ def _collect_errors(
             errors.append(f"citations[{idx}] is not an object")
             continue
 
+        # Truncate over-long excerpts in-place so the LLM never hard-fails on
+        # length alone. Trim at a word boundary to avoid mid-word cuts that
+        # break the excerpt-finder's exact-match path.
+        if isinstance(raw.get("excerpt"), str) and len(raw["excerpt"]) > 500:
+            original_len = len(raw["excerpt"])
+            truncated = raw["excerpt"][:500]
+            last_space = truncated.rfind(" ")
+            raw["excerpt"] = truncated[:last_space] if last_space > 50 else truncated
+            logger.warning(
+                "citations[%d]: excerpt truncated from %d to %d chars",
+                idx, original_len, len(raw["excerpt"]),
+            )
+
         # Pydantic validation — catches missing required fields and wrong types.
         try:
             citation = Citation.model_validate(raw)
@@ -156,6 +188,31 @@ def _collect_errors(
                 )
             if not citation.excerpt:
                 errors.append(f"citations[{idx}]: agent_output citations need a non-empty excerpt")
+            continue
+
+        if citation.source_type is CitationSourceType.REFERENCE:
+            reference_loader = KNOWN_REFERENCE_FILENAMES.get(citation.filename)
+            if reference_loader is None:
+                errors.append(
+                    f"citations[{idx}]: '{citation.filename}' is not a known reference. "
+                    f"Use one of: {sorted(KNOWN_REFERENCE_FILENAMES)}"
+                )
+                continue
+            if not citation.excerpt:
+                errors.append(f"citations[{idx}]: reference citations need a non-empty excerpt")
+                continue
+            reference_content = reference_loader()
+            match = _find_excerpt(citation.excerpt, reference_content)
+            if match is None:
+                errors.append(
+                    f"citations[{idx}]: excerpt not found in reference "
+                    f"'{citation.filename}': "
+                    f"'{citation.excerpt[:80]}{'...' if len(citation.excerpt) > 80 else ''}'"
+                )
+            else:
+                start, end = match
+                raw["char_start"] = start
+                raw["char_end"] = end
             continue
 
         if citation.filename not in filename_to_doc:
@@ -222,7 +279,15 @@ def _find_excerpt(excerpt: str, content: str) -> Optional[tuple[int, int]]:
     if label_value_match is not None:
         return label_value_match
 
-    return _find_normalized_excerpt(excerpt, content)
+    normalized_match = _find_normalized_excerpt(excerpt, content)
+    if normalized_match is not None:
+        return normalized_match
+
+    table_row_match = _find_table_row_excerpt(excerpt, content)
+    if table_row_match is not None:
+        return table_row_match
+
+    return _find_sparse_table_row_excerpt(excerpt, content)
 
 
 def _normalize_for_match(value: str) -> tuple[str, list[int]]:
@@ -252,6 +317,115 @@ def _find_normalized_excerpt(excerpt: str, content: str) -> Optional[tuple[int, 
     original_start = content_index_map[normalized_pos]
     original_end = content_index_map[normalized_pos + len(normalized_excerpt) - 1] + 1
     return original_start, original_end
+
+
+def _find_table_row_excerpt(excerpt: str, content: str) -> Optional[tuple[int, int]]:
+    """Tolerate PDF table extraction drift for short line-item citations.
+
+    Workshop quotations often extract as columns split across lines, while the
+    model cites a compact row such as "1 Front Bumper 658.00". This fallback
+    accepts the citation only when the meaningful row tokens appear in order
+    inside a small source window.
+    """
+    if len(excerpt) > 160:
+        return None
+
+    tokens = re.findall(r"[A-Za-z]+|\d+(?:\.\d+)?", excerpt)
+    if tokens and tokens[0].isdigit() and len(tokens[0]) <= 2:
+        tokens = tokens[1:]
+
+    meaningful = [
+        token
+        for token in tokens
+        if (any(ch.isalpha() for ch in token) and len(token) >= 3)
+        or (token[0].isdigit() and len(token) >= 2)
+    ]
+    if len(meaningful) < 2 or not any(any(ch.isalpha() for ch in t) for t in meaningful):
+        return None
+
+    normalized_content, content_index_map = _normalize_for_match(content)
+    cursor = 0
+    matched_positions: list[tuple[int, int]] = []
+
+    for token in meaningful:
+        normalized_token, _ = _normalize_for_match(token)
+        if len(normalized_token) < 2:
+            continue
+        found_at = normalized_content.find(normalized_token, cursor)
+        if found_at == -1:
+            return None
+        matched_positions.append((found_at, found_at + len(normalized_token) - 1))
+        cursor = found_at + len(normalized_token)
+
+    if len(matched_positions) < 2:
+        return None
+
+    original_start = content_index_map[matched_positions[0][0]]
+    original_end = content_index_map[matched_positions[-1][1]] + 1
+    if original_end - original_start > 800:
+        return None
+    return original_start, original_end
+
+
+def _find_sparse_table_row_excerpt(excerpt: str, content: str) -> Optional[tuple[int, int]]:
+    """Match reconstructed table rows against column-oriented PDF extraction.
+
+    Some PDFs extract all descriptions first and all prices later. A model may
+    cite "Front Left Door Shell ... 18,500.00", but the source text contains
+    the description and amount in separate table columns. Accept that only when
+    both the description phrase and the cited amount exist in the document.
+    """
+    if len(excerpt) > 260:
+        return None
+
+    amount_matches = list(re.finditer(r"\b\d[\d,]*\.\d{2}\b", excerpt))
+    if not amount_matches:
+        return None
+
+    amount = amount_matches[-1].group(0)
+    description = excerpt[: amount_matches[-1].start()].strip()
+    description = re.sub(r"^\d+\s+", "", description).strip()
+    description = description.strip(" \t\r\n:;-—")
+    if len(description) < 12:
+        return None
+
+    if _find_value_only(amount, content) is None:
+        return None
+
+    for candidate in _description_candidates(description):
+        match = _find_value_only(candidate, content)
+        if match is not None:
+            return match
+
+    return None
+
+
+def _description_candidates(description: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", description).strip()
+    if not normalized:
+        return []
+
+    candidates = [normalized]
+
+    # Drop parenthetical/qualifier-heavy suffixes if the exact model wording is
+    # more detailed than the extracted PDF text.
+    simplified = re.sub(r"\s*\([^)]*\)", "", normalized).strip()
+    simplified = re.split(r"\s+[—-]\s+", simplified, maxsplit=1)[0].strip()
+    if simplified and simplified != normalized:
+        candidates.append(simplified)
+
+    words = re.findall(r"[A-Za-z0-9&/+.-]+", normalized)
+    for length in range(min(len(words), 8), 2, -1):
+        candidates.append(" ".join(words[:length]))
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = candidate.lower()
+        if key not in seen and len(candidate) >= 8:
+            seen.add(key)
+            deduped.append(candidate)
+    return deduped
 
 
 def _find_label_value_excerpt(excerpt: str, content: str) -> Optional[tuple[int, int]]:
@@ -364,9 +538,9 @@ def _build_retry_feedback(errors: list[str], available_filenames: list[str]) -> 
         f"{bullets}\n\n"
         "Please re-emit the JSON with corrected citations. Rules:\n"
         "  1. 'filename' must exactly match one of the Available Files below.\n"
-        "  2. For text citations, 'excerpt' must be a short verbatim quote from the document content.\n"
+        "  2. For text citations, 'excerpt' must be a short verbatim quote from the document content (max 300 characters).\n"
         "     Prefer stable values/phrases like policy numbers, names, registration numbers, amounts, or dates.\n"
-        "     Do not use ellipses (...), summaries, reconstructed label/value lines, or long addresses.\n"
+        "     Do not paste entire paragraphs, use ellipses (...), summaries, or reconstructed label/value lines.\n"
         "  3. For image citations, set 'excerpt' to null and describe visible evidence in 'comment'.\n"
         "  4. Every output field must be backed by at least one citation.\n\n"
         f"Available Files:\n{files_list}\n"
