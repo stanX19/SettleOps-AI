@@ -15,7 +15,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Button } from '@/components/primitives/Button';
-import { Settings, AlertCircle } from 'lucide-react';
+import { Settings, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useCaseStore } from '@/stores/case-store';
 import { AgentId, AgentStatus, CaseStatus } from '@/lib/types';
 import { useParams } from 'next/navigation';
@@ -379,19 +379,24 @@ export function WorkflowPane() {
 
       <div className="absolute top-4 left-6 right-6 z-10 flex items-center justify-between pointer-events-none">
         <div>
-          <h2 className="text-lg font-semibold text-neutral-text-primary">Live Orchestration</h2>
-          <div className="text-sm font-mono text-neutral-text-secondary mt-1 flex items-center">
-            Workflow:
-            <span className={`ml-2 flex items-center ${
-              caseStatus === CaseStatus.RUNNING ? 'text-brand-primary' :
-              caseStatus === CaseStatus.AWAITING_APPROVAL ? 'text-semantic-success' : 
-              caseStatus === CaseStatus.AWAITING_DOCS ? 'text-semantic-danger' :
-              'text-neutral-text-tertiary'
-              }`}>
-              {caseStatus === CaseStatus.RUNNING && <span className="w-2 h-2 rounded-full bg-brand-primary animate-pulse mr-2"></span>}
-              {caseStatus === CaseStatus.AWAITING_DOCS && <AlertCircle className="w-3.5 h-3.5 mr-2" />}
-              {(caseStatus || '').toUpperCase().replace('_', ' ')}
+          <h2 className="text-[20px] font-bold text-slate-800 dark:text-slate-100 tracking-tight leading-tight mb-1.5 drop-shadow-sm">
+            Live Orchestration
+          </h2>
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-medium text-slate-500 dark:text-slate-400">
+              Workflow:
             </span>
+            <div className={`flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold uppercase tracking-wider border shadow-sm backdrop-blur-md ${
+              caseStatus === CaseStatus.RUNNING ? 'bg-blue-50/90 text-blue-600 border-blue-200/80 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30' :
+              caseStatus === CaseStatus.AWAITING_APPROVAL ? 'bg-emerald-50/90 text-emerald-600 border-emerald-200/80 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30' : 
+              caseStatus === CaseStatus.AWAITING_DOCS ? 'bg-red-50/90 text-red-600 border-red-200/80 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30' :
+              'bg-slate-50/90 text-slate-500 border-slate-200/80 dark:bg-slate-800/80 dark:text-slate-400 dark:border-slate-700/80'
+            }`}>
+              {caseStatus === CaseStatus.RUNNING && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse mr-1.5"></span>}
+              {caseStatus === CaseStatus.AWAITING_DOCS && <AlertCircle className="w-3.5 h-3.5 mr-1" strokeWidth={2} />}
+              {caseStatus === CaseStatus.AWAITING_APPROVAL && <CheckCircle2 className="w-3.5 h-3.5 mr-1" strokeWidth={2} />}
+              {(caseStatus || '').toUpperCase().replace('_', ' ')}
+            </div>
           </div>
         </div>
 

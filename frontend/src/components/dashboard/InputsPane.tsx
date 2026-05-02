@@ -93,7 +93,7 @@ function FileChip({ url, filename, status, tags }: {
 
 const DocumentSkeleton = () => (
   <div className="relative overflow-hidden p-3 rounded-md bg-white border border-neutral-border/50">
-    <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-gradient-to-r from-transparent via-neutral-text-primary/5 to-transparent" />
+    <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.5s_infinite] bg-linear-to-r from-transparent via-neutral-text-primary/5 to-transparent" />
     <div className="flex items-center gap-3">
       <div className="w-9 h-9 rounded-md bg-neutral-border/60 shrink-0 animate-pulse" />
       <div className="space-y-1.5 flex-1">
@@ -165,28 +165,29 @@ export function InputsPane() {
       </div>
 
       {isAwaitingDocs && (
-        <div className="mb-6 p-4 bg-semantic-danger/10 border border-semantic-danger/20 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300">
-          <div className="flex items-center space-x-2 text-semantic-danger mb-2">
-            <AlertCircle className="w-5 h-5" />
-            <span className="font-bold text-sm uppercase tracking-tight">Missing Required Documents</span>
+        <div className="mb-6 p-4 bg-red-50/80 dark:bg-red-500/10 border border-red-200/80 dark:border-red-500/20 rounded-xl animate-in fade-in slide-in-from-top-2 duration-300 shadow-sm">
+          <div className="flex items-center gap-2 mb-2.5 text-red-600 dark:text-red-400">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <h3 className="font-bold text-sm tracking-wide uppercase">
+              Missing Required Documents
+            </h3>
           </div>
-          <p className="text-xs text-neutral-text-secondary mb-3">
+          <p className="text-xs text-slate-600 dark:text-slate-300 mb-3.5 leading-relaxed">
             The Intake Agent has paused the workflow because the following evidence is missing or could not be identified:
           </p>
           <div className="flex flex-wrap gap-1.5 mb-4">
             {missingDocs.map((doc: string) => (
-              <Badge key={doc} variant="outline" className="border-semantic-danger/30 text-semantic-danger bg-semantic-danger/5">
+              <span key={doc} className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-red-100/50 dark:bg-red-500/20 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30">
                 {doc.replace(/_/g, " ")}
-              </Badge>
+              </span>
             ))}
           </div>
-          <Button
-            size="sm"
-            className="w-full bg-semantic-danger hover:bg-semantic-danger/90 text-white text-[11px] font-bold uppercase tracking-widest"
+          <button
+            className="w-full bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white text-[11px] font-bold uppercase tracking-wider py-2.5 rounded-lg transition-all shadow-sm active:scale-[0.98]"
             onClick={() => useCaseStore.getState().setBlackboardMode("chat")}
           >
-            Ask AI why documents were rejected
-          </Button>
+            Ask AI Why
+          </button>
         </div>
       )}
 

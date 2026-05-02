@@ -62,7 +62,7 @@ export function CitationEvidenceModal({
                       Source file not found in current documents.
                     </div>
                   ) : isImage ? (
-                    <div className="flex h-full min-h-[22rem] items-center justify-center bg-neutral-background p-3">
+                    <div className="flex h-full min-h-88 items-center justify-center bg-neutral-background p-3">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={url}

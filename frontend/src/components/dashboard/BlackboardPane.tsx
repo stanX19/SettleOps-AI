@@ -274,10 +274,14 @@ export function BlackboardPane() {
       <OutputCard title="Intake Validation" icon={<FileKey className="w-4 h-4" />} status="success">
         <Field label="Processed Documents" value={tagged.length} />
         {missing.length > 0 && (
-          <div className="mt-2 p-2 bg-semantic-danger/10 rounded border border-semantic-danger/20">
-            <span className="text-[9px] text-semantic-danger font-bold uppercase tracking-wider block mb-1">Missing</span>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {missing.map((m: string) => <Tag key={m}>{m}</Tag>)}
+          <div className="mt-3 p-3 bg-red-50/80 dark:bg-red-500/10 rounded-lg border border-red-200/80 dark:border-red-500/20 shadow-sm">
+            <span className="text-[10px] text-red-600 dark:text-red-400 font-bold uppercase tracking-widest block mb-2">Missing</span>
+            <div className="flex flex-wrap gap-1.5">
+              {missing.map((m: string) => (
+                <span key={m} className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold bg-red-100/50 dark:bg-red-500/20 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-500/30">
+                  {m.replace(/_/g, " ")}
+                </span>
+              ))}
             </div>
           </div>
         )}
@@ -493,7 +497,7 @@ export function BlackboardPane() {
         <OutputCard title="Payout Recommendation" icon={<Landmark className="w-4 h-4" />} status="danger">
           <div className="space-y-3">
             <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-semantic-danger flex-shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-semantic-danger shrink-0" />
               <span className="text-xs font-bold text-semantic-danger uppercase tracking-wider">Escalated — Missing Data</span>
             </div>
 
@@ -662,7 +666,7 @@ export function BlackboardPane() {
   return (
     <div className="flex flex-col h-full bg-neutral-surface overflow-hidden">
       {/* Mode Toggle Header */}
-      <div className="px-6 py-2.5 border-b border-neutral-border/60 flex-shrink-0 bg-neutral-surface relative z-10 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+      <div className="px-6 py-2.5 border-b border-neutral-border/60 shrink-0 bg-neutral-surface relative z-10 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
             <div className="flex items-center justify-center w-6 h-6 rounded-md bg-brand-primary/10 border border-brand-primary/20 shadow-sm">
@@ -740,7 +744,7 @@ export function BlackboardPane() {
                     className={`flex items-start space-x-3 ${msg.role === 'officer' ? 'justify-end' : ''}`}
                   >
                     {msg.role !== 'officer' && (
-                      <div className="w-7 h-7 rounded-full bg-brand-primary flex items-center justify-center flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-brand-primary flex items-center justify-center shrink-0">
                         <img src="/bot.png" alt="Bot" className="w-4 h-4 object-contain" />
                       </div>
                     )}
@@ -769,7 +773,7 @@ export function BlackboardPane() {
                     </div>
 
                     {msg.role === 'officer' && (
-                      <div className="w-7 h-7 rounded-full bg-neutral-surface border border-neutral-border flex items-center justify-center flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-neutral-surface border border-neutral-border flex items-center justify-center shrink-0">
                         <User className="w-3.5 h-3.5 text-neutral-text-primary" />
                       </div>
                     )}
