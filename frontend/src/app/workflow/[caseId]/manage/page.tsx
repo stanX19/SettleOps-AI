@@ -206,7 +206,7 @@ export default function ManageCasePage({ params }: PageProps) {
       />
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-8 flex-shrink-0">
+      <div className="flex items-center justify-between mb-8 shrink-0">
         <div className="flex items-center space-x-4">
           <Link href={`/workflow/${caseId}`} className="p-2 hover:bg-neutral-surface rounded-md transition-colors text-neutral-text-secondary">
             <ChevronLeft className="w-5 h-5" />
@@ -248,7 +248,7 @@ export default function ManageCasePage({ params }: PageProps) {
       {/* Error Message Display */}
       {error && (
         <div className="mb-6 p-4 bg-semantic-danger/10 border border-semantic-danger/20 rounded-lg flex items-center space-x-3 text-semantic-danger animate-in fade-in slide-in-from-top-2">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <AlertCircle className="w-5 h-5 shrink-0" />
           <p className="text-sm font-medium">{error}</p>
         </div>
       )}
@@ -261,7 +261,7 @@ export default function ManageCasePage({ params }: PageProps) {
 
           {/* Document Management Hub */}
           <div className="bg-neutral-surface border border-neutral-border rounded-lg shadow-sm flex flex-col h-full overflow-hidden">
-            <div className="h-[60px] p-4 border-b border-neutral-border flex items-center justify-between flex-shrink-0 bg-neutral-background/30">
+            <div className="h-[60px] p-4 border-b border-neutral-border flex items-center justify-between shrink-0 bg-neutral-background/30">
               <div className="flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-brand-primary" />
                 <h2 className="text-sm font-semibold text-neutral-text-primary">Document Evidence Slots</h2>
@@ -273,30 +273,48 @@ export default function ManageCasePage({ params }: PageProps) {
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
+            <div className="flex-1 min-h-0">
               {files.length > 0 ? (
-                <table className="w-full text-left border-collapse">
-                  <thead className="sticky top-0 bg-neutral-surface z-10">
-                    <tr className="bg-neutral-background/30">
-                      <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider w-[45%]">Document Name</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Size</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Tag</th>
-                      <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-border">
-                    {files.map(file => (
-                      <DocumentRow
-                        key={file.id}
-                        name={file.name}
-                        size={file.size}
-                        tags={file.tags || []}
-                        isRemote={file.isRemote}
-                        onDelete={() => removeFile(file.id)}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+                <div className="flex h-full min-h-0 flex-col">
+                  <table className="w-full table-fixed text-left border-collapse">
+                    <colgroup>
+                      <col className="w-[45%]" />
+                      <col />
+                      <col />
+                      <col className="w-[120px]" />
+                    </colgroup>
+                    <thead>
+                      <tr className="bg-neutral-background/30">
+                        <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Document Name</th>
+                        <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Size</th>
+                        <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider">Tag</th>
+                        <th className="px-6 py-3 text-xs font-semibold text-neutral-text-tertiary uppercase tracking-wider text-right">Actions</th>
+                      </tr>
+                    </thead>
+                  </table>
+                  <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+                    <table className="w-full table-fixed text-left border-collapse">
+                      <colgroup>
+                        <col className="w-[45%]" />
+                        <col />
+                        <col />
+                        <col className="w-[120px]" />
+                      </colgroup>
+                      <tbody className="divide-y divide-neutral-border">
+                        {files.map(file => (
+                          <DocumentRow
+                            key={file.id}
+                            name={file.name}
+                            size={file.size}
+                            tags={file.tags || []}
+                            isRemote={file.isRemote}
+                            onDelete={() => removeFile(file.id)}
+                          />
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-12 text-center h-full">
                   <Upload className="w-8 h-8 text-neutral-text-tertiary opacity-60 mb-4" />
@@ -317,7 +335,7 @@ export default function ManageCasePage({ params }: PageProps) {
         {/* Right Column: PDF Report Preview */}
         <div className="col-span-12 lg:col-span-4 flex flex-col min-h-0">
           <div className="bg-neutral-surface border border-neutral-border rounded-lg h-full flex flex-col shadow-sm overflow-hidden">
-            <div className="h-[60px] px-4 py-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30 flex-shrink-0">
+            <div className="h-[60px] px-4 py-4 border-b border-neutral-border flex items-center justify-between bg-neutral-background/30 shrink-0">
               <div className="flex items-center space-x-2">
                 <FileText className="w-4 h-4 text-brand-primary" />
                 <h3 className="text-sm font-semibold text-neutral-text-primary">Final Report Preview</h3>

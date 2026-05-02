@@ -23,7 +23,7 @@ type LoadState = "loading" | "ready" | "not_found" | "error";
 export default function WorkflowCasePage({ params }: PageProps) {
   const { caseId } = use(params);
   const router = useRouter();
-  const [blackboardWidth, setBlackboardWidth] = useState(350);
+  const [blackboardWidth, setBlackboardWidth] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
   const setCase = useCaseStore(state => state.setCase);
   const resetCase = useCaseStore(state => state.reset);

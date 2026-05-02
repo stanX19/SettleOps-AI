@@ -18,10 +18,10 @@
 ## Hackathon Submissions
 
 ### Final Stage
--   **[Refined Quality Assurance Testing Document (PDF)]()**
--   **[Business Proposal]()**
--   **[Deployment Plan]()**
--   **[Final Round Pitch Deck]()**
+-   **[Refined Quality Assurance Testing Document (PDF)](./Final-Quality%20Assurance%20Testing%20Documentation%20(spectrUM).pdf)**
+-   **[Business Proposal](./Final-Business%20Proposal%20(spectrUM).pdf)**
+-   **[Deployment Plan](./Final-Deployment%20Plan%20(spectrUM).pdf)**
+-   **[Final Round Pitch Deck](./Final-Pitch%20Deck%20(spectrUM).pdf)**
 
 ### Preliminary Stage
 -   **[Product Requirement Documentation (PRD)](./Product%20Requirement%20Documentation%20(Team%20spectrUM).pdf)**
@@ -122,10 +122,9 @@ SettleOps AI is built as a stateful, agentic monolith managed by **LangGraph**. 
 ## Impact
 | Metric | Calculation | Result |
 | --- | --- | --- |
-| Time reduction | (4,320 min avg − 10 min) / 4,320 min | **99.7%** |
-| Throughput multiplier | 4,320 min / 10 min | **432×** per claim |
-| FTE capacity gain | (4,310 min × 10,000 claims) / (2,080 hrs × 60 min) | **~345 FTE** equivalent |
-| Break-even | RM50,000 license / (RM200 manual − RM5 auto) | **~256 claims** |
+| Time reduction | Manual: 3 days (4,320 mins) per case -> AI: 10 mins per case | **99.7% time reduced** |
+| Full-time employee capacity cut | Manual: 115 FTEs required for 10k cases -> AI: 1 oversight operator required | **From 115 employees to 1** |
+| ROI (Rate of Investment) | Savings: 114 staff x 60K salary (6.84M) vs Cost: 50K system fee | **ROI = 13,580%** |
 
 > From hours → minutes. From manual → intelligent.
 
