@@ -135,7 +135,7 @@ export function ActionBar() {
                 {status === CaseStatus.APPROVED ? (
                   <Button
                     variant="default"
-                    className="group h-9 rounded-md px-6 py-2 text-sm font-semibold bg-semantic-success hover:bg-semantic-success hover:brightness-110 hover:shadow-xl hover:shadow-semantic-success/40 active:shadow-md text-white shadow-lg shadow-semantic-success/20 transition-all duration-200 ease-out"
+                    className="group h-9 rounded-md px-6 py-2 text-sm font-semibold bg-semantic-success hover:bg-semantic-success hover:brightness-110 text-white transition-all duration-200 ease-out"
                     onClick={handleDownloadReport}
                   >
                     <FileText className="w-4 h-4 mr-2 transition-transform duration-200 group-hover:scale-110" />
@@ -192,7 +192,15 @@ export function ActionBar() {
           isOpen={isSignatureModalOpen}
           onClose={() => setIsSignatureModalOpen(false)}
           caseId={caseId}
-          onSuccess={() => setToast({ message: "Settlement approved successfully", visible: true })}
+          onSuccess={async () => {
+            setToast({ message: "Settlement approved successfully", visible: true });
+            try {
+              const snapshot = await api.getCaseSnapshot(caseId);
+              useCaseStore.getState().setCase(snapshot);
+            } catch (err) {
+              console.error("Failed to refresh case state after approval", err);
+            }
+          }}
         />
       )}
 

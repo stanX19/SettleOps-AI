@@ -91,6 +91,36 @@ def sign_and_stamp(
     writer = PdfWriter()
     last_idx = len(reader.pages) - 1
 
+    sig_x = None
+    sig_y = None
+    stamp_y = None
+
+    try:
+        import fitz
+        doc = fitz.open(pdf_path)
+        fitz_page = doc[last_idx]
+        ph_fitz = fitz_page.rect.height
+
+        sig_rects = fitz_page.search_for("Tandatangan Bertauliah")
+        if sig_rects:
+            rect = sig_rects[0]
+            # We don't overwrite sig_x here because searching for a substring might
+            # shift the x coordinate to the middle of the sentence. We want it left-aligned.
+            
+            # reportlab Y is from bottom. rect.y1 is the bottom of the text from top.
+            # 15mm offset places the signature neatly between the text and the 25mm line.
+            sig_y = ph_fitz - rect.y1 - 15 * mm
+
+        stamp_rects = fitz_page.search_for("Cop Syarikat")
+        if stamp_rects:
+            rect = stamp_rects[0]
+            # Stamp image is drawn upwards from stamp_y. Place it 2mm above the text.
+            stamp_y = ph_fitz - rect.y0 + 2 * mm
+
+        doc.close()
+    except Exception as e:
+        logger.warning(f"Could not dynamically position signature via fitz: {e}")
+
     for i, page in enumerate(reader.pages):
         if i == last_idx:
             box = page.mediabox
@@ -104,6 +134,9 @@ def sign_and_stamp(
                 designation=designation,
                 sign_date=sign_date,
                 stamp_path=stamp_path,
+                sig_x=sig_x,
+                sig_y=sig_y,
+                stamp_y=stamp_y,
             )
             overlay_page = PdfReader(overlay_buf).pages[0]
             page.merge_page(overlay_page)

@@ -397,7 +397,7 @@ def _build_content(elements, data: RepairApprovalData, styles):
     # ── 12. Signature Section ──
     sig_left_rows = [
         [Paragraph("Authorised Signatory / Tandatangan Bertauliah:", styles["Body"])],
-        [Spacer(1, 15 * mm)],
+        [Spacer(1, 25 * mm)],
         [HRFlowable(width=55 * mm, thickness=0.5, color=BLACK)],
         [Paragraph(f"<b>{data.approved_by}</b>", styles["Body"])],
         [Paragraph(data.designation, styles["Body"])],

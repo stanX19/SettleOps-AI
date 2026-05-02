@@ -666,7 +666,7 @@ export function BlackboardPane() {
   return (
     <div className="flex flex-col h-full bg-neutral-surface overflow-hidden">
       {/* Mode Toggle Header */}
-      <div className="px-6 py-2.5 border-b border-neutral-border/60 shrink-0 bg-neutral-surface relative z-10 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+      <div className="pl-6 pr-8 py-2.5 border-b border-neutral-border/60 shrink-0 bg-neutral-surface relative z-10 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
             <div className="flex items-center justify-center w-6 h-6 rounded-md bg-brand-primary/10 border border-brand-primary/20 shadow-sm">
@@ -686,18 +686,18 @@ export function BlackboardPane() {
 
             <button
               onClick={() => setMode('blackboard')}
-              className={`relative group/tip z-10 p-1.5 px-3 rounded-md transition-colors duration-300 flex items-center space-x-1.5 ${mode === 'blackboard' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
+              className={`relative group/tip z-10 py-1.5 px-3.5 rounded-md transition-colors duration-300 flex items-center justify-center ${mode === 'blackboard' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
             >
-              <LayoutList className="w-3.5 h-3.5" />
+              <LayoutList className="w-4 h-4" />
               <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap">
                 Blackboard Mode
               </div>
             </button>
             <button
               onClick={() => setMode('chat')}
-              className={`relative group/tip z-10 p-1.5 px-3 rounded-md transition-colors duration-300 flex items-center space-x-1.5 ${mode === 'chat' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
+              className={`relative group/tip z-10 py-1.5 px-3.5 rounded-md transition-colors duration-300 flex items-center justify-center ${mode === 'chat' ? 'text-black' : 'text-neutral-text-tertiary hover:text-neutral-text-secondary'}`}
             >
-              <MessageSquare className="w-3.5 h-3.5" />
+              <MessageSquare className="w-4 h-4" />
               <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 px-2 py-1 bg-neutral-surface text-neutral-text-primary text-xs rounded shadow-card pointer-events-none opacity-0 group-hover/tip:opacity-100 transition-opacity z-50 border border-neutral-border whitespace-nowrap">
                 AI Chat Mode
               </div>
@@ -741,22 +741,15 @@ export function BlackboardPane() {
                 officer_messages.map((msg) => (
                   <div
                     key={msg.message_id}
-                    className={`flex items-start space-x-3 ${msg.role === 'officer' ? 'justify-end' : ''}`}
+                    className={`flex items-start ${msg.role === 'officer' ? 'justify-end' : ''}`}
                   >
-                    {msg.role !== 'officer' && (
-                      <div className="w-7 h-7 rounded-full bg-brand-primary flex items-center justify-center shrink-0">
-                        <img src="/bot.png" alt="Bot" className="w-4 h-4 object-contain" />
-                      </div>
-                    )}
-
-                    <div className={`p-2.5 rounded-xl max-w-[85%] shadow-sm ${msg.role === 'officer'
-                      ? 'bg-brand-primary/10 rounded-tr-none'
-                      : 'bg-neutral-surface border border-neutral-border rounded-tl-none'
+                    <div className={`p-3 rounded-2xl max-w-[85%] shadow-sm ${msg.role === 'officer'
+                      ? 'bg-[#ffc446] dark:bg-yellow-500/10 rounded-tr-sm'
+                      : 'bg-white dark:bg-neutral-surface border border-neutral-border rounded-tl-sm'
                       }`}>
                       <MarkdownRenderer
                         content={msg.message}
-                        className={`text-[11px] leading-relaxed ${msg.role === 'officer' ? 'text-neutral-text-primary' : 'text-neutral-text-primary'
-                          }`}
+                        className={`text-[12px] leading-relaxed text-neutral-text-primary`}
                       />
                       {msg.role === 'system' && audio_urls[msg.message] && (
                         <button
@@ -767,16 +760,10 @@ export function BlackboardPane() {
                           <span className="text-[9px] font-bold uppercase tracking-widest">Listen</span>
                         </button>
                       )}
-                      <div className={`text-[8px] mt-1 uppercase tracking-tighter opacity-40 ${msg.role === 'officer' ? 'text-right' : ''}`}>
+                      <div className={`text-[9px] mt-1.5 uppercase tracking-tighter opacity-40 ${msg.role === 'officer' ? 'text-right' : ''}`}>
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
-
-                    {msg.role === 'officer' && (
-                      <div className="w-7 h-7 rounded-full bg-neutral-surface border border-neutral-border flex items-center justify-center shrink-0">
-                        <User className="w-3.5 h-3.5 text-neutral-text-primary" />
-                      </div>
-                    )}
                   </div>
                 ))
               )}
