@@ -5,6 +5,7 @@ import {
   FileText, Image as ImageIcon, ChevronDown, ChevronRight,
   CheckCircle2, Wrench, FileQuestion, AlertCircle, ExternalLink,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Badge } from "@/components/primitives/Badge";
 import { Button } from "@/components/primitives/Button";
 import { useCaseStore } from "@/stores/case-store";
@@ -135,6 +136,7 @@ function CollapsibleSection({ title, icon, count, children, defaultOpen = true }
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 export function InputsPane() {
+  const router = useRouter();
   const documents  = useCaseStore(state => state.documents);
   const status     = useCaseStore(state => state.status);
   const blackboard = useCaseStore(state => state.blackboard);
@@ -184,10 +186,10 @@ export function InputsPane() {
             ))}
           </div>
           <button
-            className="w-full bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white text-[11px] font-bold uppercase tracking-wider py-2.5 rounded-lg transition-all shadow-sm active:scale-[0.98]"
-            onClick={() => useCaseStore.getState().setBlackboardMode("chat")}
+            className="w-full bg-red-500 hover:bg-red-600 dark:bg-red-600 dark:hover:bg-red-700 text-white text-[11px] font-bold tracking-wider py-2.5 rounded-lg transition-all shadow-sm active:scale-[0.98]"
+            onClick={() => router.push('/manage-hub')}
           >
-            Ask AI Why
+            Upload
           </button>
         </div>
       )}

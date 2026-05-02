@@ -197,15 +197,53 @@ export const useCaseStore = create<CaseState>((set) => ({
     ]
   })),
 
-  handleWorkflowCompleted: (data) => set((state) => ({
-    status: data.status,
-    pdf_ready: data.pdf_ready,
-    auditor_loop_count: data.auditor_loop_count,
-    officer_challenge_count: data.officer_challenge_count,
-    chatbox_enabled: data.chatbox_enabled,
-    topology: data.topology || state.topology,
-    current_agent: null
-  })),
+  handleWorkflowCompleted: (data) => set((state) => {
+    // When workflow completes, mark all currently RUNNING/WORKING agents as COMPLETED
+    // This prevents them from resetting to IDLE if the backend doesn't send explicit status updates
+    const newAgents = { ...state.agents };
+    Object.keys(newAgents).forEach(agentId => {
+      // Mark top-level agents as completed if they aren't already
+      if (newAgents[agentId].status !== AgentStatus.COMPLETED) {
+        newAgents[agentId] = {
+          ...newAgents[agentId],
+          status: AgentStatus.COMPLETED
+        };
+      }
+      
+      // Mark sub-tasks as completed
+      if (newAgents[agentId].sub_tasks) {
+        const newSubTasks = { ...newAgents[agentId].sub_tasks };
+        let updated = false;
+        Object.keys(newSubTasks).forEach(subTaskId => {
+          if (newSubTasks[subTaskId].status !== AgentStatus.COMPLETED) {
+            newSubTasks[subTaskId] = {
+              ...newSubTasks[subTaskId],
+              status: AgentStatus.COMPLETED
+            };
+            updated = true;
+          }
+        });
+        
+        if (updated) {
+          newAgents[agentId] = {
+            ...newAgents[agentId],
+            sub_tasks: newSubTasks
+          };
+        }
+      }
+    });
+
+    return {
+      status: data.status,
+      pdf_ready: data.pdf_ready,
+      auditor_loop_count: data.auditor_loop_count,
+      officer_challenge_count: data.officer_challenge_count,
+      chatbox_enabled: data.chatbox_enabled,
+      topology: data.topology || state.topology,
+      current_agent: null,
+      agents: newAgents // Apply the updated agent states
+    };
+  }),
   
   addOfficerMessage: (msg) => set((state) => {
     // Deduplicate by message_id

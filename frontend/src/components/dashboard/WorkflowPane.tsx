@@ -99,10 +99,11 @@ const CANVAS_CENTER_X = 400;
 const CLUSTER_SPACING = 240;
 const Y_START = 50;
 const Y_CLUSTER = 220;
-const Y_PAYOUT = 520;
-const Y_ADJUSTER = 620;
-const Y_AUDITOR = 720;
-const Y_DECISION_GATE = 900;
+const Y_PAYOUT = 600; // Moved down slightly from 520
+const Y_ADJUSTER = 680;
+const Y_AUDITOR = 700; // Reduced distance from Payout (was 720)
+/** Same vertical step as Payout → Auditor so Auditor → Decision Gate matches that spacing */
+const Y_DECISION_GATE = Y_AUDITOR + (Y_AUDITOR - Y_PAYOUT);
 
 import { AgentDetailsModal } from './AgentDetailsModal';
 
