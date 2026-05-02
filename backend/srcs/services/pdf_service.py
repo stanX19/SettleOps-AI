@@ -275,8 +275,13 @@ def _build_content(elements, data: RepairApprovalData, styles):
         data.costs.parts + data.costs.labour + data.costs.paint
         + data.costs.towing + data.costs.misc
     )
-    repair_estimate = data.costs.repair_estimate_myr or component_total
-    final_payout = data.costs.final_payout_myr or max(
+    explicit_cost_fields = data.costs.model_fields_set
+    repair_estimate = (
+        data.costs.repair_estimate_myr
+        if "repair_estimate_myr" in explicit_cost_fields
+        else component_total
+    )
+    final_payout = data.costs.final_payout_myr if "final_payout_myr" in explicit_cost_fields else max(
         repair_estimate
         - data.costs.depreciation_deducted_myr
         - data.costs.excess_deducted_myr,

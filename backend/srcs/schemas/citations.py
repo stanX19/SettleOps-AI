@@ -68,7 +68,24 @@ class Citation(BaseModel):
     @staticmethod
     def make_id(field_path: str, filename: str, excerpt: Optional[str]) -> str:
         key = f"{field_path}:{filename}:{(excerpt or '')[:60]}"
-        return hashlib.md5(key.encode()).hexdigest()[:12]
+        return hashlib.sha256(key.encode()).hexdigest()[:12]
+
+
+def stamp_citation_ids(citations: list[dict]) -> list[dict]:
+    """Return citation dict copies with deterministic IDs populated."""
+    stamped: list[dict] = []
+    for citation in citations:
+        if not isinstance(citation, dict):
+            continue
+        next_citation = dict(citation)
+        if not next_citation.get("id"):
+            next_citation["id"] = Citation.make_id(
+                str(next_citation.get("field_path") or ""),
+                str(next_citation.get("filename") or ""),
+                next_citation.get("excerpt"),
+            )
+        stamped.append(next_citation)
+    return stamped
 
 
 class CitationTopicGroup(BaseModel):

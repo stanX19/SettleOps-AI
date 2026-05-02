@@ -14,6 +14,16 @@ interface CitationPanelProps {
   onViewEvidence: (citation: Citation) => void;
 }
 
+function citationRowKey(citation: Citation, fallback: string): string {
+  return citation.id || [
+    citation.node_id,
+    citation.field_path,
+    citation.filename,
+    citation.excerpt ?? citation.comment,
+    fallback,
+  ].join("|");
+}
+
 export function CitationPanel({
   title,
   summary,
@@ -164,7 +174,7 @@ function KeyEvidenceGroup({
       <ul className="rounded-md border border-brand-primary/30 bg-neutral-surface overflow-hidden">
         {citations.map((c, idx) => (
           <CitationRow
-            key={`key-${idx}`}
+            key={citationRowKey(c, `key-${idx}`)}
             citation={c}
             documents={documents}
             onViewEvidence={onViewEvidence}
@@ -230,7 +240,7 @@ function CollapsibleCitationGroup({
         <ul className="rounded-md border border-neutral-border bg-neutral-surface overflow-hidden">
           {visible.map((c, idx) => (
             <CitationRow
-              key={`${title}-${idx}`}
+              key={citationRowKey(c, `${title}-${idx}`)}
               citation={c}
               documents={documents}
               onViewEvidence={onViewEvidence}
@@ -330,8 +340,8 @@ export function CitationRow({
             </span>
           </div>
 
-          {/* Verbatim excerpt — hidden in compact mode */}
-          {citation.excerpt && (
+          {/* Verbatim excerpt */}
+          {!compact && citation.excerpt && (
             <blockquote className="border-l-2 border-brand-primary/40 bg-neutral-surface/60 px-2 py-1 italic text-[10px] text-neutral-text-secondary">
               "{citation.excerpt}"
             </blockquote>

@@ -2,8 +2,7 @@ from typing import List, Callable
 import asyncio
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
-from srcs.schemas.citations import CitationValidationError
-from srcs.schemas.citations import Citation
+from srcs.schemas.citations import CitationValidationError, stamp_citation_ids
 from srcs.schemas.state import ClusterState
 from srcs.services.citation_validator import validate_citations
 from srcs.services.agents.validator import cluster_validator_task
@@ -59,22 +58,6 @@ async def _emit_subtask_status(
         logs=logs or [],
         log_entries=log_entries or [],
     ))
-
-
-def _ensure_citation_ids(citations: list[dict]) -> list[dict]:
-    stamped: list[dict] = []
-    for citation in citations:
-        if not isinstance(citation, dict):
-            continue
-        next_citation = dict(citation)
-        if not next_citation.get("id"):
-            next_citation["id"] = Citation.make_id(
-                str(next_citation.get("field_path") or ""),
-                str(next_citation.get("filename") or ""),
-                next_citation.get("excerpt"),
-            )
-        stamped.append(next_citation)
-    return stamped
 
 
 def _build_citation_log_entries(citations: list[dict]) -> list[LogEntry]:
@@ -171,7 +154,7 @@ def create_cluster_subgraph(cluster_id: str, sub_tasks: List[Callable]) -> State
                 )
 
                 # 4+5. Build trace log, emit COMPLETED with it, and format output
-                citations = _ensure_citation_ids(list(result.get("citations") or []))
+                citations = stamp_citation_ids(list(result.get("citations") or []))
                 subtask_log = [f"[{cluster_id}] {result.get('reasoning', 'No reasoning provided.')}"]
                 log_entries = [
                     LogEntry(text=line)

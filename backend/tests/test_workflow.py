@@ -1,4 +1,5 @@
-from srcs.services.workflow_engine import build_workflow, _build_log_entries, _dedupe_citations, _ensure_citation_ids
+from srcs.schemas.citations import stamp_citation_ids
+from srcs.services.workflow_engine import build_workflow, _build_log_entries, _dedupe_citations
 
 def test_workflow_compilation():
     """Verifies that the workflow can be compiled without errors."""
@@ -48,7 +49,7 @@ def test_citation_dedupe_removes_duplicates_and_caps_fields():
 
 
 def test_log_entries_include_every_citation():
-    citations = _ensure_citation_ids([
+    citations = stamp_citation_ids([
         {
             "filename": "quote.pdf",
             "source_type": "text",

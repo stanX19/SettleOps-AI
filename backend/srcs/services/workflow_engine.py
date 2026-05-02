@@ -26,7 +26,7 @@ from srcs.services.agents.analysis_tasks import (
 )
 from srcs.utils.cluster_factory import create_cluster_subgraph
 from srcs.services.citation_validator import build_citation_summary
-from srcs.schemas.citations import Citation
+from srcs.schemas.citations import stamp_citation_ids
 from srcs.services.sse_service import SseService
 from srcs.schemas.case_dto import (
     SseAgentStatusChangedData,
@@ -93,23 +93,6 @@ def _dedupe_citations(citations: list[dict], max_per_field: int = 2) -> list[dic
         field_counts[count_key] = field_counts.get(count_key, 0) + 1
         deduped.append(citation)
     return deduped
-
-
-def _ensure_citation_ids(citations: list[dict]) -> list[dict]:
-    """Stamp deterministic IDs so trace entries can link to CitationSummary rows."""
-    stamped: list[dict] = []
-    for citation in citations:
-        if not isinstance(citation, dict):
-            continue
-        next_citation = dict(citation)
-        if not next_citation.get("id"):
-            next_citation["id"] = Citation.make_id(
-                str(next_citation.get("field_path") or ""),
-                str(next_citation.get("filename") or ""),
-                next_citation.get("excerpt"),
-            )
-        stamped.append(next_citation)
-    return stamped
 
 
 # -- Cluster Definitions -----------------------------------------------------
@@ -403,7 +386,7 @@ def node_sse_wrapper(node_name: str, func):
                 citations_key = f"{agent_id.value.lower()}_citations"
                 raw_citations = result.get(citations_key, [])
                 if isinstance(raw_citations, list):
-                    raw_flat = _ensure_citation_ids(_dedupe_citations(raw_citations))
+                    raw_flat = stamp_citation_ids(_dedupe_citations(raw_citations))
 
             # Build structured summary for emission; CaseStore keeps the flat
             # list so downstream agents (auditor, payout) can still read it.
