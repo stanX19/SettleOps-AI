@@ -31,7 +31,7 @@ class Chatbot:
         tools: list | None = None,
         system_prompt: str | None = None,
     ) -> None:
-        self.tools: list = tools if tools is not None else [search_web]
+        self.tools: list = tools if tools is not None else []
         self.system_prompt: str = system_prompt or memory_manager.load_system_prompt()
 
     # -- public API -------------------------------------------------------
